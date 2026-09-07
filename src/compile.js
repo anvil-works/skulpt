@@ -718,7 +718,8 @@ Compiler.prototype.ccall = function (e) {
         // TODO: feel free to ignore the above
         this.u.tempsToSave.push("$sup");
         out("if (typeof $sup === \"undefined\") { throw new Sk.builtin.RuntimeError(\"super(): no arguments\") };");
-        positionalArgs = "[$gbl.__class__,$sup]";
+        out("if (typeof $free === 'undefined' || $free.__class__ === undefined) { throw new Sk.builtin.RuntimeError('super(): __class__ cell not found') };");
+        positionalArgs = "[$free.__class__,$sup]";
     }
     out ("$ret = (",func,".tp$call)?",func,".tp$call(",positionalArgs,",",keywordArgs,") : Sk.misceval.applyOrSuspend(",func,",undefined,undefined,",keywordArgs,",",positionalArgs,");");
 
@@ -2143,10 +2144,6 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     //
     this.u.varDeclsCode += "}";
 
-    // inject __class__ cell when running python3
-    if (Sk.__future__.super_args && class_for_super) {
-        this.u.varDeclsCode += "$gbl.__class__=$gbl." + class_for_super.v + ";";
-    }
 
     // finally, set up the block switch that the jump code expects
     //
@@ -2250,7 +2247,9 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     //
     frees = "";
     if (hasFree) {
-        if (this.u.ste.hasCells) {
+        if (this.u.ste.needsClassClosure) {
+            frees = ",$classcell";
+        } else if (this.u.ste.hasCells) {
             frees = ",$cell";
         }
         containingHasFree = this.u.ste.hasFree || this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock;
@@ -2519,6 +2518,10 @@ Compiler.prototype.cclass = function (s) {
     entryBlock = this.newBlock("class entry");
 
     this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($globals,$locals,$cell){var $gbl=$globals,$loc=$locals,$free=$cell;";
+    const needsClassClosure = this.u.ste.needsClassClosure;
+    if (needsClassClosure) {
+        this.u.prefixCode += "var $classcell={__class__:undefined};";
+    }
     this.u.switchCode += "(function $" + s.name + "$_closure($cell){";
     this.u.switchCode += "var $blk=" + entryBlock + ",$exc=[],$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
 
@@ -2538,6 +2541,9 @@ Compiler.prototype.cclass = function (s) {
     this.u.private_ = s.name;
 
     this.cbody(s.body, s.name);
+    if (needsClassClosure) {
+        out("$loc.__classcell__=new Sk.builtin.cell($classcell);");
+    }
     out("return;");
 
     // build class
