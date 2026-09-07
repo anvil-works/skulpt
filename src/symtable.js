@@ -836,6 +836,9 @@ SymbolTable.prototype.visitExpr = function (e) {
             break;
         case "Name":
             this.addDef(e.id, e.ctx._type === "Load" ? USE : DEF_LOCAL, e.lineno);
+            if (e.ctx._type === "Load" && this.cur.blockType === FunctionBlock && e.id === "super") {
+                this.addDef("__class__", USE, e.lineno);
+            }
             break;
         case "NameConstant":
             break;
@@ -950,6 +953,7 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
         if (bound) {
             _dictUpdate(newbound, bound);
         }
+        newbound.__class__ = null;
     }
 
     for (name in ste.symFlags) {
@@ -980,6 +984,10 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
     _dictUpdate(newfree, allfree);
     if (ste.blockType === FunctionBlock) {
         this.analyzeCells(ste, scope, newfree);
+    }
+    if (ste.blockType === ClassBlock && newfree.__class__ !== undefined) {
+        delete newfree.__class__;
+        ste.needsClassClosure = true;
     }
     this.updateSymbols(ste, ste.symFlags, scope, bound, newfree, ste.blockType === ClassBlock);
 
