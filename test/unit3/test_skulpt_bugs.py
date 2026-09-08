@@ -39,6 +39,65 @@ class TestSuper(unittest.TestCase):
 
 
 class TestRegressions(unittest.TestCase):
+    def test_function_preserves_shadowed_closure_cell(self):
+        def outer():
+            x = 1
+            y = 2
+
+            def capture():  # Keep outer x in the closure passed to inner.
+                return x
+
+            def inner():
+                x = 3
+                y  # Give inner a free variable as well as its own cell.
+
+                def get():
+                    return x
+
+                return x, get()
+
+            return inner()
+
+        self.assertEqual(outer(), (3, 3))
+
+    def test_function_observes_rebound_outer_cell(self):
+        def outer():
+            x = 1
+
+            def middle():
+                def get():
+                    return x
+                return get
+
+            get = middle()
+            before = get()
+            x = 2
+            return before, get()
+
+        self.assertEqual(outer(), (1, 2))
+
+    def test_class_preserves_shadowed_closure_cell(self):
+        def outer():
+            x = 1
+            y = 2
+
+            def capture():  # Keep outer x in the closure passed to inner.
+                return x
+
+            def inner():
+                def get():
+                    return x
+
+                x = 3
+                y  # Give inner a free variable as well as its own cell.
+                class C:
+                    pass
+                return get()
+
+            return inner()
+
+        self.assertEqual(outer(), 3)
+
     def test_bug_1470(self):
         global i
         i = 0
@@ -61,6 +120,18 @@ class An:
 
 
 class TestAnnotations(unittest.TestCase):
+    def test_annotated_variables_remain_local(self):
+        def first():
+            rows: list = []
+            second()
+            return rows
+
+        def second():
+            rows: list = []
+            rows.append(7)
+
+        self.assertEqual(first(), [])
+
     def test_bug_1428(self):
         annotations = An.__annotations__
         self.assertEqual(annotations, {"name": str, "_An__foo": int})
@@ -133,6 +204,256 @@ class TestBugs(unittest.TestCase):
         a = C()
         self.assertFalse(a == a)
         self.assertTrue(a != a)
+
+
+class TestExceptionProtocols(unittest.TestCase):
+    def test_explicit_cause(self):
+        for cause in (BaseException, ValueError, ValueError("cause"), None):
+            try:
+                raise RuntimeError("outer") from cause
+            except RuntimeError as error:
+                if cause in (BaseException, ValueError):
+                    self.assertIsInstance(error.__cause__, cause)
+                else:
+                    self.assertIs(error.__cause__, cause)
+        with self.assertRaises(TypeError):
+            raise RuntimeError from 42
+
+    def test_missing_context_methods(self):
+        entered = []
+        class EnterOnly:
+            def __enter__(self):
+                entered.append(True)
+        class ExitOnly:
+            def __exit__(self, *args):
+                pass
+        for manager in (EnterOnly(), ExitOnly()):
+            with self.assertRaises(AttributeError):
+                with manager:
+                    self.fail("body must not run")
+        self.assertEqual(entered, [])
+
+    def test_exception_values(self):
+        self.assertIsNone(StopIteration().value)
+        self.assertIsNone(StopIteration(None).value)
+        self.assertEqual(StopIteration(42).value, 42)
+        self.assertTrue(issubclass(GeneratorExit, BaseException))
+        self.assertFalse(issubclass(GeneratorExit, Exception))
+
+
+class TestClassCell(unittest.TestCase):
+    """Tests for __class__ cell and super() handling - Issues #1171, #1340"""
+
+    def test_class_cell_available_after_type_new(self):
+        seen = []
+        class Meta(type):
+            def __new__(meta, name, bases, namespace):
+                result = super().__new__(meta, name, bases, namespace)
+                seen.append(result.get_class())
+                return result
+        class C(metaclass=Meta):
+            @staticmethod
+            def get_class():
+                return __class__
+        self.assertEqual(seen, [C])
+
+    def test_class_cell_available_in_creation_hooks(self):
+        seen = []
+        class Descriptor:
+            def __set_name__(self, owner, name):
+                seen.append(owner.get_class())
+        class Base:
+            def __init_subclass__(cls):
+                seen.append(cls.get_class())
+        class C(Base):
+            descriptor = Descriptor()
+            @staticmethod
+            def get_class():
+                return __class__
+        self.assertEqual(seen, [C, C])
+        self.assertNotIn("__classcell__", C.__dict__)
+
+    def test_class_cell_must_be_forwarded_by_metaclass(self):
+        class Meta(type):
+            def __new__(meta, name, bases, namespace):
+                namespace.pop("__classcell__")
+                return super().__new__(meta, name, bases, namespace)
+        with self.assertRaises(RuntimeError):
+            class C(metaclass=Meta):
+                def get_class(self):
+                    return __class__
+
+    def test_invalid_class_cell_rejected(self):
+        with self.assertRaises(TypeError):
+            type("C", (), {"__classcell__": 42})
+
+    def test_class_cell_and_nonlocal_share_outer_binding(self):
+        def outer():
+            count = 0
+            class C:
+                def increment(self):
+                    nonlocal count
+                    count += 1
+                    return __class__
+            self.assertIs(C().increment(), C)
+            return count
+        self.assertEqual(outer(), 1)
+
+    def test_issue_1171_super_in_nested_class_in_function(self):
+        """super() in __init_subclass__ of class defined inside a function"""
+        def bar():
+            class A:
+                def __init_subclass__(cls):
+                    super().__init_subclass__()
+
+            class B(A):
+                pass
+            return A, B
+
+        A, B = bar()
+        self.assertEqual(A.__name__, 'A')
+        self.assertEqual(B.__name__, 'B')
+
+    def test_super_with_closure_in_method(self):
+        """super() in method that also has a closure (Issue #4360 in CPython)"""
+        class A:
+            def f(self):
+                return 'A'
+
+        class E(A):
+            def f(self):
+                def nested():
+                    self  # creates closure
+                return super().f() + 'E'
+
+        self.assertEqual(E().f(), 'AE')
+
+    def test___class___in_instancemethod(self):
+        """__class__ should be available in instance methods"""
+        class X:
+            def f(self):
+                return __class__
+
+        self.assertIs(X().f(), X)
+
+    def test___class___in_classmethod(self):
+        """__class__ should be available in classmethods"""
+        class Y:
+            @classmethod
+            def f(cls):
+                return __class__
+
+        self.assertIs(Y.f(), Y)
+
+    def test___class___in_staticmethod(self):
+        """__class__ should be available in staticmethods"""
+        class Z:
+            @staticmethod
+            def f():
+                return __class__
+
+        self.assertIs(Z.f(), Z)
+
+    def test_super_in_nested_classes(self):
+        """super() works correctly in nested class hierarchies"""
+        class Outer:
+            class Inner:
+                def greet(self):
+                    return "Inner"
+
+            class InnerChild(Inner):
+                def greet(self):
+                    return super().greet() + "Child"
+
+        self.assertEqual(Outer.InnerChild().greet(), "InnerChild")
+
+    def test_multiple_levels_of_super(self):
+        """super() works through multiple inheritance levels"""
+        class A:
+            def f(self):
+                return 'A'
+
+        class B(A):
+            def f(self):
+                return super().f() + 'B'
+
+        class C(B):
+            def f(self):
+                return super().f() + 'C'
+
+        class D(C):
+            def f(self):
+                return super().f() + 'D'
+
+        self.assertEqual(D().f(), 'ABCD')
+
+    def test_super_in_init_subclass_chain(self):
+        """super().__init_subclass__() works through inheritance chain"""
+        calls = []
+
+        class Base:
+            def __init_subclass__(cls, **kwargs):
+                super().__init_subclass__(**kwargs)
+                calls.append(cls.__name__)
+
+        class Middle(Base):
+            pass
+
+        class Leaf(Middle):
+            pass
+
+        self.assertEqual(calls, ['Middle', 'Leaf'])
+
+
+class TestGeneratorCells(unittest.TestCase):
+    def test_cells_and_super_across_yields(self):
+        class Base:
+            def value(self):
+                return 10
+        class Child(Base):
+            def values(self):
+                count = 1
+                def update():
+                    nonlocal count
+                    count += 1
+                yield __class__, super().value(), count
+                update()
+                yield __class__, super().value(), count
+        self.assertEqual(list(Child().values()), [(Child, 10, 1), (Child, 10, 2)])
+
+    def test_unbound_cell_reservation(self):
+        value = 100
+        def gen():
+            def inner():
+                return value
+            yield inner
+            value = 2
+            yield inner
+        g = gen()
+        inner = next(g)
+        with self.assertRaises(NameError):
+            inner()
+        self.assertIs(next(g), inner)
+        self.assertEqual(inner(), 2)
+
+    def test_nonlocal_owner_across_generator_frames(self):
+        value = 1
+        def middle():
+            local = 5
+            def gen():
+                nonlocal value
+                yield local, value
+                value = 2
+                yield local, value
+                del value
+            return gen()
+        g = middle()
+        self.assertEqual(next(g), (5, 1))
+        self.assertEqual(next(g), (5, 2))
+        self.assertEqual(value, 2)
+        self.assertEqual(list(g), [])
+        with self.assertRaises(UnboundLocalError):
+            value
 
 
 if __name__ == "__main__":

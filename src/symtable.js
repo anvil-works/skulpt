@@ -31,9 +31,9 @@ var DEF_BOUND = (DEF_LOCAL | DEF_PARAM | DEF_IMPORT);
 
 /* GLOBAL_EXPLICIT and GLOBAL_IMPLICIT are used internally by the symbol
  table.  GLOBAL is returned from PyST_GetScope() for either of them.
- It is stored in ste_symbols at bits 12-14.
+ It is stored in ste_symbols at bits 13-15, above DEF_ANNOT at bit 12.
  */
-var SCOPE_OFF = 11;
+var SCOPE_OFF = 13;
 var SCOPE_MASK = 7;
 
 var LOCAL = 1;
@@ -154,6 +154,7 @@ function SymbolTableScope (table, name, type, ast, lineno) {
     this.isNested = false;
     this.hasFree = false;
     this.childHasFree = false;  // true if child block has free vars including free refs to globals
+    this.hasCells = false;  // true if this scope has cell variables (locals accessed by nested functions)
     this.generator = false;
     this.varargs = false;
     this.varkeywords = false;
@@ -652,6 +653,43 @@ SymbolTable.prototype.visitStmt = function (s) {
                 this.addDef(new Sk.builtin.str(name), DEF_GLOBAL, s.lineno);
             }
             break;
+        case Sk.astnodes.Nonlocal:
+            nameslen = s.names.length;
+            for (i = 0; i < nameslen; ++i) {
+                name = Sk.mangleName(this.curClass, s.names[i]).v;
+                name = Sk.fixReserved(name);
+                cur = this.cur.symFlags[name];
+                if (cur & (DEF_PARAM | DEF_LOCAL | USE | DEF_ANNOT)) {
+                    if (cur & DEF_PARAM) {
+                        throw new Sk.builtin.SyntaxError(
+                            "name '" + name + "' is parameter and nonlocal",
+                            this.filename,
+                            s.lineno
+                        );
+                    } else if (cur & USE) {
+                        throw new Sk.builtin.SyntaxError(
+                            "name '" + name + "' is used prior to nonlocal declaration",
+                            this.filename,
+                            s.lineno
+                        );
+                    } else if (cur & DEF_ANNOT) {
+                        throw new Sk.builtin.SyntaxError(
+                            "annotated name '" + name + "' can't be nonlocal",
+                            this.filename,
+                            s.lineno
+                        );
+                    } else {
+                        // DEF_LOCAL
+                        throw new Sk.builtin.SyntaxError(
+                            "name '" + name + "' is assigned to before nonlocal declaration",
+                            this.filename,
+                            s.lineno
+                        );
+                    }
+                }
+                this.addDef(new Sk.builtin.str(name), DEF_NONLOCAL, s.lineno);
+            }
+            break;
         case Sk.astnodes.Expr:
             this.visitExpr(s.value);
             break;
@@ -795,6 +833,9 @@ SymbolTable.prototype.visitExpr = function (e) {
             break;
         case Sk.astnodes.Name:
             this.addDef(e.id, e.ctx === Sk.astnodes.Load ? USE : DEF_LOCAL, e.lineno);
+            if (e.ctx === Sk.astnodes.Load && this.cur.blockType === FunctionBlock && e.id.v === "super") {
+                this.addDef(new Sk.builtin.str("__class__"), USE, e.lineno);
+            }
             break;
         case Sk.astnodes.NameConstant:
             break;
@@ -906,6 +947,7 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
         if (bound) {
             _dictUpdate(newbound, bound);
         }
+        newbound.__class__ = null;
     }
 
     for (name in ste.symFlags) {
@@ -935,10 +977,13 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
 
     _dictUpdate(newfree, allfree);
     if (ste.blockType === FunctionBlock) {
-        this.analyzeCells(scope, newfree);
+        this.analyzeCells(ste, scope, newfree);
     }
-    let discoveredFree = this.updateSymbols(ste.symFlags, scope, bound, newfree, ste.blockType === ClassBlock);
-    ste.hasFree = ste.hasFree || discoveredFree;
+    if (ste.blockType === ClassBlock && newfree.__class__ !== undefined) {
+        delete newfree.__class__;
+        ste.needsClassClosure = true;
+    }
+    this.updateSymbols(ste, ste.symFlags, scope, bound, newfree, ste.blockType === ClassBlock);
 
     _dictUpdate(free, newfree);
 };
@@ -957,7 +1002,7 @@ SymbolTable.prototype.analyzeChildBlock = function (entry, bound, free, global, 
     _dictUpdate(childFree, tempFree);
 };
 
-SymbolTable.prototype.analyzeCells = function (scope, free) {
+SymbolTable.prototype.analyzeCells = function (ste, scope, free) {
     var flags;
     var name;
     for (name in scope) {
@@ -970,6 +1015,7 @@ SymbolTable.prototype.analyzeCells = function (scope, free) {
         }
         scope[name] = CELL;
         delete free[name];
+        ste.hasCells = true;
     }
 };
 
@@ -977,15 +1023,13 @@ SymbolTable.prototype.analyzeCells = function (scope, free) {
  * store scope info back into the st symbols dict. symbols is modified,
  * others are not.
  */
-SymbolTable.prototype.updateSymbols = function (symbols, scope, bound, free, classflag) {
+SymbolTable.prototype.updateSymbols = function (ste, symbols, scope, bound, free, classflag) {
     var i;
     var o;
-    var pos;
     var freeValue;
     var w;
     var flags;
     var name;
-    var discoveredFree = false;
     for (name in symbols) {
         flags = symbols[name];
         w = scope[name];
@@ -994,7 +1038,6 @@ SymbolTable.prototype.updateSymbols = function (symbols, scope, bound, free, cla
     }
 
     freeValue = FREE << SCOPE_OFF;
-    pos = 0;
     for (name in free) {
         o = symbols[name];
         if (o !== undefined) {
@@ -1011,13 +1054,21 @@ SymbolTable.prototype.updateSymbols = function (symbols, scope, bound, free, cla
             continue;
         }
         symbols[name] = freeValue;
-        discoveredFree = true;
+        // This scope needs to pass through this free variable to children.
+        // In CPython, the compiler scans ste_symbols for FREE scope to build co_freevars.
+        // Skulpt's compiler uses hasFree as a shortcut, so we set it here.
+        // Class bodies already relay their enclosing cells through $free.
+        if (!classflag) {
+            ste.hasFree = true;
+        }
     }
-    return discoveredFree;
 };
 
 SymbolTable.prototype.analyzeName = function (ste, dict, name, flags, bound, local, free, global) {
     if (flags & DEF_GLOBAL) {
+        if (flags & DEF_NONLOCAL) {
+            throw new Sk.builtin.SyntaxError("name '" + name + "' is nonlocal and global", this.filename, ste.lineno);
+        }
         if (flags & DEF_PARAM) {
             throw new Sk.builtin.SyntaxError("name '" + name + "' is local and global", this.filename, ste.lineno);
         }
@@ -1026,6 +1077,22 @@ SymbolTable.prototype.analyzeName = function (ste, dict, name, flags, bound, loc
         if (bound && bound[name] !== undefined) {
             delete bound[name];
         }
+        return;
+    }
+    if (flags & DEF_NONLOCAL) {
+        if (!bound) {
+            throw new Sk.builtin.SyntaxError(
+                "nonlocal declaration not allowed at module level",
+                this.filename,
+                ste.lineno
+            );
+        }
+        if (bound[name] === undefined) {
+            throw new Sk.builtin.SyntaxError("no binding for nonlocal '" + name + "' found", this.filename, ste.lineno);
+        }
+        dict[name] = FREE;
+        ste.hasFree = true;
+        free[name] = null;
         return;
     }
     if (flags & DEF_BOUND) {

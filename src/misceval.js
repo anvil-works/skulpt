@@ -1087,10 +1087,27 @@ Sk.exportSymbol("Sk.misceval.chain", Sk.misceval.chain);
  *       console.log(err);
  *     });
  *
- * Because exceptions are returned asynchronously aswell you can't catch them
- * with a try/catch. That's what this function is for.
+ * Optional cleanUp runs once after tryFn or catchFn finishes, including all
+ * suspensions. Cleanup may suspend; its exception replaces any pending result
+ * or exception, as with a Python finally clause.
  */
-Sk.misceval.tryCatch = function (tryFn, catchFn) {
+Sk.misceval.tryCatch = function (tryFn, catchFn, cleanUp) {
+    if (cleanUp !== undefined) {
+        var failed = false;
+        var error;
+        var result = Sk.misceval.tryCatch(
+            function () { return Sk.misceval.tryCatch(tryFn, catchFn); },
+            function (e) { failed = true; error = e; }
+        );
+        return Sk.misceval.chain(result, function (value) {
+            return Sk.misceval.chain(cleanUp(), function () {
+                if (failed) {
+                    throw error;
+                }
+                return value;
+            });
+        });
+    }
     var r;
 
     try {
@@ -1305,6 +1322,15 @@ function _isIE() {
     const ua = navigator.userAgent || "";
     return ua.indexOf("MSIE ") > -1 || ua.indexOf("Trident/") > -1;
 }
+/** Return the scope that owns a declared closure cell, including empty cells. */
+Sk.misceval.cellOwner = function (closure, name) {
+    while (!Object.prototype.hasOwnProperty.call(closure, name)) {
+        closure = Object.getPrototypeOf(closure);
+    }
+    return closure;
+};
+Sk.exportSymbol("Sk.misceval.cellOwner", Sk.misceval.cellOwner);
+
 /**
  * @function
  * @description
@@ -1322,7 +1348,7 @@ function _isIE() {
  * should return a newly constructed class object.
  *
  */
-Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws) {
+Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closure2) {
     const _name = new Sk.builtin.str(name);
     const _bases = update_bases(bases); // todo this function should go through the bases and check for __mro_entries__
 
@@ -1391,8 +1417,17 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws) {
     // @todo add qualname here to pass to the code object
 
     const l_cell = cell === undefined ? {} : cell;
+
+    // Look up enclosing free variables without overwriting local cells or
+    // copying their current values. Nested classes can share both dictionaries.
+    if (closure2 !== undefined && closure2 !== l_cell) {
+        Object.setPrototypeOf(l_cell, closure2);
+    }
+
     // pass the locals to the code object which populates the namespace of the class
     func(globals, locals, l_cell);
+
+    const classcell = locals.__classcell__ instanceof Sk.builtin.cell ? locals.__classcell__ : undefined;
 
     if (!localsIsProxy) {
         // put locals object inside the ns dict
@@ -1403,7 +1438,19 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws) {
 
     const klass = Sk.misceval.callsimOrSuspendArray(meta, [_name, _bases, ns], kws);
 
-    return klass;
+    // type.__new__ must populate the cell, including when called by a metaclass.
+    return Sk.misceval.chain(klass, (resolvedKlass) => {
+        if (classcell !== undefined && Sk.builtin.checkClass(resolvedKlass)) {
+            const value = classcell.$closure.__class__;
+            if (value === undefined) {
+                throw new Sk.builtin.RuntimeError("__class__ not set defining '" + name + "'. Was __classcell__ propagated to type.__new__?");
+            }
+            if (value !== resolvedKlass) {
+                throw new Sk.builtin.TypeError("__class__ set to a different class defining '" + name + "'");
+            }
+        }
+        return resolvedKlass;
+    });
 };
 Sk.exportSymbol("Sk.misceval.buildClass", Sk.misceval.buildClass);
 
