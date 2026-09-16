@@ -60,7 +60,7 @@ PYTHON314=python3.14 node test/structural_parser.mjs /path/to/parser/dist-core/i
 node test/testunit.js --python3 --module nonlocal --source-parser /path/to/parser/dist-core/index.js
 ```
 
-The execution/error runner requires CPython 3.14.3 and performs 38 comparisons:
+The execution/error runner requires CPython 3.14.3 and performs 40 comparisons:
 ordinary outputs against both CPython and the existing Skulpt frontend; legacy
 behavior against existing Skulpt; newer spelling against CPython; suspension;
 compiler rejection; diagnostics; and optional Unicode capability errors. It runs
@@ -77,7 +77,8 @@ PYTHON314=python3.14 node test/structural_parser.mjs /path/to/parser/dist-core/i
 Existing regression modules checked through both frontends are `skulpt_bugs`,
 `nonlocal`, `scope`, `call`, `calling`, and `bytes` in Python 3 mode, plus `calling`
 and `exceptions` in Python 2 mode: 137 tests per frontend. These focused checks do
-not establish compatibility with the entire Skulpt suite or deployed apps.
+not establish compatibility with deployed apps. The subsequent full-suite
+comparison and performance results are in [the adapter measurements](structural-parser-measurements.md).
 
 ## Remaining rollout work
 
