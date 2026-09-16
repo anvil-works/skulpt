@@ -3,13 +3,19 @@ const path = require('path');
 const program = require('commander');
 const reqskulpt = require('../support/run/require-skulpt').requireSkulpt;
 
-function test (python3, opt, module = undefined) {
+async function test (python3, opt, module = undefined) {
     var startime, endtime, elapsed;
 
     // Import Skulpt
     var skulpt = reqskulpt(false);
     if (skulpt === null) {
         process.exit(1);
+    }
+
+    if (program.sourceParser) {
+        const {pathToFileURL} = require('url');
+        const {parseModule} = await import(pathToFileURL(path.resolve(program.sourceParser)).href);
+        Sk.configure({sourceParser: parseModule});
     }
 
     Sk.js_beautify = require('js-beautify').js;
@@ -120,6 +126,10 @@ program
     .option('--python3', 'Python 3')
     .option('-o, --opt', 'use optimized skulpt')
     .option('--module <module>', 'test specific module')
+    .option('--source-parser <bundle>', 'use the experimental structural parser bundle')
     .parse(process.argv);
 
-test(program.python3, program.opt, program.module);
+test(program.python3, program.opt, program.module).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});
