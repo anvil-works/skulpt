@@ -47,6 +47,8 @@ const programs = [
     ["exception binding", "try:\n    raise ValueError('bad')\nexcept ValueError as e:\n    print(str(e))\nfinally:\n    print('done')"],
     ["context manager", "class C:\n    def __enter__(self): return 3\n    def __exit__(self, *args): print('exit')\nwith C() as x:\n    print(x)"],
     ["fstrings", "value = 12\nprint(f'{value!r:>4}')"],
+    ["fstring conversions", "value = 'café'\nprint(f'{value!r} | {value!a} | {value!s:>8}')"],
+    ["continue without finally", "def f():\n    count = 0\n    for i in range(3):\n        try:\n            count += 1\n            continue\n            count += 10\n        except:\n            raise\n    return count\nprint(f())"],
     ["eval and exec", "x = 5\nprint(eval('x + 2'))\nexec('x += 3')\nprint(x)"],
     ["imports", "from math import sqrt\nprint(sqrt(16))"],
     ["relative import", "from structural_parser_package import answer\nprint(answer)"],
