@@ -75,6 +75,13 @@ Sk.python3 = {
 
 Sk.configure = function (options) {
     "use strict";
+    // Experimental skulpt-parser parseModule function; null restores the old frontend.
+    if (options["sourceParser"] !== undefined) {
+        if (options["sourceParser"] !== null && typeof options["sourceParser"] !== "function") {
+            throw new TypeError("sourceParser must be a function or null");
+        }
+        Sk.sourceParser = options["sourceParser"];
+    }
     Sk.output = options["output"] || Sk.output;
     Sk.asserts.assert(typeof Sk.output === "function");
 
