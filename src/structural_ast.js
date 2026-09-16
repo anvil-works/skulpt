@@ -114,7 +114,7 @@ Sk.parseCompilerModule = function (source, filename) {
             case "With": return m(c(node.items), c(node.body));
             case "Raise": return m(c(node.exc), c(node.cause), null, null);
             case "LegacyRaise": return make("Raise", node, c(node.exc), null, c(node.inst), c(node.tback));
-            case "Try": return m(c(node.body), c(node.handlers), c(node.orelse), c(node.finalbody));
+            case "Try": return m(c(node.body), c(node.handlers), c(node.orelse), node.finalbody.length ? c(node.finalbody) : null);
             case "Assert": return m(c(node.test), c(node.msg));
             case "Import": return m(c(node.names));
             case "ImportFrom": return m(str(node.module === null ? "" : node.module), c(node.names), node.level);
@@ -139,7 +139,7 @@ Sk.parseCompilerModule = function (source, filename) {
             case "Compare": return m(c(node.left), c(node.ops), c(node.comparators));
             case "Call": return m(c(node.func), c(node.args), keywords(node.keywords));
             case "Constant": return constant(node);
-            case "FormattedValue": return m(c(node.value), node.conversion, c(node.format_spec));
+            case "FormattedValue": return m(c(node.value), node.conversion === -1 ? null : String.fromCharCode(node.conversion), c(node.format_spec));
             case "JoinedStr": return m(c(node.values));
             case "Attribute": return m(c(node.value), str(node.attr), c(node.ctx));
             case "Subscript": return m(c(node.value), slice(node.slice), c(node.ctx));
