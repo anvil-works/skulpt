@@ -126,3 +126,7 @@ Temporary dual-frontend deployment adds 38,813 gzip bytes: 1,695 in Skulpt plus
 37,118 for the parser. This is not eventual replacement size; the old frontend
 is still present. Figures exclude the standard-library bundle and the application
 on both sides. They are not the size of the entire Skulpt deployment.
+
+The follow-up [replacement-build study](replacement-build-study.md) measures
+removing the old parser and AST builder, including the standard-library total and
+API compatibility boundary.
