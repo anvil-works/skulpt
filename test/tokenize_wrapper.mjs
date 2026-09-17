@@ -1,13 +1,14 @@
 // Exercise Python's real token/tokenize modules against CPython 3.14.3.
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
-import {resolve} from "node:path";
+import {resolve, dirname, join} from "node:path";
 import {pathToFileURL} from "node:url";
 import {spawnSync} from "node:child_process";
 const require = createRequire(import.meta.url);
-require("../dist/skulpt.min.js");
-require("../dist/skulpt-stdlib.js");
-assert.ok(process.argv[2], "Usage: node test/tokenize_wrapper.mjs <core-bundle>");
+const bundle = resolve(process.argv[3] || "dist/skulpt.min.js");
+require(bundle);
+require(join(dirname(bundle), "skulpt-stdlib.js"));
+assert.ok(process.argv[2], "Usage: node test/tokenize_wrapper.mjs <core-bundle> [skulpt-bundle]");
 const {parseModule, scan} = await import(pathToFileURL(resolve(process.argv[2])).href);
 const python = process.env.PYTHON314 || "python3.14";
 const version = spawnSync(python, ["-c", "import sys; print(sys.version_info[:3])"], {encoding: "utf8"});
