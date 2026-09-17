@@ -8,11 +8,12 @@ const values = ["", "_", "abc", "a1", "1a", "é", "a\u0301", "K", "𝒙", "²"
 const source = `values = ${JSON.stringify(values)}\nfor value in values:\n    print(value.isidentifier())\n`;
 const program = `const {pathToFileURL} = require('node:url');
 require(process.argv[1]);
+require(require("node:path").join(require("node:path").dirname(process.argv[1]), "skulpt-stdlib.js"));
 (async () => {
     const core = process.argv[2] ? await import(pathToFileURL(process.argv[2]).href) : {};
     let output = '';
     Sk.configure({sourceParser: core.parseModule || null, sourceTokenizer: core.scan || null,
-        __future__: {...Sk.python3}, output: text => {output += text;}});
+        __future__: {...Sk.python3}, read: name => Sk.builtinFiles.files[name], output: text => {output += text;}});
     await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody('identifiers', false, ${JSON.stringify(source)}, true));
     process.stdout.write(output);
 })().catch(error => {console.error(error); process.exitCode = 1;});`;

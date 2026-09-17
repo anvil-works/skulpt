@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const [bundle, parser] = process.argv.slice(2);
-assert.ok(bundle && parser, "Usage: node support/run/check-replacement-build.mjs <skulpt-bundle> <core-bundle>");
+assert.ok(bundle && parser, "Usage: node support/run/check-replacement-build.mjs <skulpt-bundle> <core-bundle> [--without-tokenizer]");
 const require = createRequire(import.meta.url);
 require(resolve(bundle));
 require(join(dirname(resolve(bundle)), "skulpt-stdlib.js"));
