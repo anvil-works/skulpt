@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const [bundle, parser] = process.argv.slice(2);
-assert.ok(bundle && parser, "Usage: node support/run/check-replacement-build.mjs <skulpt-bundle> <core-bundle>");
+assert.ok(bundle && parser, "Usage: node support/run/check-replacement-build.mjs <skulpt-bundle> <core-bundle> [--without-tokenizer]");
 const require = createRequire(import.meta.url);
 require(resolve(bundle));
 require(join(dirname(resolve(bundle)), "skulpt-stdlib.js"));
@@ -14,11 +14,12 @@ const { Sk } = globalThis;
 for (const name of ["parse", "Parser", "astFromParse", "astDump", "parseTreeDump", "ParseTables", "OpMap", "setupOperators"]) {
     assert.equal(typeof Sk[name], "undefined", `${name} still present`);
 }
-assert.equal(typeof Sk._tokenize, "function", "Python tokenize still needs the old tokenizer");
+assert.equal(typeof Sk._tokenize, process.argv.includes("--without-tokenizer") ? "undefined" : "function");
+assert.equal(typeof Sk.token.isIdentifier, "function");
 Sk.configure({ __future__: { ...Sk.python3 } });
 assert.throws(() => Sk.compile("x = 1", "missing.py", "exec", true), /requires sourceParser/);
 
-const { parseModule } = await import(pathToFileURL(resolve(parser)).href);
+const { parseModule, scan } = await import(pathToFileURL(resolve(parser)).href);
 const python = process.env.PYTHON314 || "python3.14";
 const version = spawnSync(python, ["-c", "import sys; print(sys.version_info[:3])"], {encoding: "utf8"});
 assert.equal(version.status, 0, version.stderr || String(version.error));
@@ -29,7 +30,7 @@ const sources = [
 ];
 for (const source of sources) {
     let output = "";
-    Sk.configure({sourceParser: parseModule, __future__: {...Sk.python3},
+    Sk.configure({sourceParser: parseModule, sourceTokenizer: scan, __future__: {...Sk.python3},
         read: (name) => Sk.builtinFiles.files[name], output: (text) => { output += text; }});
     await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("replacement", false, source, true));
     const reference = spawnSync(python, ["-c", source], {encoding: "utf8"});
