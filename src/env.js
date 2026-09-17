@@ -82,6 +82,13 @@ Sk.configure = function (options) {
         }
         Sk.sourceParser = options["sourceParser"];
     }
+    // Experimental skulpt-parser scan function for the Python token/tokenize modules.
+    if (options["sourceTokenizer"] !== undefined) {
+        if (options["sourceTokenizer"] !== null && typeof options["sourceTokenizer"] !== "function") {
+            throw new TypeError("sourceTokenizer must be a function or null");
+        }
+        Sk["sourceTokenizer"] = options["sourceTokenizer"];
+    }
     Sk.output = options["output"] || Sk.output;
     Sk.asserts.assert(typeof Sk.output === "function");
 
