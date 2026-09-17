@@ -143,7 +143,7 @@ node test/testunit.js --module tokenize --source-parser /path/to/parser/dist-cor
 node test/testunit.js --module tokenize
 ```
 
-The wrapper does not yet remove the old tokenizer. Moving its identifier and
-configuration helpers, removing it from the replacement artifact, and measuring
-the resulting bundle remain the next step described in the
-[migration study](cpython-tokenize-research.md).
+The default build retains the old tokenizer. The follow-up
+[tokenizer-removal study](tokenizer-removal.md) extracts its identifier helper,
+removes the tokenizer from an isolated replacement artifact, and records measured
+size savings and execution-suite results.

@@ -45,6 +45,9 @@ if (withoutTokenizer) {
     assert.ok(fs.existsSync(join(destination, "src/identifier.js")), "Revision must contain the extracted identifier helper");
     const module = join(destination, "src/lib/tokenize.js");
     source = fs.readFileSync(module, "utf8");
+    const modern = source.indexOf("// CPython v3.14.3 Lib/tokenize.py contracts");
+    assert.ok(modern > 0, "Missing expected modern tokenize module boundary");
+    source = source.slice(modern);
     const fallback = "return legacyTokenizeModule(name);";
     assert.ok(source.includes(fallback), "Missing expected legacy tokenize fallback");
     fs.writeFileSync(module, source.replace(fallback, 'throw new Error("This experimental build requires sourceTokenizer");'));
