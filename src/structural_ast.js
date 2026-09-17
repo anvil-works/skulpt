@@ -1,6 +1,7 @@
 /* Temporary bridge from skulpt-parser's structural AST to the existing compiler. */
 
 Sk.sourceParser = null;
+Sk["sourceTokenizer"] = null;
 
 Sk.parseCompilerModule = function (source, filename) {
     if (Sk.sourceParser === null) {
