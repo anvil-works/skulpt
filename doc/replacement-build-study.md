@@ -105,3 +105,6 @@ Choose whether Anvil should consume a dedicated runtime-only artifact with these
 API omissions. Then validate its real runtime integration and representative
 application workloads. Keep the existing default distribution until that decision
 and consumer validation are complete.
+
+The follow-up [tokenize migration study](cpython-tokenize-research.md) checks
+CPython wrapper reuse and identifies the remaining tokenizer dependencies.
