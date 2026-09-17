@@ -14,8 +14,8 @@ async function test (python3, opt, module = undefined) {
 
     if (program.sourceParser) {
         const {pathToFileURL} = require('url');
-        const {parseModule} = await import(pathToFileURL(path.resolve(program.sourceParser)).href);
-        Sk.configure({sourceParser: parseModule});
+        const {parseModule, scan} = await import(pathToFileURL(path.resolve(program.sourceParser)).href);
+        Sk.configure({sourceParser: parseModule, sourceTokenizer: scan || null});
     }
 
     Sk.js_beautify = require('js-beautify').js;
