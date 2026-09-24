@@ -133,12 +133,15 @@ Sk.parseCompilerModule = function (source, filename) {
             case "UnaryOp": return m(c(node.op), c(node.operand));
             case "Lambda": return m(c(node.args), c(node.body));
             case "IfExp": return m(c(node.test), c(node.body), c(node.orelse));
-            case "Dict": return m(c(node.keys), c(node.values));
+            case "Dict": return m(node.keys.length ? c(node.keys) : null, node.values.length ? c(node.values) : null);
             case "Set": return m(c(node.elts));
             case "ListComp": case "SetComp": case "GeneratorExp": return m(c(node.elt), c(node.generators));
             case "DictComp": return m(c(node.key), c(node.value), c(node.generators));
             case "Compare": return m(c(node.left), c(node.ops), c(node.comparators));
-            case "Call": return m(c(node.func), c(node.args), keywords(node.keywords));
+            case "Call": {
+                const empty = !node.args.length && !node.keywords.length;
+                return m(c(node.func), empty ? null : c(node.args), empty ? null : keywords(node.keywords));
+            }
             case "Constant": return constant(node);
             case "FormattedValue": return m(c(node.value), node.conversion === -1 ? null : String.fromCharCode(node.conversion), c(node.format_spec));
             case "JoinedStr": return m(c(node.values));

@@ -1,4 +1,4 @@
-# Experimental structural parser adapter
+# Structural parser compatibility checkpoint
 
 This branch can feed the Python 3.14 structural AST from `skulpt-parser/core` into
 the existing Skulpt symbol table and compiler. It is opt-in. The old frontend
@@ -79,6 +79,10 @@ Existing regression modules checked through both frontends are `skulpt_bugs`,
 and `exceptions` in Python 2 mode: 137 tests per frontend. These focused checks do
 not establish compatibility with deployed apps. The subsequent full-suite
 comparison and performance results are in [the adapter measurements](structural-parser-measurements.md).
+
+## Rollout plan
+
+See [the five review boundaries and compatibility evidence](parser-rollout.md).
 
 ## Remaining rollout work
 
