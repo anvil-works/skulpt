@@ -6,7 +6,7 @@ Skulpt PRs go to `anvil-works/skulpt`.
 | Stage | Repository | Deliverable | Depends on |
 | --- | --- | --- | --- |
 | 1 | Anvil | Existing IDE-only migration, PR #7444 | Published lean parser |
-| 2 | Skulpt | New parser with the old AST adapter and compatibility CI | Parser indentation fix, anvil-works/skulpt-parser#52 |
+| 2 | Skulpt | New parser with the old AST adapter and compatibility CI | Published parser 0.0.1-dev.3 |
 | 3 | Skulpt | Compiler and symbol table consume modern AST directly; remove adapter | Stage 2 |
 | 4 | Anvil | Runner/designer phased rollout of stage 2 | Stage 2 compatibility evidence |
 | 5 | Anvil | Separate phased rollout of stage 3 | Stages 3 and 4 |
@@ -61,9 +61,9 @@ execution tests explicitly load the optional Unicode-name resolver because an
 existing integer fixture needs it. That is not evidence of lean-only Unicode-name
 support, and the runtime candidate still uses lean core.
 
-The workflow pins parser source at an immutable revision pending publication of
-the indentation fix. Stage 4 must pin the resulting reviewed parser artifact;
-it must not silently use the older published version without this fix.
+The workflow installs `@anvil-works/skulpt-parser@0.0.1-dev.3` through `npm ci`,
+using the committed package lock and registry integrity hash. This release includes
+the indentation fix. Stage 4 must use this release or a subsequently validated one.
 
 ## Deployment contract for the Anvil stages
 

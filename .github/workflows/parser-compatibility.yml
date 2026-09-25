@@ -15,26 +15,15 @@ jobs:
         suite: [AST, execution]
     env:
       NODE_OPTIONS: --openssl-legacy-provider
-      SKULPT_PARSER_DIR: ${{ github.workspace }}/parser-reference/dist-core
+      SKULPT_PARSER_DIR: ${{ github.workspace }}/node_modules/@anvil-works/skulpt-parser/dist-core
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: anvil-works/skulpt-parser
-          # dev.2 plus Python 2 indentation fix; publish the fix before rollout.
-          ref: bf98d84229e2ba9d8b2b9f7a30c722f890afdeb0
-          path: parser-reference
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.10.0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14.3'
-      - run: pnpm --dir parser-reference install --frozen-lockfile --ignore-scripts
-      - run: pnpm --dir parser-reference build:core
       - run: npm ci
       - if: matrix.suite == 'AST'
         run: |
