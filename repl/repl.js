@@ -2,6 +2,9 @@ const reqskulpt = require("../support/run/require-skulpt").requireSkulpt;
 const program = require("commander");
 const chalk = require("chalk");
 
+(async function () {
+const {parseModule, scan} = await import("@anvil-works/skulpt-parser/core");
+
 // Import Skulpt
 var skulpt = reqskulpt(false);
 if (skulpt === null) {
@@ -35,6 +38,7 @@ if (program.args[0] == "py2") {
 const gbl = {__file__: new Sk.builtin.str("<repl>"), __name__: new Sk.builtin.str("__main__")};
 
 Sk.configure({
+    sourceParser: parseModule, sourceTokenizer: scan,
     output: (args) => { process.stdout.write(args); },
     read: (fname) => { return fs.readFileSync(fname, "utf8"); },
     systemexit: true,
@@ -152,3 +156,5 @@ while (true) {
         lines = [];
     }
 }
+
+})().catch(error => { console.error(error); process.exitCode = 1; });

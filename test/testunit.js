@@ -126,7 +126,7 @@ program
     .option('--python3', 'Python 3')
     .option('-o, --opt', 'use optimized skulpt')
     .option('--module <module>', 'test specific module')
-    .option('--source-parser <bundle>', 'use the experimental structural parser bundle')
+    .option('--source-parser <bundle>', 'parser bundle used by the execution suite', 'test/parser_with_names.mjs')
     .parse(process.argv);
 
 test(program.python3, program.opt, program.module).catch((error) => {
