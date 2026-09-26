@@ -1,11 +1,11 @@
-// Real compiler/execution comparisons. The parser bundle is supplied explicitly
-// until package publication and consumer rollout are decided.
+// Compare direct-AST execution with the compatibility checkpoint and CPython.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import vm from "node:vm";
 
 const require = createRequire(import.meta.url);
 require(resolve(process.argv[3] || "dist/skulpt.js"));
@@ -18,20 +18,27 @@ const python = process.env.PYTHON314 || "python3.14";
 const version = spawnSync(python, ["-c", "import sys; print(sys.version_info[:3])"], { encoding: "utf8" });
 assert.equal(version.status, 0, version.stderr || String(version.error));
 assert.equal(version.stdout.trim(), "(3, 14, 3)", "Use the pinned CPython oracle");
+const oracleBundle = process.argv[4];
+assert.ok(oracleBundle, "Supply the compatibility checkpoint bundle as the third argument");
+const oracleContext = vm.createContext({console, setTimeout, clearTimeout, TextEncoder, TextDecoder});
+vm.runInContext(fs.readFileSync(resolve(oracleBundle), "utf8"), oracleContext);
+const baseline = oracleContext.Sk;
+baseline.builtinFiles = Sk.builtinFiles;
 let count = 0;
 
 async function run(source, adapter, python2 = false, flags = {}) {
+    const runtime = adapter ? Sk : baseline;
     let output = "";
-    Sk.configure({
-        sourceParser: adapter ? parseModule : null,
+    runtime.configure({
+        ...(runtime === baseline ? { sourceParser: parseModule } : {}),
         syspath: ["test"],
-        __future__: { ...(python2 ? Sk.python2 : Sk.python3), ...flags },
-        read: (name) => Sk.builtinFiles.files[name] ?? fs.readFileSync(name, "utf8"),
+        __future__: { ...(python2 ? runtime.python2 : runtime.python3), ...flags },
+        read: (name) => runtime.builtinFiles.files[name] ?? fs.readFileSync(name, "utf8"),
         output: (text) => { output += text; },
         yieldLimit: null,
         execLimit: null
     });
-    await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("adapter_test", false, source + "\n", true));
+    await runtime.misceval.asyncToPromise(() => runtime.importMainWithBody("adapter_test", false, source + "\n", true));
     return output;
 }
 
@@ -61,7 +68,7 @@ for (const [name, source] of programs) {
     assert.equal(reference.status, 0, `${name}: ${reference.stderr}`);
     const baseline = await run(source, false);
     assert.equal(baseline, reference.stdout, `${name}: existing runtime vs CPython`);
-    assert.equal(await run(source, true), reference.stdout, `${name}: adapter vs CPython`);
+    assert.equal(await run(source, true), reference.stdout, `${name}: direct AST vs CPython`);
     count++;
 }
 
@@ -90,13 +97,14 @@ for (const [name, source, flags] of [
     count++;
 }
 
-// Both frontends must retain suspension through the existing compiler/runtime.
-Sk.builtins.adapter_pause = new Sk.builtin.func(() =>
-    Sk.misceval.promiseToSuspension(Promise.resolve(new Sk.builtin.int_(7))));
+// Both compiler versions must retain suspension through the existing compiler/runtime.
+for (const runtime of [Sk, baseline]) runtime.builtins.adapter_pause = new runtime.builtin.func(() =>
+    runtime.misceval.promiseToSuspension(Promise.resolve(new runtime.builtin.int_(7))));
 for (const adapter of [false, true]) {
     assert.equal(await run("print(adapter_pause() + 1)", adapter), "8\n");
 }
 delete Sk.builtins.adapter_pause;
+delete baseline.builtins.adapter_pause;
 count++;
 
 for (const source of [
@@ -107,27 +115,32 @@ for (const source of [
     "try:\n    pass\nexcept* ValueError: pass",
     "x = t'{value}'",
 ]) {
-    Sk.configure({ sourceParser: parseModule, __future__: { ...Sk.python3 } });
+    Sk.configure({ __future__: { ...Sk.python3 } });
     const saved = Sk.__future__;
     assert.throws(() => Sk.compile(source, "guard.py", "exec", true), (e) =>
         e instanceof Sk.builtin.SyntaxError && e.toString().includes("not supported by the Skulpt compiler"));
     assert.equal(Sk.__future__, saved, "Failed compilation must restore configured flags");
     count++;
 }
-for (const source of ["return 1", "def f(x, x): pass", "x = (", "f(x=1, x=2)", "class C(x=1, x=2): pass"]) {
+for (const source of ["return 1", "def f(x, x): pass", "x = (", "f(x=1, x=2)", "class C(x=1, x=2): pass", "if False:\n    f(x=1, x=2)", "if False:\n    class C(x=1, x=2): pass",
+    "if False:\n    def f(*, x=g(a=1, a=2)): pass",
+    "if False:\n    f = lambda *, x=g(a=1, a=2): x",
+    "if False:\n    x = {g(a=1, a=2) for i in []}",
+    "if False:\n    x = {i: g(a=1, a=2) for i in []}"]) {
     const oracle = spawnSync(python, ["-c", "import sys; compile(sys.stdin.read(), 'error.py', 'exec')"],
         { input: source, encoding: "utf8" });
     assert.notEqual(oracle.status, 0);
     assert.match(oracle.stderr, /SyntaxError/);
     for (const adapter of [false, true]) {
-        Sk.configure({ sourceParser: adapter ? parseModule : null, __future__: { ...Sk.python3 } });
-        const saved = Sk.__future__;
-        assert.throws(() => Sk.compile(source, "error.py", "exec", true), (e) => e instanceof Sk.builtin.SyntaxError);
-        assert.equal(Sk.__future__, saved);
+        const runtime = adapter ? Sk : baseline;
+        runtime.configure({ ...(runtime === baseline ? { sourceParser: parseModule } : {}), __future__: { ...runtime.python3 } });
+        const saved = runtime.__future__;
+        assert.throws(() => runtime.compile(source, "error.py", "exec", true), (e) => e instanceof runtime.builtin.SyntaxError);
+        assert.equal(runtime.__future__, saved);
     }
     count++;
 }
-Sk.configure({ sourceParser: parseModule, __future__: { ...Sk.python3 } });
+Sk.configure({ __future__: { ...Sk.python3 } });
 assert.throws(() => Sk.compile("x = (", "location.py", "exec", true), (e) =>
     e instanceof Sk.builtin.SyntaxError && e.$filename.v === "location.py" &&
     e.$lineno.v === 1 && e.$offset.v === 5 && e.$text.v.includes("x = ("));

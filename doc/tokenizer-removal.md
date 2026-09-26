@@ -1,3 +1,6 @@
+> Historical measurements for the compatibility checkpoint. See
+> [parser-rollout.md](parser-rollout.md) for the current bundled parser.
+
 # Removing the old tokenizer from the replacement build
 
 The replacement build now runs without `src/tokenize.js`. Python `tokenize` uses

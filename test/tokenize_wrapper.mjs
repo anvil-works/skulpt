@@ -2,14 +2,11 @@
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 import {resolve, dirname, join} from "node:path";
-import {pathToFileURL} from "node:url";
 import {spawnSync} from "node:child_process";
 const require = createRequire(import.meta.url);
-const bundle = resolve(process.argv[3] || "dist/skulpt.min.js");
+const bundle = resolve(process.argv[2] || "dist/skulpt.min.js");
 require(bundle);
 require(join(dirname(bundle), "skulpt-stdlib.js"));
-assert.ok(process.argv[2], "Usage: node test/tokenize_wrapper.mjs <core-bundle> [skulpt-bundle]");
-const {parseModule, scan} = await import(pathToFileURL(resolve(process.argv[2])).href);
 const python = process.env.PYTHON314 || "python3.14";
 const version = spawnSync(python, ["-c", "import sys; print(sys.version_info[:3])"], {encoding: "utf8"});
 assert.equal(version.status, 0, version.stderr);
@@ -67,9 +64,9 @@ for r in [lambda: 42, lambda: b'x']:
     except TypeError:
         print('TypeError')`,
 ];
-async function run(source, python3=true, sourceTokenizer=scan) {
+async function run(source, python3=true) {
     let output = "";
-    Sk.configure({sourceParser: parseModule, sourceTokenizer, __future__: {...(python3 ? Sk.python3 : Sk.python2)},
+    Sk.configure({__future__: {...(python3 ? Sk.python3 : Sk.python2)},
         read: (name) => {if (!(name in Sk.builtinFiles.files)) throw new Error(name); return Sk.builtinFiles.files[name];},
         output: (text) => {output += text;}});
     await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("tokenize_wrapper", false, source, true));
