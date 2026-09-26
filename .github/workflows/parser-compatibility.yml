@@ -31,5 +31,5 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/skulpt-compat/node_modules"
           (cd "$RUNNER_TEMP/skulpt-compat" && npm run build)
           node test/structural_parser.mjs "$SKULPT_PARSER_DIR/index.js" dist/skulpt.min.js "$RUNNER_TEMP/skulpt-compat/dist/skulpt.min.js"
-          node test/tokenize_wrapper.mjs "$SKULPT_PARSER_DIR/index.js"
-          node test/identifier_compat.mjs "$RUNNER_TEMP/skulpt-compat/dist/skulpt.min.js" dist/skulpt.min.js "$SKULPT_PARSER_DIR/index.js"
+          node test/tokenize_wrapper.mjs
+          node test/identifier_compat.mjs "$RUNNER_TEMP/skulpt-compat/dist/skulpt.min.js" dist/skulpt.min.js

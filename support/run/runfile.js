@@ -4,8 +4,7 @@ const program = require('commander');
 const chalk = require('chalk');
 const reqskulpt = require('./require-skulpt').requireSkulpt;
 
-async function run (python3, opt, filename) {
-    const {parseModule, scan} = await import("@anvil-works/skulpt-parser/core");
+function run (python3, opt, filename) {
     // Import Skulpt
     var skulpt = reqskulpt(opt);
     if (skulpt === null) {
@@ -28,7 +27,6 @@ async function run (python3, opt, filename) {
     console.log("-----");
 
     Sk.configure({
-        sourceParser: parseModule, sourceTokenizer: scan,
 	syspath: [path.dirname(filename)],
 	read: (fname) => { return fs.readFileSync(fname, "utf8"); },
 	output: (args) => { process.stdout.write(args); },
@@ -68,4 +66,4 @@ if (program.args[0] == "py2") {
     process.exit(1);
 }
 
-run(py3, program.opt, program.args[1]).catch(error => { console.error(error); process.exitCode = 1; });
+run(py3, program.opt, program.args[1]);

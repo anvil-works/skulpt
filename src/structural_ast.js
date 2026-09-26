@@ -1,15 +1,12 @@
 /* Parse source for the compiler without constructing an intermediate AST. */
 
-Sk.sourceParser = null;
-Sk["sourceTokenizer"] = null;
+const { parseModule, scan } = require("@anvil-works/skulpt-parser/dist-core/index.js");
+Sk["$scanSource"] = scan;
 
 Sk.parseCompilerModule = function (source, filename) {
-    if (Sk.sourceParser === null) {
-        throw new Error("Configure sourceParser before compiling Python");
-    }
     let tree;
     try {
-        tree = Sk.sourceParser(source, {
+        tree = parseModule(source, {
             filename,
             python2Compat: !Sk.__future__.python3,
             legacyAsyncNames: true,

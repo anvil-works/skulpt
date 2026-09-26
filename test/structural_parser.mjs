@@ -30,7 +30,7 @@ async function run(source, adapter, python2 = false, flags = {}) {
     const runtime = adapter ? Sk : baseline;
     let output = "";
     runtime.configure({
-        sourceParser: parseModule,
+        ...(runtime === baseline ? { sourceParser: parseModule } : {}),
         syspath: ["test"],
         __future__: { ...(python2 ? runtime.python2 : runtime.python3), ...flags },
         read: (name) => runtime.builtinFiles.files[name] ?? fs.readFileSync(name, "utf8"),
@@ -115,7 +115,7 @@ for (const source of [
     "try:\n    pass\nexcept* ValueError: pass",
     "x = t'{value}'",
 ]) {
-    Sk.configure({ sourceParser: parseModule, __future__: { ...Sk.python3 } });
+    Sk.configure({ __future__: { ...Sk.python3 } });
     const saved = Sk.__future__;
     assert.throws(() => Sk.compile(source, "guard.py", "exec", true), (e) =>
         e instanceof Sk.builtin.SyntaxError && e.toString().includes("not supported by the Skulpt compiler"));
@@ -133,14 +133,14 @@ for (const source of ["return 1", "def f(x, x): pass", "x = (", "f(x=1, x=2)", "
     assert.match(oracle.stderr, /SyntaxError/);
     for (const adapter of [false, true]) {
         const runtime = adapter ? Sk : baseline;
-        runtime.configure({ sourceParser: parseModule, __future__: { ...runtime.python3 } });
+        runtime.configure({ ...(runtime === baseline ? { sourceParser: parseModule } : {}), __future__: { ...runtime.python3 } });
         const saved = runtime.__future__;
         assert.throws(() => runtime.compile(source, "error.py", "exec", true), (e) => e instanceof runtime.builtin.SyntaxError);
         assert.equal(runtime.__future__, saved);
     }
     count++;
 }
-Sk.configure({ sourceParser: parseModule, __future__: { ...Sk.python3 } });
+Sk.configure({ __future__: { ...Sk.python3 } });
 assert.throws(() => Sk.compile("x = (", "location.py", "exec", true), (e) =>
     e instanceof Sk.builtin.SyntaxError && e.$filename.v === "location.py" &&
     e.$lineno.v === 1 && e.$offset.v === 5 && e.$text.v.includes("x = ("));
