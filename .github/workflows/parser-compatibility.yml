@@ -38,3 +38,6 @@ jobs:
           node test/testunit.js --python3 --source-parser test/parser_with_names.mjs
           node test/tokenize_wrapper.mjs "$SKULPT_PARSER_DIR/index.js"
           node test/identifier_compat.mjs dist/skulpt.min.js dist/skulpt.min.js "$SKULPT_PARSER_DIR/index.js"
+          node support/run/prepare-replacement-build.mjs "$RUNNER_TEMP/skulpt-replacement" node_modules HEAD --without-tokenizer
+          (cd "$RUNNER_TEMP/skulpt-replacement" && npm run build)
+          node test/repl_compat.mjs dist/skulpt.min.js "$RUNNER_TEMP/skulpt-replacement/dist/skulpt.min.js" "$SKULPT_PARSER_DIR/index.js"

@@ -19,7 +19,7 @@ let source = fs.readFileSync(entry, "utf8");
 for (const module of ["../gen/parse_tables.js", "./parser.js", "./ast.js", ...(withoutTokenizer ? ["./tokenize.js"] : [])]) {
     const line = `require("${module}");\n`;
     assert.ok(source.includes(line), `Missing expected entry: ${module}`);
-    source = source.replace(line, "");
+    source = source.replace(line, module === "./parser.js" ? 'require("./parser_compat.js");\n' : "");
 }
 fs.writeFileSync(entry, source);
 

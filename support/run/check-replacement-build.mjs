@@ -11,9 +11,11 @@ const require = createRequire(import.meta.url);
 require(resolve(bundle));
 require(join(dirname(resolve(bundle)), "skulpt-stdlib.js"));
 const { Sk } = globalThis;
-for (const name of ["parse", "Parser", "astFromParse", "astDump", "parseTreeDump", "ParseTables", "OpMap", "setupOperators"]) {
+for (const name of ["Parser", "astDump", "parseTreeDump", "ParseTables", "OpMap", "setupOperators"]) {
     assert.equal(typeof Sk[name], "undefined", `${name} still present`);
 }
+assert.equal(typeof Sk.parse, "function");
+assert.equal(typeof Sk.astFromParse, "function");
 assert.equal(typeof Sk._tokenize, process.argv.includes("--without-tokenizer") ? "undefined" : "function");
 assert.equal(typeof Sk.token.isIdentifier, "function");
 Sk.configure({ __future__: { ...Sk.python3 } });
