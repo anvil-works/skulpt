@@ -71,6 +71,13 @@ module.exports = (env, argv) => {
         };
     }
 
+    mod.rules = mod.rules || [];
+    // Webpack 4 cannot parse the syntax in the published parser bundle.
+    mod.rules.push({
+        test: /@anvil-works[\\/]skulpt-parser[\\/]dist-core[\\/]index\.js$/,
+        loader: path.resolve(__dirname, "support/build/parser-loader.js")
+    });
+
     var config = {
         entry: './src/main.js',
         output: {
