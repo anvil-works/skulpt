@@ -1,11 +1,11 @@
-// Real compiler/execution comparisons. The parser bundle is supplied explicitly
-// until package publication and consumer rollout are decided.
+// Compare direct-AST execution with the compatibility checkpoint and CPython.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import vm from "node:vm";
 
 const require = createRequire(import.meta.url);
 require(resolve(process.argv[3] || "dist/skulpt.js"));
@@ -18,20 +18,27 @@ const python = process.env.PYTHON314 || "python3.14";
 const version = spawnSync(python, ["-c", "import sys; print(sys.version_info[:3])"], { encoding: "utf8" });
 assert.equal(version.status, 0, version.stderr || String(version.error));
 assert.equal(version.stdout.trim(), "(3, 14, 3)", "Use the pinned CPython oracle");
+const oracleBundle = process.argv[4];
+assert.ok(oracleBundle, "Supply the compatibility checkpoint bundle as the third argument");
+const oracleContext = vm.createContext({console, setTimeout, clearTimeout, TextEncoder, TextDecoder});
+vm.runInContext(fs.readFileSync(resolve(oracleBundle), "utf8"), oracleContext);
+const baseline = oracleContext.Sk;
+baseline.builtinFiles = Sk.builtinFiles;
 let count = 0;
 
 async function run(source, adapter, python2 = false, flags = {}) {
+    const runtime = adapter ? Sk : baseline;
     let output = "";
-    Sk.configure({
-        sourceParser: adapter ? parseModule : null,
+    runtime.configure({
+        ...(runtime === baseline ? { sourceParser: parseModule } : {}),
         syspath: ["test"],
-        __future__: { ...(python2 ? Sk.python2 : Sk.python3), ...flags },
-        read: (name) => Sk.builtinFiles.files[name] ?? fs.readFileSync(name, "utf8"),
+        __future__: { ...(python2 ? runtime.python2 : runtime.python3), ...flags },
+        read: (name) => runtime.builtinFiles.files[name] ?? fs.readFileSync(name, "utf8"),
         output: (text) => { output += text; },
         yieldLimit: null,
         execLimit: null
     });
-    await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("adapter_test", false, source + "\n", true));
+    await runtime.misceval.asyncToPromise(() => runtime.importMainWithBody("adapter_test", false, source + "\n", true));
     return output;
 }
 
@@ -61,7 +68,7 @@ for (const [name, source] of programs) {
     assert.equal(reference.status, 0, `${name}: ${reference.stderr}`);
     const baseline = await run(source, false);
     assert.equal(baseline, reference.stdout, `${name}: existing runtime vs CPython`);
-    assert.equal(await run(source, true), reference.stdout, `${name}: adapter vs CPython`);
+    assert.equal(await run(source, true), reference.stdout, `${name}: direct AST vs CPython`);
     count++;
 }
 
@@ -90,13 +97,14 @@ for (const [name, source, flags] of [
     count++;
 }
 
-// Both frontends must retain suspension through the existing compiler/runtime.
-Sk.builtins.adapter_pause = new Sk.builtin.func(() =>
-    Sk.misceval.promiseToSuspension(Promise.resolve(new Sk.builtin.int_(7))));
+// Both compiler versions must retain suspension through the existing compiler/runtime.
+for (const runtime of [Sk, baseline]) runtime.builtins.adapter_pause = new runtime.builtin.func(() =>
+    runtime.misceval.promiseToSuspension(Promise.resolve(new runtime.builtin.int_(7))));
 for (const adapter of [false, true]) {
     assert.equal(await run("print(adapter_pause() + 1)", adapter), "8\n");
 }
 delete Sk.builtins.adapter_pause;
+delete baseline.builtins.adapter_pause;
 count++;
 
 for (const source of [
@@ -107,27 +115,32 @@ for (const source of [
     "try:\n    pass\nexcept* ValueError: pass",
     "x = t'{value}'",
 ]) {
-    Sk.configure({ sourceParser: parseModule, __future__: { ...Sk.python3 } });
+    Sk.configure({ __future__: { ...Sk.python3 } });
     const saved = Sk.__future__;
     assert.throws(() => Sk.compile(source, "guard.py", "exec", true), (e) =>
         e instanceof Sk.builtin.SyntaxError && e.toString().includes("not supported by the Skulpt compiler"));
     assert.equal(Sk.__future__, saved, "Failed compilation must restore configured flags");
     count++;
 }
-for (const source of ["return 1", "def f(x, x): pass", "x = (", "f(x=1, x=2)", "class C(x=1, x=2): pass"]) {
+for (const source of ["return 1", "def f(x, x): pass", "x = (", "f(x=1, x=2)", "class C(x=1, x=2): pass", "if False:\n    f(x=1, x=2)", "if False:\n    class C(x=1, x=2): pass",
+    "if False:\n    def f(*, x=g(a=1, a=2)): pass",
+    "if False:\n    f = lambda *, x=g(a=1, a=2): x",
+    "if False:\n    x = {g(a=1, a=2) for i in []}",
+    "if False:\n    x = {i: g(a=1, a=2) for i in []}"]) {
     const oracle = spawnSync(python, ["-c", "import sys; compile(sys.stdin.read(), 'error.py', 'exec')"],
         { input: source, encoding: "utf8" });
     assert.notEqual(oracle.status, 0);
     assert.match(oracle.stderr, /SyntaxError/);
     for (const adapter of [false, true]) {
-        Sk.configure({ sourceParser: adapter ? parseModule : null, __future__: { ...Sk.python3 } });
-        const saved = Sk.__future__;
-        assert.throws(() => Sk.compile(source, "error.py", "exec", true), (e) => e instanceof Sk.builtin.SyntaxError);
-        assert.equal(Sk.__future__, saved);
+        const runtime = adapter ? Sk : baseline;
+        runtime.configure({ ...(runtime === baseline ? { sourceParser: parseModule } : {}), __future__: { ...runtime.python3 } });
+        const saved = runtime.__future__;
+        assert.throws(() => runtime.compile(source, "error.py", "exec", true), (e) => e instanceof runtime.builtin.SyntaxError);
+        assert.equal(runtime.__future__, saved);
     }
     count++;
 }
-Sk.configure({ sourceParser: parseModule, __future__: { ...Sk.python3 } });
+Sk.configure({ __future__: { ...Sk.python3 } });
 assert.throws(() => Sk.compile("x = (", "location.py", "exec", true), (e) =>
     e instanceof Sk.builtin.SyntaxError && e.$filename.v === "location.py" &&
     e.$lineno.v === 1 && e.$offset.v === 5 && e.$text.v.includes("x = ("));
@@ -137,38 +150,50 @@ assert.throws(() => Sk.compile("x = '\\N{SNOWMAN}'", "names.py", "exec", true),
     (e) => e.name === "UnicodeNameDatabaseRequired" && !(e instanceof Sk.builtin.SyntaxError));
 assert.ok(Sk.compile("debugger", "debugger.py", "exec", true).code.includes("debugger;"));
 count += 4;
-// Preserve the existing UTF-16 traceback/debugger contract after Unicode text.
+// AST byte columns must not leak into the existing JS traceback/debugger contract.
 for (const text of ["雪", "😀", "e\u0301"]) {
     const source = `x = "${text}"; location_pause(); missing`;
-    const callColumn = source.indexOf("location_pause");
     const missingColumn = source.indexOf("missing");
-    for (const adapter of [false, true]) {
+    const callColumn = source.indexOf("location_pause");
+    const reference = spawnSync(python, ["-c", `import ast, json, sys
+source = sys.stdin.read()
+try:
+    ast.parse(source + " =")
+except SyntaxError as e:
+    print(json.dumps([ast.parse(source).body[-1].col_offset, e.offset]))`], { input: source, encoding: "utf8" });
+    assert.equal(reference.status, 0, reference.stderr);
+    const [astColumn, errorOffset] = JSON.parse(reference.stdout);
+    Sk.configure({ __future__: { ...Sk.python3 } });
+    const ast = Sk.parseModule(source, "locations.py");
+    assert.equal(ast.body.at(-1).col_offset, astColumn);
+    assert.throws(() => Sk.compile(source + " =", "locations.py", "exec", true),
+        e => e instanceof Sk.builtin.SyntaxError && e.$offset.v === errorOffset);
+    for (const runtime of [baseline, Sk]) {
         const breakpoints = [], debugStops = [], promiseStops = [];
         function column(suspension) {
-            while (suspension.$colno === undefined && suspension.child) {
-                suspension = suspension.child;
-            }
+            while (suspension.$colno === undefined && suspension.child) suspension = suspension.child;
             return suspension.$colno;
         }
-        Sk.configure({ sourceParser: adapter ? parseModule : null, __future__: { ...Sk.python3 }, debugging: true,
+        // The checkpoint's default frontend supplies the pre-migration JS locations.
+        runtime.configure({ ...(runtime === baseline ? { sourceParser: null } : {}), __future__: { ...runtime.python3 }, debugging: true,
             breakpoints: (_filename, _line, column) => { breakpoints.push(column); return true; } });
-        Sk.builtins.location_pause = new Sk.builtin.func(() =>
-            Sk.misceval.promiseToSuspension(Promise.resolve(Sk.builtin.none.none$)));
+        runtime.builtins.location_pause = new runtime.builtin.func(() =>
+            runtime.misceval.promiseToSuspension(Promise.resolve(runtime.builtin.none.none$)));
         try {
-            await assert.rejects(Sk.misceval.asyncToPromise(() =>
-                Sk.importMainWithBody("locations", false, source, true), {
+            await assert.rejects(runtime.misceval.asyncToPromise(() =>
+                runtime.importMainWithBody("locations", false, source, true), {
                 "Sk.debug": suspension => {
                     debugStops.push(column(suspension));
                     return Promise.resolve(suspension.resume());
                 },
                 "Sk.promise": suspension => { promiseStops.push(column(suspension)); return null; },
-            }), error => error instanceof Sk.builtin.NameError && error.traceback.at(-1).colno === missingColumn);
+            }), error => error instanceof runtime.builtin.NameError && error.traceback.at(-1).colno === missingColumn);
             assert.deepEqual(breakpoints, [0, callColumn, missingColumn]);
             assert.deepEqual(debugStops, breakpoints);
             assert.deepEqual(promiseStops, [callColumn]);
         } finally {
-            delete Sk.builtins.location_pause;
-            Sk.configure({ debugging: false, breakpoints: () => false });
+            delete runtime.builtins.location_pause;
+            runtime.configure({ debugging: false, breakpoints: () => false });
         }
     }
     count++;

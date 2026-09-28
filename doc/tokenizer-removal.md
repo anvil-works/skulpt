@@ -1,6 +1,6 @@
-> Historical experiment. See [parser-rollout.md](parser-rollout.md) for the current
-> replacement build and preserved console APIs. Run the recipes below from their
-> pinned historical checkout, not with the current preparation/checker scripts.
+> Historical experiment from the compatibility checkpoint. See
+> [parser-rollout.md](parser-rollout.md) for the current direct-AST build.
+> Run the recipes below from their pinned historical checkout.
 
 # Removing the old tokenizer from the replacement build
 
