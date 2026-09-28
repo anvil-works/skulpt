@@ -38,7 +38,8 @@ function legacyTokenizeModule(name) {
 
 // CPython v3.14.3 Lib/tokenize.py contracts, adapted to the shared JS scanner.
 var $builtinmodule = function (name) {
-    const scan = Sk["sourceTokenizer"];
+    const scan = Sk["$scanSource"];
+    // The stdlib can be shared with a runtime that still uses the old tokenizer.
     if (!scan) {
         return legacyTokenizeModule(name);
     }
