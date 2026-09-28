@@ -1,3 +1,6 @@
+> Historical measurements and commands from compatibility checkpoint #9.
+> The adapter comparison script is retained on that branch.
+
 # Structural parser adapter measurements
 
 This checkpoint measures the temporary adapter through the real compiler and
