@@ -249,9 +249,10 @@ the \'lazy\' dog.\n\
         for s in samples:
             with self.assertRaises(SyntaxError) as cm:
                 compile(s, "<test>", "exec")
-            # self.assertIn("unexpected EOF", str(cm.exception))
-            # @TODO skulpt uses the tokenize.py so maybe reason for different error here
-            self.assertIn("EOF", str(cm.exception))
+            # The old tokenizer reports EOF; the modern parser identifies the
+            # unclosed delimiter, matching CPython 3.14.
+            message = str(cm.exception)
+            self.assertTrue("EOF" in message or "'(' was never closed" in message)
 
 var_annot_global: int # a global annotated is necessary for test_var_annot
 
