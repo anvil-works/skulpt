@@ -1,0 +1,43 @@
+name: parser-compatibility
+on:
+  pull_request:
+  push:
+    branches: [stu-dev/parser/ast-compat-rollout]
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    name: ${{ matrix.suite }} compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [AST, execution]
+    env:
+      NODE_OPTIONS: --openssl-legacy-provider
+      SKULPT_PARSER_DIR: ${{ github.workspace }}/node_modules/@anvil-works/skulpt-parser/dist-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.3'
+      - run: npm ci
+      - if: matrix.suite == 'AST'
+        run: |
+          npm run devbuild
+          node test/ast_compat.mjs "$SKULPT_PARSER_DIR/index.js"
+      - if: matrix.suite == 'execution'
+        run: |
+          npm run build
+          npm test
+          node test/structural_parser.mjs "$SKULPT_PARSER_DIR/index.js" dist/skulpt.min.js
+          node test/testunit.js --source-parser test/parser_with_names.mjs
+          node test/testunit.js --python3 --source-parser test/parser_with_names.mjs
+          node test/tokenize_wrapper.mjs "$SKULPT_PARSER_DIR/index.js"
+          node test/identifier_compat.mjs dist/skulpt.min.js dist/skulpt.min.js "$SKULPT_PARSER_DIR/index.js"
+          node support/run/prepare-replacement-build.mjs "$RUNNER_TEMP/skulpt-replacement" node_modules HEAD --without-tokenizer
+          (cd "$RUNNER_TEMP/skulpt-replacement" && npm run build)
+          node test/repl_compat.mjs dist/skulpt.min.js "$RUNNER_TEMP/skulpt-replacement/dist/skulpt.min.js" "$SKULPT_PARSER_DIR/index.js"
