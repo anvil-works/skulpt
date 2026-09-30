@@ -30,6 +30,7 @@
     "test:runtime": "node test/run-tests.js runtime",
     "start": "node support/run/runfile.js",
     "profile": "node --prof --no-logfile-per-isolate --log-internal-timer-events support/run/runfile.js -o",
+    "bench:runtimes": "node support/run/benchmark-runtimes.mjs",
     "postprofile": "node --prof-process v8.log",
     "build:variants": "npm run build && npm run build:modern",
     "prebuild:modern": "node support/build/wrapmodules.js internal",
