@@ -28,6 +28,7 @@
     "test": "node test/testwrapper.js && node test/testunit.js && node test/testunit.js --python3",
     "start": "node support/run/runfile.js",
     "profile": "node --prof --no-logfile-per-isolate --log-internal-timer-events support/run/runfile.js -o",
+    "bench:runtimes": "node support/run/benchmark-runtimes.mjs",
     "postprofile": "node --prof-process v8.log"
   },
   "repository": {
