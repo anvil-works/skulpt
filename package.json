@@ -28,6 +28,7 @@
     "test": "node test/testwrapper.js && node test/testunit.js && node test/testunit.js --python3",
     "start": "node support/run/runfile.js",
     "profile": "node --prof --no-logfile-per-isolate --log-internal-timer-events support/run/runfile.js -o",
+    "bench:runtimes": "node support/run/benchmark-runtimes.mjs",
     "postprofile": "node --prof-process v8.log"
   },
   "repository": {
@@ -44,6 +45,7 @@
   "license": "MIT",
   "private": true,
   "devDependencies": {
+    "@anvil-works/skulpt-parser": "0.0.1-dev.7",
     "acorn": "^6.1.1",
     "chalk": "^2.4.2",
     "clean-webpack-plugin": "^2.0.2",

@@ -1,0 +1,1445 @@
+{
+    "revision": "480d7ee4b6638d139dbdba2b3c2c416be2881a22",
+    "environment": {
+        "node": "v22.15.0",
+        "cpu": "Apple M1 Pro",
+        "platform": "darwin",
+        "release": "24.5.0",
+        "arch": "arm64",
+        "logicalCpus": 10,
+        "memoryBytes": 34359738368,
+        "hardware": "MacBookPro18,3"
+    },
+    "manifest": {
+        "repositories": {
+            "parser": "3667c2129542f1dd457321c6b4e38ad1d4ebd8bd",
+            "ide": "0f9f54e71dfd2823324190f56cf4bc146effadc2",
+            "adapter": "480d7ee4b6638d139dbdba2b3c2c416be2881a22",
+            "direct": "deafa5692ebf56581efb3210e106c6fe9d4dbd60",
+            "adapter-runtime": "36eb4abf9292872cc730bdd431bea5c8ddd84b49",
+            "direct-runtime": "f60866843a8efe3ddba2069b5d7d0e1e65f67f79"
+        },
+        "runtimeArtifacts": {
+            "original": {
+                "path": "/tmp/skulpt-parser-performance-20260930/baseline/original.js",
+                "sha256": "29aa41f66d084b5826e6d386a5494b179d96a793607ebfc668cedc4752722e54"
+            },
+            "adapter": {
+                "path": "/tmp/skulpt-parser-performance-20260930/baseline/adapter.js",
+                "sha256": "4a10827e943e9b4e3f260909084e68b9b7b4556fac4ab17f01e33c77cb4b8e03",
+                "provenance": {
+                    "repository": "https://github.com/anvil-works/skulpt.git",
+                    "revision": "480d7ee4b6638d139dbdba2b3c2c416be2881a22",
+                    "compilerPatches": [
+                        "86a087e2ea2cd4786e1c3cf9556f3dcb40f9861a",
+                        "c6e7b0a5247edf12f4b95204d3fa226c3c8cbd81"
+                    ],
+                    "parserVersion": "0.0.1-dev.5",
+                    "nodeVersion": "v26.7.0",
+                    "npmVersion": "11.19.0",
+                    "buildDate": "2026-09-30T09:58:40+08:00",
+                    "artifacts": {
+                        "skulpt.min.js": "4a10827e943e9b4e3f260909084e68b9b7b4556fac4ab17f01e33c77cb4b8e03",
+                        "skulpt.min.js.map": "124291d40b12ff1a62c6b770c112145cbd5aff86bf5ef6ff65ae4bded3e23220",
+                        "skulpt-stdlib.js": "b1a77a17fbe2b75b75e4beb2da89556dc84f631c57d2d95fbc3650d6a82d5f06"
+                    }
+                }
+            },
+            "direct": {
+                "path": "/tmp/skulpt-parser-performance-20260930/baseline/direct.js",
+                "sha256": "0357e844aa741c718666838d203c6e7b77b3afaa834aded3576fe40789ec88d7",
+                "provenance": {
+                    "repository": "https://github.com/anvil-works/skulpt.git",
+                    "revision": "deafa5692ebf56581efb3210e106c6fe9d4dbd60",
+                    "compilerPatches": [
+                        "86a087e2ea2cd4786e1c3cf9556f3dcb40f9861a",
+                        "c6e7b0a5247edf12f4b95204d3fa226c3c8cbd81"
+                    ],
+                    "parserVersion": "0.0.1-dev.5",
+                    "nodeVersion": "v26.7.0",
+                    "npmVersion": "11.19.0",
+                    "buildDate": "2026-09-30T09:58:59+08:00",
+                    "artifacts": {
+                        "skulpt.min.js": "0357e844aa741c718666838d203c6e7b77b3afaa834aded3576fe40789ec88d7",
+                        "skulpt.min.js.map": "31dd796bbd8212fed3d0b9d5c3cd5b94a33b1135ddc5544c2d1d342bbaedbf95",
+                        "skulpt-stdlib.js": "6a3e7500773b1b3a89e48c4ed8c0e8fbd19d726d46e8315e110e36f1bd138815"
+                    }
+                }
+            }
+        },
+        "parserArtifact": {
+            "path": "/tmp/skulpt-parser-performance-20260930/baseline/parser/dist-core/index.js",
+            "sha256": "84e0b8de494d7a7bb04bc4ce37760277493719194e4b434dc93590b19670712e"
+        },
+        "stdlibArtifact": {
+            "path": "/tmp/skulpt-parser-performance-20260930/baseline/stdlib.js",
+            "sha256": "068aba4240ff1dc1af54337cda34c28cd245512caeac9132a65b627e569afd8c"
+        },
+        "candidateArtifact": {
+            "path": "/tmp/skulpt-parser-performance-20260930/candidate.js",
+            "sha256": "78ceab086128a8a37904f8dc5b7c8c7dbfce9241f763eb199c8694fd08791e2d",
+            "patchSha256": "ff7441b57f06d70c913db3a4c4bab661660d5ffd25c98354be29af36c9d69bdc",
+            "sourceSha256": "3b54de801a75403f9a90bc030edc73b128678941efe16b49ca4a9f4b45b7194a"
+        },
+        "directCandidateArtifact": {
+            "path": "/tmp/skulpt-parser-performance-20260930/direct-candidate.js",
+            "sha256": "e623be27f0b26e971f259c66200b66fc85dc3f6b26fa522a4404445258aa67ff"
+        }
+    },
+    "parser": {
+        "path": "/tmp/skulpt-parser-performance-20260930/candidate.js",
+        "sha256": "78ceab086128a8a37904f8dc5b7c8c7dbfce9241f763eb199c8694fd08791e2d"
+    },
+    "stdlib": {
+        "path": "/tmp/skulpt-parser-performance-20260930/baseline/stdlib.js",
+        "sha256": "068aba4240ff1dc1af54337cda34c28cd245512caeac9132a65b627e569afd8c"
+    },
+    "engines": [
+        {
+            "name": "original",
+            "kind": "original",
+            "path": "/tmp/skulpt-parser-performance-20260930/baseline/original.js",
+            "sha256": "29aa41f66d084b5826e6d386a5494b179d96a793607ebfc668cedc4752722e54",
+            "size": {
+                "raw": 616317,
+                "gzip": 163663,
+                "brotli": 132450
+            }
+        },
+        {
+            "name": "baseline-adapter",
+            "kind": "adapter",
+            "path": "/tmp/skulpt-parser-performance-20260930/baseline/adapter.js",
+            "parser": "/tmp/skulpt-parser-performance-20260930/baseline/parser/dist-core/index.js",
+            "sha256": "4a10827e943e9b4e3f260909084e68b9b7b4556fac4ab17f01e33c77cb4b8e03",
+            "size": {
+                "raw": 788554,
+                "gzip": 184039,
+                "brotli": 146113
+            }
+        },
+        {
+            "name": "adapter",
+            "kind": "adapter",
+            "path": "/tmp/skulpt-parser-performance-20260930/baseline/adapter.js",
+            "parser": "/tmp/skulpt-parser-performance-20260930/candidate.js",
+            "sha256": "4a10827e943e9b4e3f260909084e68b9b7b4556fac4ab17f01e33c77cb4b8e03",
+            "size": {
+                "raw": 788554,
+                "gzip": 184039,
+                "brotli": 146113
+            }
+        },
+        {
+            "name": "baseline-direct",
+            "kind": "direct",
+            "path": "/tmp/skulpt-parser-performance-20260930/baseline/direct.js",
+            "sha256": "0357e844aa741c718666838d203c6e7b77b3afaa834aded3576fe40789ec88d7",
+            "size": {
+                "raw": 761007,
+                "gzip": 185047,
+                "brotli": 146476
+            }
+        },
+        {
+            "name": "direct",
+            "kind": "direct",
+            "path": "/tmp/skulpt-parser-performance-20260930/direct-candidate.js",
+            "sha256": "e623be27f0b26e971f259c66200b66fc85dc3f6b26fa522a4404445258aa67ff",
+            "size": {
+                "raw": 760935,
+                "gzip": 185025,
+                "brotli": 146346
+            }
+        }
+    ],
+    "rawReport": {
+        "path": "skulpt-paired.json",
+        "sha256": "dcf6f5c8f44eeccfc29e944db4c82af20a2ab66f60b3a0f2e63476d6b0506a45"
+    },
+    "decision": "Parser trial rejected; production parser remains dev.5.",
+    "comparisons": {
+        "adapter": {
+            "loadMs": {
+                "baselineMedian": 32.715375,
+                "trialMedian": 33.614292,
+                "baselineRange": [30.317375, 35.624249999999996],
+                "pairedRatios": [
+                    1.078618488279295, 0.9700449834031595, 0.9851191068419665, 0.9615443248821786, 1.1098050210481614
+                ]
+            },
+            "cases": {
+                "small": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 3.616459000000006,
+                            "trialMedian": 3.569499999999991,
+                            "baselineRange": [3.3972089999999895, 5.013582999999997],
+                            "pairedRatios": [
+                                1.0492436585444171, 0.7252797051529827, 0.9618156578048347, 1.0591748312024079,
+                                0.9870151991215674
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.028470209677419322,
+                            "trialMedian": 0.027335686956521707,
+                            "baselineRange": [0.027521767346938793, 0.03735952571428568],
+                            "pairedRatios": [
+                                0.9721003946032197, 0.7861634823819487, 0.8938966816337763, 0.7818590084866802,
+                                0.9932387921142068
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.06312499999999943,
+                            "trialMedian": 0.05966700000000458,
+                            "baselineRange": [0.0612909999999971, 0.09904199999999719],
+                            "pairedRatios": [
+                                1.0544723845184123, 0.6184245067749327, 0.9438891089107299, 0.8067577982397591,
+                                0.954463134881338
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 628,
+                            "trialMedian": 1001,
+                            "baselineRange": [-449.5, 1643.5],
+                            "pairedRatios": [
+                                1.8288216560509554, 1.601575456053068, -13.436241610738255, 0.4490416793428658,
+                                0.8387096774193549
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 1.7066670000000101,
+                            "trialMedian": 1.7630829999999946,
+                            "baselineRange": [1.5467079999999953, 1.8465419999999995],
+                            "pairedRatios": [
+                                1.072761180407652, 0.9726743285557589, 1.2989148565857291, 0.9911863298464069,
+                                0.8970680984429619
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.03254683840749423,
+                            "trialMedian": 0.03557895719844365,
+                            "baselineRange": [0.031208186619718397, 0.03766045079365082],
+                            "pairedRatios": [
+                                0.9967586928035048, 1.0039253681944513, 1.1047164914155572, 1.0076306265409558,
+                                0.9915427568321564
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.08012500000000955,
+                            "trialMedian": 0.07633400000000279,
+                            "baselineRange": [0.06387499999999591, 0.12466599999999062],
+                            "pairedRatios": [
+                                1.110149425286917, 0.6123080872090909, 0.9749776357827223, 1.281142857143211,
+                                0.8335850234007736
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 3163.5,
+                            "trialMedian": 3287,
+                            "baselineRange": [1217.5, 4026.5],
+                            "pairedRatios": [
+                                0.7243263380106792, 1.2141615299510036, 0.8450957706646098, 1.0969618616677441,
+                                -0.8098562628336755
+                            ]
+                        }
+                    }
+                },
+                "medium-50-functions": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 8.55808300000001,
+                            "trialMedian": 7.681125000000009,
+                            "baselineRange": [7.848875000000021, 8.92937500000005],
+                            "pairedRatios": [
+                                0.8932052890816745, 0.9251668752425617, 0.9352005511815863, 0.8602085812276856,
+                                0.959367934895121
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 1.6234166666666663,
+                            "trialMedian": 1.419359374999999,
+                            "baselineRange": [1.4290038181818132, 1.6864125],
+                            "pairedRatios": [
+                                0.9009081295994719, 0.9765349850483587, 0.8620515283316181, 0.9584220175881105,
+                                0.8416442448096174
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 2.2808749999999804,
+                            "trialMedian": 2.0482089999999857,
+                            "baselineRange": [2.219500000000039, 2.401124999999979],
+                            "pairedRatios": [
+                                0.926381824844264, 0.9048587519711445, 0.8245788953094977, 0.9336781571279472,
+                                0.8979926563270689
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 97124,
+                            "trialMedian": 95387.5,
+                            "baselineRange": [90929, 113710.5],
+                            "pairedRatios": [
+                                0.9745325563197562, 1.0490327618251603, 1.0527378580860631, 1.1979029720468113,
+                                0.8345007716965451
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 8.957791999999927,
+                            "trialMedian": 7.865083000000027,
+                            "baselineRange": [6.157000000000039, 13.999332999999979],
+                            "pairedRatios": [
+                                0.9631991229494878, 1.3601798300295556, 0.5835010139411665, 0.9927474035480176,
+                                0.6479137032004079
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 2.484199111111113,
+                            "trialMedian": 2.402244749999994,
+                            "baselineRange": [2.343320800000015, 2.5745595714285594],
+                            "pairedRatios": [
+                                0.9576074193730736, 1.013364865933723, 0.9575079643678586, 1.02415197968781,
+                                1.0421487779450893
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 3.0967920000000504,
+                            "trialMedian": 3.1035000000000537,
+                            "baselineRange": [2.936916999999994, 3.396959000000038],
+                            "pairedRatios": [
+                                1.002166112544854, 1.0283177903904004, 0.8553729968480853, 1.497615196383379,
+                                1.2808304269392672
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 384977.5,
+                            "trialMedian": 385346.5,
+                            "baselineRange": [366624.5, 400722.5],
+                            "pairedRatios": [
+                                1.0557832332536423, 0.9960231442097266, 0.950087654174647, 0.9989915369469494,
+                                1.0401145720324656
+                            ]
+                        }
+                    }
+                },
+                "large-200-functions": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 9.208374999999933,
+                            "trialMedian": 11.852333999999928,
+                            "baselineRange": [7.339666000000079, 20.023666999999932],
+                            "pairedRatios": [
+                                2.021606156874615, 1.1642119266428883, 2.5651427462775356, 0.5919162558985808,
+                                0.9036076165818377
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 6.038791600000013,
+                            "trialMedian": 5.3804916000000045,
+                            "baselineRange": [5.935233199999994, 6.4478750000000105],
+                            "pairedRatios": [
+                                0.8726618660344831, 0.8692217242604079, 0.8824155047521929, 0.904983771918868,
+                                0.8489411782951765
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 6.597375000000056,
+                            "trialMedian": 5.9693749999999,
+                            "baselineRange": [6.356291999999939, 7.122875000000022],
+                            "pairedRatios": [
+                                0.89521711286683, 0.882434419905632, 0.9259919147830568, 1.033081711208221,
+                                0.9132841724724782
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 376756.5,
+                            "trialMedian": 377169,
+                            "baselineRange": [374879.5, 378761],
+                            "pairedRatios": [
+                                1.0018485940148767, 1.000785653333121, 1.0022147791000318, 1.002142512032654,
+                                0.9989798362180636
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 34.11079199999995,
+                            "trialMedian": 31.842875000000276,
+                            "baselineRange": [31.363582999999835, 39.25149999999985],
+                            "pairedRatios": [
+                                0.7486507776772924, 0.8900934343594175, 0.9562603553660206, 1.0093895180749417,
+                                1.0260108036763635
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 11.314624999999978,
+                            "trialMedian": 10.583749999999933,
+                            "baselineRange": [11.050055333333452, 11.386972333333384],
+                            "pairedRatios": [
+                                0.937789604980466, 0.8930783386171909, 0.968466734073052, 0.8775301797637309,
+                                1.139215101399001
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 12.095041000000037,
+                            "trialMedian": 11.567708000000039,
+                            "baselineRange": [11.942332999999962, 13.348375000000033],
+                            "pairedRatios": [
+                                0.9654594463229785, 0.8710944232744404, 0.956400891902723, 0.7934268403457414,
+                                1.8665810943305796
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 1532192.5,
+                            "trialMedian": 1531031.5,
+                            "baselineRange": [1531166.5, 1533789],
+                            "pairedRatios": [
+                                0.9996501745048354, 0.9993099218161656, 0.9982021647045324, 1.00029650596457,
+                                0.9983784519059795
+                            ]
+                        }
+                    }
+                },
+                "unicode-50-functions": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 7.660291000000143,
+                            "trialMedian": 7.638832999999977,
+                            "baselineRange": [7.124166999999943, 7.782041999999819],
+                            "pairedRatios": [
+                                0.9971988009332589, 1.0445457671825602, 0.9891764170270428, 1.0371154971522036,
+                                0.9959896130090582
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 1.5271552727272137,
+                            "trialMedian": 1.3328295454545944,
+                            "baselineRange": [1.488572916666726, 1.5363750000000436],
+                            "pairedRatios": [
+                                0.8690541490906433, 0.873235671333787, 0.8674237184408885, 0.8788269547474338,
+                                0.8858177515794897
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 2.083625000000211,
+                            "trialMedian": 1.9952919999996084,
+                            "baselineRange": [2.0293750000000728, 2.27350000000024],
+                            "pairedRatios": [
+                                0.9291290961070942, 0.9560481225004019, 0.9832051740065473, 0.9561752046367613,
+                                0.9028136060949994
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 95010.5,
+                            "trialMedian": 111888.5,
+                            "baselineRange": [93819, 137090.5],
+                            "pairedRatios": [
+                                1.2200388378126628, 1.464447499973353, 0.6974334472483505, 0.9404786564879325,
+                                1.1807068084926766
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 8.386499999999614,
+                            "trialMedian": 4.606874999999491,
+                            "baselineRange": [4.1504580000000715, 9.991167000000132],
+                            "pairedRatios": [
+                                0.44340854954796144, 0.5493203362546596, 1.3016222043460959, 0.6202937054300534,
+                                1.0565299058561843
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 2.5173489999999674,
+                            "trialMedian": 2.421062499999971,
+                            "baselineRange": [2.4652708999999957, 2.6218055555556123],
+                            "pairedRatios": [
+                                0.9426393431608174, 0.9693607350420472, 0.9040119510515181, 1.1469696394898097,
+                                0.9704731435397157
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 3.191041000000041,
+                            "trialMedian": 3.0076669999998558,
+                            "baselineRange": [3.028457999999773, 3.351292000000285],
+                            "pairedRatios": [
+                                0.9245380152477433, 0.9714927530778726, 0.9425347402304819, 1.9526922750983737,
+                                1.0014681980981734
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 463596.5,
+                            "trialMedian": 466028.5,
+                            "baselineRange": [462434.5, 479446],
+                            "pairedRatios": [
+                                1.0385911109768258, 0.9720145751554919, 1.0136613942082608, 0.9970970643552212,
+                                0.9962424220200109
+                            ]
+                        }
+                    }
+                },
+                "multiline-expression": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 0.6599999999998545,
+                            "trialMedian": 0.6615000000001601,
+                            "baselineRange": [0.39704100000017206, 0.8931660000007469],
+                            "pairedRatios": [
+                                0.985599689628477, 1.6660747882457314, 1.3011919392018825, 0.9111106060615988,
+                                0.7582577034942715
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.024015851449272912,
+                            "trialMedian": 0.02431242955326431,
+                            "baselineRange": [0.01735882519280195, 0.027844992537313318],
+                            "pairedRatios": [
+                                0.7965029560774194, 1.450633751434103, 1.0755979251540515, 0.9982617473955971,
+                                0.9651740393345214
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.0562499999996362,
+                            "trialMedian": 0.05737500000032014,
+                            "baselineRange": [0.02608299999974406, 0.07062500000029104],
+                            "pairedRatios": [
+                                0.7876106194652658, 2.214085803032951, 1.0418603816098988, 1.0147503581541992,
+                                0.974826666681554
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 982.5,
+                            "trialMedian": 477.5,
+                            "baselineRange": [-364, 1451],
+                            "pairedRatios": [
+                                0.09516539440203563, 0.6530035335689046, -1.1318681318681318, 0.5407701019252548,
+                                0.7301860785665059
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 0.4610000000002401,
+                            "trialMedian": 0.42537499999980355,
+                            "baselineRange": [0.3699590000005628, 0.5654589999994641],
+                            "pairedRatios": [
+                                0.7613192369548485, 1.5226854663778597, 0.7522649741187366, 0.6543079143537217,
+                                1.3294256931154376
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.03890986138613959,
+                            "trialMedian": 0.034205529051987385,
+                            "baselineRange": [0.028097837758111453, 0.0410200892857152],
+                            "pairedRatios": [
+                                0.8790966565656291, 1.3911442938480965, 0.7076775314619009, 0.8062814929838167,
+                                0.8446837946656787
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.08095799999955489,
+                            "trialMedian": 0.07375000000047294,
+                            "baselineRange": [0.07237499999973807, 0.0998329999993075],
+                            "pairedRatios": [
+                                0.7378922801152049, 1.3684559585517804, 0.8291336248418569, 1.177234991432112,
+                                0.8093278463707843
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 3040,
+                            "trialMedian": 3295,
+                            "baselineRange": [-4374, 3818],
+                            "pairedRatios": [
+                                0.931115767417496, 0.9307317073170732, 0.5723684210526315, 1.3877078509787413,
+                                -0.7533150434385002
+                            ]
+                        }
+                    }
+                },
+                "list-method-fixture": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 0.7436250000000655,
+                            "trialMedian": 0.7128339999999298,
+                            "baselineRange": [0.6520829999999478, 0.7830829999993512],
+                            "pairedRatios": [
+                                1.1151751296003216, 0.792906731198489, 1.0244854597416868, 0.8993405684759421,
+                                0.9102917570685616
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.036588991769547746,
+                            "trialMedian": 0.03509801762114403,
+                            "baselineRange": [0.03283091286307184, 0.03908780487804839],
+                            "pairedRatios": [
+                                0.7559164998468878, 1.102743611892425, 0.8351963462916309, 0.8979275692418068,
+                                1.1707806969417174
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.08479200000056153,
+                            "trialMedian": 0.0772080000006099,
+                            "baselineRange": [0.07749999999941792, 0.09799999999995634],
+                            "pairedRatios": [
+                                0.7312959183693192, 0.9962879564916467, 0.939062647416953, 0.9962322580798681,
+                                0.9327431650639686
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 2384,
+                            "trialMedian": 2213,
+                            "baselineRange": [2220, 2620.5],
+                            "pairedRatios": [
+                                1.1744186046511629, 0.6933724832214765, 0.802503182011031, 0.8444953253195955,
+                                1.2427927927927929
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 0.711500000000342,
+                            "trialMedian": 0.576125000000502,
+                            "baselineRange": [0.6534580000006827, 0.778917000000547],
+                            "pairedRatios": [
+                                0.7246715632086262, 0.8718701857655615, 1.1056727970909381, 0.8816557452811048,
+                                0.7925158116661474
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.057726776041666504,
+                            "trialMedian": 0.05458311794872059,
+                            "baselineRange": [0.04714878318583813, 0.06794354838709823],
+                            "pairedRatios": [
+                                0.766062087537244, 0.9593495157118307, 1.0793899740164776, 1.0191759220008483,
+                                1.1093544422283481
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.1291670000000522,
+                            "trialMedian": 0.13029099999948812,
+                            "baselineRange": [0.10112500000013824, 0.13308300000062445],
+                            "pairedRatios": [
+                                0.9095151146191075, 1.0955580952414958, 1.1149567367037745, 1.415802797923917,
+                                1.130095756852394
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 6787.5,
+                            "trialMedian": 7120,
+                            "baselineRange": [6582.5, 9549],
+                            "pairedRatios": [
+                                1.1392265193370166, 1.0515001898974554, 0.8045076240811615, 1.199788902291918,
+                                0.7456278144308305
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "direct": {
+            "loadMs": {
+                "baselineMedian": 27.253500000000003,
+                "trialMedian": 28.210167000000006,
+                "baselineRange": [26.868667000000002, 30.273708999999997],
+                "pairedRatios": [
+                    1.2975413066211674, 1.1134530790083483, 0.8981789776733338, 0.9930449939930588, 0.9792788461087854
+                ]
+            },
+            "cases": {
+                "small": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 3.0025830000000013,
+                            "trialMedian": 3.2196249999999935,
+                            "baselineRange": [2.8591669999999922, 3.255042000000003],
+                            "pairedRatios": [
+                                1.1030639286241235, 0.9297908758332557, 0.93155480021456, 1.12607098501067,
+                                1.1345029916597056
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.025306594488188977,
+                            "trialMedian": 0.029362164556962018,
+                            "baselineRange": [0.0242563259259259, 0.027795110091743087],
+                            "pairedRatios": [
+                                1.4233643723245057, 1.1602574408289446, 0.9692129602124837, 0.9727862971164543,
+                                1.18227361686646
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.055374999999997954,
+                            "trialMedian": 0.06300000000000239,
+                            "baselineRange": [0.050667000000004236, 0.05750000000000455],
+                            "pairedRatios": [
+                                1.1979051918735915, 1.213498728715532, 0.9012967019952489, 0.9759460093470136,
+                                1.4297217391301784
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 968,
+                            "trialMedian": 896.5,
+                            "baselineRange": [819.5, 1499],
+                            "pairedRatios": [
+                                1.7582710779082178, 1.5805785123966942, 0.0921293471629042, 0.5413609072715143,
+                                0.6389878831076266
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 1.7754170000000045,
+                            "trialMedian": 1.7392499999999984,
+                            "baselineRange": [1.6762920000000179, 1.9202080000000024],
+                            "pairedRatios": [
+                                1.0869916175747674, 0.8903935955133014, 0.9178496347891644, 1.0724970292341647,
+                                0.9796290110999242
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.030373540856031063,
+                            "trialMedian": 0.03338445378151265,
+                            "baselineRange": [0.028353420195439728, 0.047306818181818304],
+                            "pairedRatios": [
+                                0.5311179184444881, 1.1197608515548108, 0.649678991004436, 1.1774400954591748,
+                                1.527989640123731
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.07933399999998869,
+                            "trialMedian": 0.06183300000000713,
+                            "baselineRange": [0.06266700000000469, 0.10095899999998892],
+                            "pairedRatios": [
+                                0.46429738804866477, 1.0502321152244263, 0.7147297943569234, 0.9866915601513158,
+                                1.836640028235486
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 3216,
+                            "trialMedian": 3118.5,
+                            "baselineRange": [237, 3406.5],
+                            "pairedRatios": [
+                                2.8773764258555135, 0.964055713643852, 8.632911392405063, 0.9154557463672391,
+                                0.9718594527363185
+                            ]
+                        }
+                    }
+                },
+                "medium-50-functions": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 7.955791999999974,
+                            "trialMedian": 6.784750000000031,
+                            "baselineRange": [7.008667000000003, 8.46241699999996],
+                            "pairedRatios": [
+                                0.8096078275076851, 1.205306398156212, 0.8437038705769829, 0.7920362468547731,
+                                1.1737253317927714
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 1.3682424545454575,
+                            "trialMedian": 1.241738636363638,
+                            "baselineRange": [1.3309090909090897, 1.4948241111111114],
+                            "pairedRatios": [
+                                0.7802221775844981, 0.925206312549243, 0.9711208333333321, 0.8559033740276518,
+                                0.9179695820730189
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 1.9530829999999924,
+                            "trialMedian": 1.939374999999984,
+                            "baselineRange": [1.9289580000000228, 2.1850410000000124],
+                            "pairedRatios": [
+                                0.8784544349939485, 1.2222920353890454, 0.9245273229307264, 0.9929813530710122,
+                                0.9927159261542442
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 173844.5,
+                            "trialMedian": 183175,
+                            "baselineRange": [170750.5, 195212],
+                            "pairedRatios": [
+                                0.9083176239165625, 1.0688373805326024, 1.0245445840568548, 1.0140775466776126,
+                                1.0603718754703437
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 7.660750000000007,
+                            "trialMedian": 6.935124999999971,
+                            "baselineRange": [5.394333999999958, 10.139707999999928],
+                            "pairedRatios": [
+                                0.8769593055510218, 0.6839570725310847, 1.0714679136250804, 1.74307115577197,
+                                0.7723064604914194
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 2.3117395000000016,
+                            "trialMedian": 2.1945083999999953,
+                            "baselineRange": [2.2491060909090845, 2.461754666666669],
+                            "pairedRatios": [
+                                0.8831099335108406, 1.0558525694218923, 0.9500847173349993, 1.0085789790747992,
+                                0.9196754473787955
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 3.4017499999999927,
+                            "trialMedian": 3.0857090000000653,
+                            "baselineRange": [2.7850839999999835, 3.7529160000000275],
+                            "pairedRatios": [
+                                0.8484384822463436, 1.7846344016225906, 0.912896320487657, 1.1079410890300199,
+                                0.9677862864702198
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 385841.5,
+                            "trialMedian": 382815,
+                            "baselineRange": [384715.5, 387743],
+                            "pairedRatios": [
+                                1.0058158596211138, 1.0070701596374463, 0.9937813221602215, 0.9818616970519133,
+                                0.9674798951139191
+                            ]
+                        }
+                    }
+                },
+                "large-200-functions": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 9.303458000000091,
+                            "trialMedian": 8.44883300000015,
+                            "baselineRange": [5.211499999999887, 17.41537500000004],
+                            "pairedRatios": [
+                                0.48513643834830605, 0.5589814892625453, 0.5001052296898668, 1.0460394438569198,
+                                1.3728454379737198
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 5.337924999999996,
+                            "trialMedian": 4.5910971666666756,
+                            "baselineRange": [5.245408399999997, 5.5307416000000105],
+                            "pairedRatios": [
+                                0.8363974783243922, 0.8723595287642391, 0.8545689570385523, 0.8827008347947216,
+                                0.8493386010536719
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 6.306874999999991,
+                            "trialMedian": 5.436500000000024,
+                            "baselineRange": [6.0906250000000455, 6.802249999999958],
+                            "pairedRatios": [
+                                0.875758021242996, 0.8418259439104212, 0.8596501507854987, 0.892601334017442,
+                                0.8518117771963805
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 680617,
+                            "trialMedian": 681584,
+                            "baselineRange": [679513, 683199],
+                            "pairedRatios": [
+                                0.999012660571217, 1.0001201757497062, 0.9999271537115552, 1.002571945713338,
+                                0.9991210467228435
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 30.34275000000025,
+                            "trialMedian": 27.824666999999863,
+                            "baselineRange": [27.511583999999857, 31.76404199999979],
+                            "pairedRatios": [
+                                1.0244092371314129, 0.9902974298161008, 1.328746983774939, 1.011380042675842,
+                                0.8970045233210491
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 10.604305666666733,
+                            "trialMedian": 9.203833333333327,
+                            "baselineRange": [10.21468033333334, 11.070874999999887],
+                            "pairedRatios": [
+                                0.8440841396908688, 0.8679336132552639, 0.9037769275173217, 0.8865249853960248,
+                                0.8571499938433091
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 11.63433299999997,
+                            "trialMedian": 9.94879200000014,
+                            "baselineRange": [11.142957999999908, 12.028957999999875],
+                            "pairedRatios": [
+                                0.8276664160903922, 0.7979874898557413, 0.9265428452151109, 0.8713382881430617,
+                                0.8398615520223643
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 1542605.5,
+                            "trialMedian": 1543096,
+                            "baselineRange": [1541494.5, 1546818.5],
+                            "pairedRatios": [
+                                1.0008074710202217, 0.9969905971515081, 0.9977875139393095, 1.0026147320231906,
+                                1.0015459023694213
+                            ]
+                        }
+                    }
+                },
+                "unicode-50-functions": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 7.763832999999977,
+                            "trialMedian": 6.6701249999996435,
+                            "baselineRange": [6.301000000000386, 8.194042000000081],
+                            "pairedRatios": [
+                                0.9384815201660218, 1.280160609427065, 0.8140213340375333, 0.9925556858148187,
+                                0.7800914831630407
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 1.3874553571428285,
+                            "trialMedian": 1.121761363636324,
+                            "baselineRange": [1.2919618333332892, 1.5344390769231233],
+                            "pairedRatios": [
+                                0.8363907334616345, 0.8682619986862581, 0.8423890726241631, 0.7791512023237716,
+                                0.7921275888327335
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 1.9393749999999272,
+                            "trialMedian": 1.6556660000001102,
+                            "baselineRange": [1.7471669999995356, 4.789042000000336],
+                            "pairedRatios": [
+                                0.6272392265507829, 1.1963418494056461, 0.8196155978086882, 0.8777167127970393,
+                                0.775371473084302
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 185369.5,
+                            "trialMedian": 175897,
+                            "baselineRange": [171985, 190685],
+                            "pairedRatios": [
+                                0.7686577339591473, 1.2396662975424848, 0.9488993604665277, 1.0930206372486748,
+                                1.011954530918394
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 4.51299999999992,
+                            "trialMedian": 4.209249999999884,
+                            "baselineRange": [3.6306249999997817, 17.82329100000061],
+                            "pairedRatios": [
+                                0.2667670633891346, 1.0579439355690998, 0.8800502991360021, 0.573778897416855,
+                                2.3231765880532165
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 2.443597222222201,
+                            "trialMedian": 2.0749507272727317,
+                            "baselineRange": [2.3346898888888368, 7.358625000000075],
+                            "pairedRatios": [
+                                0.28153809984880857, 0.880668567498074, 0.9047931385309955, 0.8064373602240771,
+                                0.8779437106918185
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 3.1206670000001395,
+                            "trialMedian": 2.7063749999997526,
+                            "baselineRange": [2.9646249999996144, 16.606291999999485],
+                            "pairedRatios": [
+                                0.16100072189502207, 0.9431209680821825, 0.8758730412498268, 0.7483949531112613,
+                                0.8847332957988251
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 486929,
+                            "trialMedian": 467605,
+                            "baselineRange": [460507, 514310],
+                            "pairedRatios": [
+                                0.9086688961910132, 1.0278739018441219, 0.9657258195858044, 0.9173438119190643,
+                                0.9625920822132179
+                            ]
+                        }
+                    }
+                },
+                "multiline-expression": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 0.5267919999996593,
+                            "trialMedian": 0.45083299999987503,
+                            "baselineRange": [0.35574999999971624, 0.6334999999999127],
+                            "pairedRatios": [
+                                0.9406740331487402, 0.7112172030630495, 1.0612366230672492, 1.9003288826439675,
+                                0.8558083645920337
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.01499408299999959,
+                            "trialMedian": 0.013099167000000307,
+                            "baselineRange": [0.01449145800000042, 0.02072444599303163],
+                            "pairedRatios": [
+                                1.2988345622668176, 0.6320635545290214, 0.8782820949674705, 2.033854035873886,
+                                0.8934305717991498
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.021625000000312866,
+                            "trialMedian": 0.023916000000099302,
+                            "baselineRange": [0.01937499999985448, 0.05004099999950995],
+                            "pairedRatios": [
+                                2.003838150284529, 0.3488939069934788, 0.5687619047542053, 3.5570064516190305,
+                                1.2343741935627834
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 1585,
+                            "trialMedian": 1564,
+                            "baselineRange": [841, 1978],
+                            "pairedRatios": [
+                                0.34630911188004615, 2.049346016646849, 0.8744479495268139, 1.2177825773938085,
+                                0.7906976744186046
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 0.4704170000004524,
+                            "trialMedian": 0.3942079999997077,
+                            "baselineRange": [0.2225829999997586, 0.6179579999998168],
+                            "pairedRatios": [
+                                0.64410937529807, 0.729554435738913, 1.5313910545704277, 0.8099476482807229,
+                                1.165106948869639
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.03358818473895506,
+                            "trialMedian": 0.023578008968608156,
+                            "baselineRange": [0.025720753387532276, 0.044233727810648264],
+                            "pairedRatios": [
+                                0.6920473446701539, 1.0653839736682198, 0.8803574254709807, 0.6310973517204986,
+                                0.7049830173430871
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.07341700000051787,
+                            "trialMedian": 0.06241700000009587,
+                            "baselineRange": [0.05387500000051659, 0.0880829999996422],
+                            "pairedRatios": [
+                                0.776256485361652, 1.0261289240776494, 1.1191090487153517, 0.7810228111675591,
+                                0.7071522944320662
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 3451,
+                            "trialMedian": 2859.5,
+                            "baselineRange": [2060, 4011],
+                            "pairedRatios": [
+                                1.004491451753115, 0.8625942684766215, 1.3320388349514563, 0.9205933682373473,
+                                0.6659962649044677
+                            ]
+                        }
+                    }
+                },
+                "list-method-fixture": {
+                    "parse": {
+                        "firstMs": {
+                            "baselineMedian": 0.6595000000006621,
+                            "trialMedian": 0.6408329999994749,
+                            "baselineRange": [0.47775000000001455, 0.7171669999997903],
+                            "pairedRatios": [
+                                0.9308188021218968, 1.2027110690645635, 1.1686608558390916, 0.8726677132400926,
+                                0.9920660476368606
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.027342323651452463,
+                            "trialMedian": 0.02801846052631462,
+                            "baselineRange": [0.02583318727915272, 0.03512641062801873],
+                            "pairedRatios": [
+                                1.1973118793106037, 0.8176130618035283, 1.3047681362027743, 0.8957360092652444,
+                                0.9798869328615123
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.07379200000013952,
+                            "trialMedian": 0.06695800000034069,
+                            "baselineRange": [0.06750000000010914, 0.07641599999988102],
+                            "pairedRatios": [
+                                1.732658054961188, 0.8762301088835446, 0.9994308326027753, 0.8950518518542472,
+                                0.8875362473814095
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 3222,
+                            "trialMedian": 2379.5,
+                            "baselineRange": [2433.5, 3839],
+                            "pairedRatios": [
+                                0.9163755907129648, 0.6198228705392029, 1.0637809187279152, 1.2270285963129628,
+                                0.7062383612662942
+                            ]
+                        }
+                    },
+                    "compile": {
+                        "firstMs": {
+                            "baselineMedian": 0.5887079999993148,
+                            "trialMedian": 0.6436249999997017,
+                            "baselineRange": [0.5114999999996144, 4.411958000000595],
+                            "pairedRatios": [
+                                0.1271639485235795, 1.09328393702897, 3.6986803519094447, 0.65325252525284,
+                                1.1487206640323933
+                            ]
+                        },
+                        "medianMs": {
+                            "baselineMedian": 0.04185812682926775,
+                            "trialMedian": 0.042513957547168316,
+                            "baselineRange": [0.04065706584362203, 0.04913774380165254],
+                            "pairedRatios": [
+                                0.9761923528411967, 1.0964649937611735, 1.1270638483149427, 0.9659884769030774,
+                                1.028401607125403
+                            ]
+                        },
+                        "p95Ms": {
+                            "baselineMedian": 0.10483399999975518,
+                            "trialMedian": 0.10612499999933789,
+                            "baselineRange": [0.0892920000005688, 0.15487500000017462],
+                            "pairedRatios": [
+                                1.3509453040095243, 0.7199354317988859, 1.0738695572810641, 0.8002222540901212,
+                                1.188516328435491
+                            ]
+                        },
+                        "retainedBytesPerResult": {
+                            "baselineMedian": 7966,
+                            "trialMedian": 7230.5,
+                            "baselineRange": [6160, 8406],
+                            "pairedRatios": [
+                                0.9071883530482256, 1.0671388974437943, 1.1862012987012986, 0.8601594099452772,
+                                0.8717047451669596
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "baseline": {
+        "rawReport": {
+            "path": "skulpt-baseline.json",
+            "sha256": "e92e7d143d33044a8970662004728e52041719f5ec640c62e54efc20cec9f6c9"
+        },
+        "runtimes": {
+            "original": {
+                "loadMs": 26.435708000000005,
+                "cases": {
+                    "small": {
+                        "parse": {
+                            "firstMs": 5.530249999999995,
+                            "medianMs": 0.029686871244635243,
+                            "p95Ms": 0.06312499999999943,
+                            "retainedBytesPerResult": 667.5
+                        },
+                        "compile": {
+                            "firstMs": 1.5932090000000017,
+                            "medianMs": 0.036724807308970125,
+                            "p95Ms": 0.07987500000001546,
+                            "retainedBytesPerResult": 3461
+                        }
+                    },
+                    "medium-50-functions": {
+                        "parse": {
+                            "firstMs": 10.736125000000015,
+                            "medianMs": 3.655738142857144,
+                            "p95Ms": 4.05983399999991,
+                            "retainedBytesPerResult": 131644.5
+                        },
+                        "compile": {
+                            "firstMs": 12.521416000000045,
+                            "medianMs": 4.615694500000018,
+                            "p95Ms": 5.260250000000042,
+                            "retainedBytesPerResult": 383108
+                        }
+                    },
+                    "large-200-functions": {
+                        "parse": {
+                            "firstMs": 27.731583,
+                            "medianMs": 15.41666650000002,
+                            "p95Ms": 21.003458000000137,
+                            "retainedBytesPerResult": 524065
+                        },
+                        "compile": {
+                            "firstMs": 33.48708399999987,
+                            "medianMs": 20.460812499999975,
+                            "p95Ms": 31.947791999999936,
+                            "retainedBytesPerResult": 1531499.5
+                        }
+                    },
+                    "unicode-50-functions": {
+                        "parse": {
+                            "firstMs": 8.819083999999748,
+                            "medianMs": 3.6814939999999945,
+                            "p95Ms": 4.491624999999658,
+                            "retainedBytesPerResult": 131541.5
+                        },
+                        "compile": {
+                            "firstMs": 9.41924999999992,
+                            "medianMs": 4.5785276666665595,
+                            "p95Ms": 5.272374999999556,
+                            "retainedBytesPerResult": 463173
+                        }
+                    },
+                    "multiline-expression": {
+                        "parse": {
+                            "firstMs": 0.2984580000011192,
+                            "medianMs": 0.03227577209302602,
+                            "p95Ms": 0.05799999999908323,
+                            "retainedBytesPerResult": 1413
+                        },
+                        "compile": {
+                            "firstMs": 0.33712500000001455,
+                            "medianMs": 0.03838537931034974,
+                            "p95Ms": 0.06337499999972351,
+                            "retainedBytesPerResult": 3353
+                        }
+                    },
+                    "list-method-fixture": {
+                        "parse": {
+                            "firstMs": 0.45979199999965203,
+                            "medianMs": 0.057503561338294394,
+                            "p95Ms": 0.07991599999877508,
+                            "retainedBytesPerResult": 1436
+                        },
+                        "compile": {
+                            "firstMs": 0.6553750000002765,
+                            "medianMs": 0.07944402985073672,
+                            "p95Ms": 0.14412499999889405,
+                            "retainedBytesPerResult": 4663
+                        }
+                    }
+                }
+            },
+            "adapter": {
+                "loadMs": 31.697958999999997,
+                "cases": {
+                    "small": {
+                        "parse": {
+                            "firstMs": 3.6755840000000006,
+                            "medianMs": 0.026384879310344812,
+                            "p95Ms": 0.06074999999999875,
+                            "retainedBytesPerResult": 721
+                        },
+                        "compile": {
+                            "firstMs": 1.7445419999999956,
+                            "medianMs": 0.033882456140350854,
+                            "p95Ms": 0.07741599999999949,
+                            "retainedBytesPerResult": 3423
+                        }
+                    },
+                    "medium-50-functions": {
+                        "parse": {
+                            "firstMs": 8.172458000000006,
+                            "medianMs": 1.4715757272727243,
+                            "p95Ms": 2.1091670000000136,
+                            "retainedBytesPerResult": 96220
+                        },
+                        "compile": {
+                            "firstMs": 9.105874999999969,
+                            "medianMs": 2.5113749999999984,
+                            "p95Ms": 3.249084000000039,
+                            "retainedBytesPerResult": 381875.5
+                        }
+                    },
+                    "large-200-functions": {
+                        "parse": {
+                            "firstMs": 14.170166999999992,
+                            "medianMs": 6.29165624999996,
+                            "p95Ms": 6.873041999999941,
+                            "retainedBytesPerResult": 376292.5
+                        },
+                        "compile": {
+                            "firstMs": 35.425874999999905,
+                            "medianMs": 14.431097333333279,
+                            "p95Ms": 19.323832999999922,
+                            "retainedBytesPerResult": 1531840.5
+                        }
+                    },
+                    "unicode-50-functions": {
+                        "parse": {
+                            "firstMs": 7.7566249999999854,
+                            "medianMs": 1.5528559999999991,
+                            "p95Ms": 2.1453330000003916,
+                            "retainedBytesPerResult": 93686.5
+                        },
+                        "compile": {
+                            "firstMs": 6.9893330000004426,
+                            "medianMs": 2.630795799999942,
+                            "p95Ms": 3.610458999999537,
+                            "retainedBytesPerResult": 465626.5
+                        }
+                    },
+                    "multiline-expression": {
+                        "parse": {
+                            "firstMs": 0.4023750000005748,
+                            "medianMs": 0.017117622568093793,
+                            "p95Ms": 0.02641700000003766,
+                            "retainedBytesPerResult": 863
+                        },
+                        "compile": {
+                            "firstMs": 0.3329169999997248,
+                            "medianMs": 0.03541874086378534,
+                            "p95Ms": 0.07729099999960454,
+                            "retainedBytesPerResult": 3325
+                        }
+                    },
+                    "list-method-fixture": {
+                        "parse": {
+                            "firstMs": 0.9727920000004815,
+                            "medianMs": 0.0330432844827579,
+                            "p95Ms": 0.09895799999958399,
+                            "retainedBytesPerResult": 2339.5
+                        },
+                        "compile": {
+                            "firstMs": 0.6531670000003942,
+                            "medianMs": 0.04901489592760205,
+                            "p95Ms": 0.12487499999951979,
+                            "retainedBytesPerResult": 7187.5
+                        }
+                    }
+                }
+            },
+            "direct": {
+                "loadMs": 27.295958,
+                "cases": {
+                    "small": {
+                        "parse": {
+                            "firstMs": 3.0501669999999947,
+                            "medianMs": 0.023062343283582074,
+                            "p95Ms": 0.04945899999999881,
+                            "retainedBytesPerResult": 937
+                        },
+                        "compile": {
+                            "firstMs": 1.9099580000000174,
+                            "medianMs": 0.031749134948096884,
+                            "p95Ms": 0.07708400000001348,
+                            "retainedBytesPerResult": 3198.5
+                        }
+                    },
+                    "medium-50-functions": {
+                        "parse": {
+                            "firstMs": 7.533208000000002,
+                            "medianMs": 1.3595075454545416,
+                            "p95Ms": 1.902417000000014,
+                            "retainedBytesPerResult": 195012.5
+                        },
+                        "compile": {
+                            "firstMs": 6.063040999999998,
+                            "medianMs": 2.4123875,
+                            "p95Ms": 3.072667000000024,
+                            "retainedBytesPerResult": 386688.5
+                        }
+                    },
+                    "large-200-functions": {
+                        "parse": {
+                            "firstMs": 9.466916999999967,
+                            "medianMs": 5.246849999999995,
+                            "p95Ms": 6.148458000000119,
+                            "retainedBytesPerResult": 681651
+                        },
+                        "compile": {
+                            "firstMs": 30.16691600000013,
+                            "medianMs": 10.728097333333304,
+                            "p95Ms": 11.696290999999746,
+                            "retainedBytesPerResult": 1544200
+                        }
+                    },
+                    "unicode-50-functions": {
+                        "parse": {
+                            "firstMs": 6.541416999999456,
+                            "medianMs": 1.3225174166667177,
+                            "p95Ms": 1.818333999999595,
+                            "retainedBytesPerResult": 172978
+                        },
+                        "compile": {
+                            "firstMs": 6.798667000000023,
+                            "medianMs": 2.343054200000006,
+                            "p95Ms": 2.9153750000004948,
+                            "retainedBytesPerResult": 468523
+                        }
+                    },
+                    "multiline-expression": {
+                        "parse": {
+                            "firstMs": 0.40420799999992596,
+                            "medianMs": 0.015068877551020952,
+                            "p95Ms": 0.019166999999470136,
+                            "retainedBytesPerResult": 822.5
+                        },
+                        "compile": {
+                            "firstMs": 0.4391249999998763,
+                            "medianMs": 0.03047294207316909,
+                            "p95Ms": 0.06366700000035053,
+                            "retainedBytesPerResult": 3083.5
+                        }
+                    },
+                    "list-method-fixture": {
+                        "parse": {
+                            "firstMs": 0.7312919999994847,
+                            "medianMs": 0.030986172727274275,
+                            "p95Ms": 0.07099999999991269,
+                            "retainedBytesPerResult": 2138
+                        },
+                        "compile": {
+                            "firstMs": 0.5562079999999696,
+                            "medianMs": 0.04490864220183581,
+                            "p95Ms": 0.09829199999967386,
+                            "retainedBytesPerResult": 6816
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "cases": [
+        {
+            "name": "small",
+            "source": "x = 1 + 2\nprint(x)\n",
+            "bytes": 19,
+            "sha256": "00d19898fd83efd9e6da702b542c111bbb9c4ded7f8b279906a9986fd14c9314"
+        },
+        {
+            "name": "medium-50-functions",
+            "source": "def f0(x, y=0):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f1(x, y=1):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f2(x, y=2):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f3(x, y=3):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f4(x, y=4):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f5(x, y=5):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f6(x, y=6):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f7(x, y=7):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f8(x, y=8):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f9(x, y=9):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f10(x, y=10):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f11(x, y=11):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f12(x, y=12):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f13(x, y=13):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f14(x, y=14):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f15(x, y=15):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f16(x, y=16):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f17(x, y=17):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f18(x, y=18):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f19(x, y=19):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f20(x, y=20):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f21(x, y=21):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f22(x, y=22):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f23(x, y=23):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f24(x, y=24):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f25(x, y=25):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f26(x, y=26):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f27(x, y=27):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f28(x, y=28):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f29(x, y=29):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f30(x, y=30):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f31(x, y=31):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f32(x, y=32):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f33(x, y=33):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f34(x, y=34):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f35(x, y=35):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f36(x, y=36):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f37(x, y=37):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f38(x, y=38):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f39(x, y=39):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f40(x, y=40):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f41(x, y=41):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f42(x, y=42):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f43(x, y=43):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f44(x, y=44):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f45(x, y=45):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f46(x, y=46):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f47(x, y=47):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f48(x, y=48):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f49(x, y=49):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\nprint(f49(2))\n",
+            "bytes": 3994,
+            "sha256": "8acaba38e69f6262ce56aab350e1aca64b6facabaff92ca9fd5612e677719b9e"
+        },
+        {
+            "name": "large-200-functions",
+            "source": "def f0(x, y=0):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f1(x, y=1):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f2(x, y=2):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f3(x, y=3):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f4(x, y=4):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f5(x, y=5):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f6(x, y=6):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f7(x, y=7):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f8(x, y=8):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f9(x, y=9):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f10(x, y=10):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f11(x, y=11):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f12(x, y=12):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f13(x, y=13):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f14(x, y=14):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f15(x, y=15):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f16(x, y=16):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f17(x, y=17):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f18(x, y=18):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f19(x, y=19):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f20(x, y=20):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f21(x, y=21):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f22(x, y=22):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f23(x, y=23):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f24(x, y=24):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f25(x, y=25):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f26(x, y=26):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f27(x, y=27):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f28(x, y=28):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f29(x, y=29):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f30(x, y=30):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f31(x, y=31):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f32(x, y=32):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f33(x, y=33):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f34(x, y=34):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f35(x, y=35):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f36(x, y=36):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f37(x, y=37):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f38(x, y=38):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f39(x, y=39):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f40(x, y=40):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f41(x, y=41):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f42(x, y=42):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f43(x, y=43):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f44(x, y=44):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f45(x, y=45):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f46(x, y=46):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f47(x, y=47):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f48(x, y=48):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f49(x, y=49):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f50(x, y=50):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f51(x, y=51):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f52(x, y=52):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f53(x, y=53):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f54(x, y=54):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f55(x, y=55):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f56(x, y=56):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f57(x, y=57):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f58(x, y=58):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f59(x, y=59):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f60(x, y=60):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f61(x, y=61):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f62(x, y=62):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f63(x, y=63):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f64(x, y=64):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f65(x, y=65):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f66(x, y=66):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f67(x, y=67):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f68(x, y=68):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f69(x, y=69):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f70(x, y=70):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f71(x, y=71):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f72(x, y=72):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f73(x, y=73):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f74(x, y=74):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f75(x, y=75):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f76(x, y=76):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f77(x, y=77):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f78(x, y=78):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f79(x, y=79):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f80(x, y=80):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f81(x, y=81):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f82(x, y=82):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f83(x, y=83):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f84(x, y=84):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f85(x, y=85):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f86(x, y=86):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f87(x, y=87):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f88(x, y=88):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f89(x, y=89):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f90(x, y=90):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f91(x, y=91):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f92(x, y=92):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f93(x, y=93):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f94(x, y=94):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f95(x, y=95):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f96(x, y=96):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f97(x, y=97):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f98(x, y=98):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f99(x, y=99):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f100(x, y=100):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f101(x, y=101):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f102(x, y=102):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f103(x, y=103):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f104(x, y=104):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f105(x, y=105):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f106(x, y=106):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f107(x, y=107):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f108(x, y=108):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f109(x, y=109):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f110(x, y=110):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f111(x, y=111):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f112(x, y=112):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f113(x, y=113):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f114(x, y=114):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f115(x, y=115):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f116(x, y=116):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f117(x, y=117):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f118(x, y=118):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f119(x, y=119):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f120(x, y=120):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f121(x, y=121):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f122(x, y=122):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f123(x, y=123):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f124(x, y=124):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f125(x, y=125):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f126(x, y=126):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f127(x, y=127):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f128(x, y=128):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f129(x, y=129):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f130(x, y=130):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f131(x, y=131):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f132(x, y=132):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f133(x, y=133):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f134(x, y=134):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f135(x, y=135):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f136(x, y=136):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f137(x, y=137):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f138(x, y=138):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f139(x, y=139):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f140(x, y=140):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f141(x, y=141):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f142(x, y=142):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f143(x, y=143):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f144(x, y=144):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f145(x, y=145):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f146(x, y=146):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f147(x, y=147):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f148(x, y=148):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f149(x, y=149):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f150(x, y=150):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f151(x, y=151):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f152(x, y=152):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f153(x, y=153):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f154(x, y=154):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f155(x, y=155):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f156(x, y=156):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f157(x, y=157):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f158(x, y=158):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f159(x, y=159):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f160(x, y=160):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f161(x, y=161):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f162(x, y=162):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f163(x, y=163):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f164(x, y=164):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f165(x, y=165):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f166(x, y=166):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f167(x, y=167):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f168(x, y=168):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f169(x, y=169):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f170(x, y=170):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f171(x, y=171):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f172(x, y=172):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f173(x, y=173):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f174(x, y=174):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f175(x, y=175):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f176(x, y=176):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f177(x, y=177):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f178(x, y=178):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f179(x, y=179):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f180(x, y=180):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f181(x, y=181):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f182(x, y=182):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f183(x, y=183):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f184(x, y=184):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f185(x, y=185):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f186(x, y=186):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f187(x, y=187):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f188(x, y=188):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f189(x, y=189):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f190(x, y=190):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f191(x, y=191):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f192(x, y=192):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f193(x, y=193):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f194(x, y=194):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f195(x, y=195):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f196(x, y=196):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f197(x, y=197):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f198(x, y=198):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\ndef f199(x, y=199):\n    label = 'label'\n    return [x + y + j for j in range(3)]\n\nprint(f199(2))\n",
+            "bytes": 16195,
+            "sha256": "afecbac9f923b7f2303f602dd29e4d7ba80be2660ecd6b22e578096cfda1aeae"
+        },
+        {
+            "name": "unicode-50-functions",
+            "source": "def f0(x, y=0):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f1(x, y=1):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f2(x, y=2):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f3(x, y=3):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f4(x, y=4):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f5(x, y=5):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f6(x, y=6):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f7(x, y=7):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f8(x, y=8):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f9(x, y=9):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f10(x, y=10):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f11(x, y=11):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f12(x, y=12):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f13(x, y=13):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f14(x, y=14):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f15(x, y=15):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f16(x, y=16):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f17(x, y=17):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f18(x, y=18):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f19(x, y=19):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f20(x, y=20):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f21(x, y=21):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f22(x, y=22):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f23(x, y=23):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f24(x, y=24):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f25(x, y=25):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f26(x, y=26):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f27(x, y=27):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f28(x, y=28):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f29(x, y=29):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f30(x, y=30):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f31(x, y=31):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f32(x, y=32):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f33(x, y=33):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f34(x, y=34):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f35(x, y=35):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f36(x, y=36):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f37(x, y=37):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f38(x, y=38):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f39(x, y=39):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f40(x, y=40):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f41(x, y=41):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f42(x, y=42):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f43(x, y=43):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f44(x, y=44):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f45(x, y=45):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f46(x, y=46):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f47(x, y=47):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f48(x, y=48):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\ndef f49(x, y=49):\n    label = 'caf\u00e9 \u96ea \ud83d\ude00'\n    return [x + y + j for j in range(3)]\n\nprint(f49(2))\n",
+            "bytes": 4444,
+            "sha256": "52d5fab7be48de51a7a30c451ccf00f8f85841f3ec5ed4210accf07b0dd653a4"
+        },
+        {
+            "name": "multiline-expression",
+            "source": "value = (\n 1 +\n 2\n)\nprint(value)\n",
+            "bytes": 33,
+            "sha256": "5cd06eca90d2481d8e77e08c854872aa3ec19bb535fcacec04660984dc137061"
+        },
+        {
+            "name": "list-method-fixture",
+            "source": "x = [1]\nx.extend([2,3])\nprint(x[1])\n",
+            "bytes": 36,
+            "sha256": "e9bd1a28517a66dcfc70aa5e57c17020e8d49d30f2d29ae20e97ae9c6e5abc42"
+        }
+    ],
+    "selection": {
+        "lexerChanges": 2,
+        "status": "selected for staging",
+        "constantsHoisting": "excluded; no consistent latency win",
+        "releaseLatencyGateCleared": false,
+        "followUp": "Focused tail/first-operation recheck before release. No publication or consumer rollout.",
+        "astOptimizerImplemented": false,
+        "captureMetadata": "Existing decision and frozen manifest fields describe the initial capture; measurements remain unchanged."
+    }
+}

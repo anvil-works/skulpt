@@ -3078,20 +3078,16 @@ Sk.compile = function (source, filename, mode, canSuspend) {
     var savedFlags = Sk.__future__;
     Sk.__future__ = Object.create(Sk.__future__);
 
-    var parse = Sk.parse(filename, source);
-    var ast = Sk.astFromParse(parse.cst, filename, parse.flags);
-    // console.log(JSON.stringify(ast, undefined, 2));
-
-    // compilers flags, later we can add other ones too
-    var flags = {};
-    flags.cf_flags = parse.flags;
-
-    var st = Sk.symboltable(ast, filename);
-    var c = new Compiler(filename, st, flags.cf_flags, canSuspend, source); // todo; CO_xxx
-    var funcname = c.cmod(ast);
-
-    // Restore the global __future__ flags
-    Sk.__future__ = savedFlags;
+    var c;
+    var funcname;
+    try {
+        const parsed = Sk.parseCompilerModule(source, filename);
+        const st = Sk.symboltable(parsed.ast, filename);
+        c = new Compiler(filename, st, parsed.flags, canSuspend, source);
+        funcname = c.cmod(parsed.ast);
+    } finally {
+        Sk.__future__ = savedFlags;
+    }
 
     var ret = `var $compiledmod = function() {${c.result.join("")}\nreturn ${funcname};}();\n$compiledmod;`;
 
