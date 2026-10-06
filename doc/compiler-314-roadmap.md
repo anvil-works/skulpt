@@ -364,7 +364,12 @@ Nineteen unchanged test_exceptions methods and three unchanged test_with methods
 from CPython 3.14 at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 cover cleanup,
 context cycles, generators and context-manager truth conversion. The latter
 class adapts unittest.fail to raise AssertionError as CPython's harness does.
-Five CPython-checked regressions cover nonlocal cleanup, class/frame inheritance,
+Seven CPython-checked regressions cover runtime wrappers, generator propagation, nonlocal cleanup, class/frame inheritance,
 finally overrides and context-manager failures. The existing host suspension
 guard checks handled state before/after resume and absence in the suspended caller.
 Traceback objects/sys.exc_info and except-star control flow follow separately.
+
+Initial raises are distinguished from propagation through caller frames, so a
+generator reraising an exception with no context does not acquire the current
+caller's handled exception. Catch emitters share this policy. PEP 479 and invalid-__anext__ wrappers retain their original cause/context and
+set suppression before propagation.
