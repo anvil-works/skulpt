@@ -997,11 +997,7 @@ function strEncode(pyStr, encoding, errors) {
         let escaped = "";
         for (const char of source) {
             const code = char.codePointAt(0);
-            if (escapes[char] !== undefined) {escaped += escapes[char];}
-            else if (code >= 32 && code < 127) {escaped += char;}
-            else if (code <= 255) {escaped += "\\x" + code.toString(16).padStart(2, "0");}
-            else if (code <= 65535) {escaped += "\\u" + code.toString(16).padStart(4, "0");}
-            else {escaped += "\\U" + code.toString(16).padStart(8, "0");}
+            if (escapes[char] !== undefined) {escaped += escapes[char];} else if (code >= 32 && code < 127) {escaped += char;} else if (code <= 255) {escaped += "\\x" + code.toString(16).padStart(2, "0");} else if (code <= 65535) {escaped += "\\u" + code.toString(16).padStart(4, "0");} else {escaped += "\\U" + code.toString(16).padStart(8, "0");}
         }
         uint8 = UtfEncoder.encode(escaped);
     } else if (encoding === "utf-8") {
