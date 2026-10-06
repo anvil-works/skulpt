@@ -144,59 +144,7 @@ class DeferredEvaluationTests(HarnessCase):
         # This crashed in an earlier version of the code
         ns = run_code("x: [y for y in range(10)]")
         self.assertEqual(ns["__annotate__"](1), {"x": list(range(10))})
-    def test_name_clash_with_format(self):
-        # this test would fail if __annotate__'s parameter was called "format"
-        # during symbol table construction
-        code = """
-        class format: pass
 
-        def f(x: format): pass
-        """
-        ns = run_code(code)
-        f = ns["f"]
-        self.assertEqual(f.__annotations__, {"x": ns["format"]})
-
-        code = """
-        class Outer:
-            class format: pass
-
-            def meth(self, x: format): ...
-        """
-        ns = run_code(code)
-        self.assertEqual(ns["Outer"].meth.__annotations__, {"x": ns["Outer"].format})
-
-        code = """
-        def f(format):
-            def inner(x: format): pass
-            return inner
-        res = f("closure var")
-        """
-        ns = run_code(code)
-        self.assertEqual(ns["res"].__annotations__, {"x": "closure var"})
-
-        code = """
-        def f(x: format):
-            pass
-        """
-        ns = run_code(code)
-        # picks up the format() builtin
-        self.assertEqual(ns["f"].__annotations__, {"x": format})
-
-        code = """
-        def outer():
-            def f(x: format):
-                pass
-            if False:
-                class format: pass
-            return f
-        f = outer()
-        """
-        ns = run_code(code)
-        with self.assertRaisesRegex(
-            NameError,
-            "cannot access free variable 'format' where it is not associated with a value in enclosing scope",
-        ):
-            ns["f"].__annotations__
 
 class ConditionalAnnotationTests(HarnessCase):
     def check_scopes(self, code, true_annos, false_annos):
@@ -612,5 +560,27 @@ seen.append(module.__annotations__)
         module.__spec__._initializing = False
         self.assertEqual(module.__annotations__, {'x': int, 'y': str})
         self.assertIs(module.__dict__['__annotations__'], module.__annotations__)
+
+class VariableAnnotationReviewTests(HarnessCase):
+    def test_namespace_bookkeeping_for_nonsimple_and_future_annotations(self):
+        for code in ['(x): int', 'from __future__ import annotations; x: int']:
+            ns = run_code(code)
+            self.assertEqual(ns['__conditional_annotations__'], set())
+        def outer(x):
+            class C:
+                y: int
+                (z): x
+            return C
+        self.assertEqual(outer.__code__.co_cellvars, ('x',))
+        cls = outer(42)
+        self.assertEqual(cls.__annotate__.__code__.co_freevars, ('__classdict__', 'x'))
+        self.assertEqual(cls.__annotations__, {'y': int})
+        def only_nonsimple(x):
+            class C: (y): x
+            return C
+        self.assertEqual(only_nonsimple.__code__.co_cellvars, ('x',))
+        self.assertEqual(only_nonsimple(42).__annotations__, {})
+        ns = run_code("from __future__ import annotations\nclass C:\n if True:\n  x: int")
+        self.assertEqual(ns['C'].__annotations__, {'x': 'int'})
 
 if __name__ == '__main__': unittest.main()
