@@ -7,8 +7,7 @@ import unittest
 import textwrap
 
 class ListComprehensionTest(unittest.TestCase):
-    def _check_in_scopes(self, code, outputs=None, ns=None, scopes=None, raises=(),
-                         exec_func=exec):
+    def _check_in_scopes(self, code, outputs=None, ns=None, scopes=None, raises=()):
         code = textwrap.dedent(code)
         scopes = scopes or ["module", "class", "function"]
         for scope in scopes:
@@ -37,7 +36,7 @@ class ListComprehensionTest(unittest.TestCase):
                 newns = ns.copy() if ns else {}
                 newns["__name__"] = "__main__"
                 try:
-                    exec_func(newcode, newns)
+                    exec(newcode, newns)
                 except raises as e:
                     # We care about e.g. NameError vs UnboundLocalError
                     self.assertIs(type(e), raises)
@@ -564,20 +563,6 @@ class ListComprehensionTest(unittest.TestCase):
                 pass
         """
         self._check_in_scopes(code, {"value": [1, None]})
-
-
-    def _recursive_replace(self, maybe_code):
-        if not isinstance(maybe_code, types.CodeType):
-            return maybe_code
-        return maybe_code.replace(co_consts=tuple(
-            self._recursive_replace(c) for c in maybe_code.co_consts
-        ))
-
-
-    def _replacing_exec(self, code_string, ns):
-        co = compile(code_string, "<string>", "exec")
-        co = self._recursive_replace(co)
-        exec(co, ns)
 
 
     def test_only_calls_dunder_iter_once(self):
