@@ -594,3 +594,18 @@ non-iterable behavior. ParamSpec substitution recognizes Concatenate expressions
 including those created inside generic classes and lazy type aliases. Four
 upstream ConcatenateTests methods are unchanged, plus one CPython-checked compiler
 regression. Callable-dependent methods follow with Callable support.
+
+### Abstract classes for compiler-produced protocols
+
+`stu-dev/compiler/abstract-classes` ports CPython's Python ABCMeta implementation
+and public abstract decorators/update helper. Native type/object paths implement
+local `__abstractmethods__` lookup and abstract-instantiation checks; property,
+classmethod and staticmethod descriptors expose wrapped abstract status. Direct
+subclass introspection and ABC caches keep weak references to classes rather than
+retaining generated classes. These APIs require host WeakRef support; ordinary
+class creation remains available on older hosts.
+
+Thirty-one complete upstream `test_abc.py` TestABC methods pass in both runtimes,
+with only assertion/subTest harness helpers adapted. inspect.isabstract-dependent
+methods remain deferred. This layer supplies the foundation for Callable and
+compiler-produced generator/coroutine/async iterator ABC protocols.
