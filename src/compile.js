@@ -53,6 +53,7 @@ function CompilerUnit () {
     this.linenoSet = false;
     this.localnames = [];
     this.comprehensions = [];
+    this.firstArg = null;
 
     this.localtemps = [];
     this.tempsToSave = [];
@@ -743,16 +744,6 @@ Compiler.prototype.ccall = function (e) {
     let positionalArgs = this.cunpackstarstoarray(e.args, !Sk.__future__.python3);
     let keywordArgs = this.cunpackkwstoarray(e.keywords, func);
 
-    if (Sk.__future__.super_args && e.func.id && e.func.id === "super" && positionalArgs === "[]") {
-        // make sure there is a self variable
-        // note that it's part of the js API spec: https://developer.mozilla.org/en/docs/Web/API/Window/self
-        // so we should probably add self to the mangling
-        // TODO: feel free to ignore the above
-        this.u.tempsToSave.push("$sup");
-        out("if (typeof $sup === \"undefined\") { throw new Sk.builtin.RuntimeError(\"super(): no arguments\") };");
-        out("if (typeof $free === 'undefined' || $free.__class__ === undefined) { throw new Sk.builtin.RuntimeError('super(): __class__ cell not found') };");
-        positionalArgs = "[$free.__class__,$sup]";
-    }
     out ("$ret = (",func,".tp$call)?",func,".tp$call(",positionalArgs,",",keywordArgs,") : Sk.misceval.applyOrSuspend(",func,",undefined,undefined,",keywordArgs,",",positionalArgs,");");
 
     this._checkSuspension(e);
@@ -1410,13 +1401,7 @@ Compiler.prototype.outputFrame = function (unit) {
         }
         return items;
     };
-    const snapshot = items => "Sk.misceval.localsSnapshot([" + Array.from(items, ([name, value]) => "[" + JSON.stringify(name) + "," + value + "]").join(",") + "])";
-    let code = "var $localsScope=0,$prevFrame=Sk.misceval.currentFrame;";
-    if (unit.ste.blockType === constants.ClassBlock) {
-        code += "$loc=Sk.misceval.namespaceToJs($loc);";
-    }
-    code += "Sk.misceval.currentFrame={getGlobals:function(){return $gbl;},getLocals:function(){switch($localsScope){";
-    for (const scope of unit.comprehensions) {
+    const scopeBindings = scope => {
         const items = optimized ? bindings(unit.ste) : new Map();
         const chain = [];
         for (let current = scope; current; current = current.outer) {
@@ -1424,14 +1409,34 @@ Compiler.prototype.outputFrame = function (unit) {
         }
         for (const current of chain) {
             for (const [name, value] of bindings(current.ste, current)) {
+                // An inlined comprehension has no separate .0 frame argument.
                 if (name !== ".0") {
                     items.set(name, value);
                 }
             }
         }
-        code += "case " + scope.id + ":return " + snapshot(items) + ";";
+        return items;
+    };
+    const snapshot = items => "Sk.misceval.localsSnapshot([" + Array.from(items, ([name, value]) => "[" + JSON.stringify(name) + "," + value + "]").join(",") + "])";
+    let code = "var $localsScope=0,$prevFrame=Sk.misceval.currentFrame;";
+    if (unit.ste.blockType === constants.ClassBlock) {
+        code += "$loc=Sk.misceval.namespaceToJs($loc);";
     }
-    code += "default:return " + (optimized ? snapshot(bindings(unit.ste)) : "Sk.misceval.namespaceDict($loc)") + ";}}};try{";
+    code += "Sk.misceval.currentFrame={getGlobals:function(){return $gbl;},getLocals:function(){switch($localsScope){";
+    for (const scope of unit.comprehensions) {
+        code += "case " + scope.id + ":return " + snapshot(scopeBindings(scope)) + ";";
+    }
+    code += "default:return " + (optimized ? snapshot(bindings(unit.ste)) : "Sk.misceval.namespaceDict($loc)") + ";}},getSuper:function(){switch($localsScope){";
+    const superArgs = scope => {
+        const items = scopeBindings(scope);
+        const ste = scope ? scope.ste : unit.ste;
+        const hasClass = ste.getScope("__class__") === constants.FREE;
+        return "[" + (unit.firstArg !== null) + "," + (items.get(unit.firstArg) || "undefined") + "," + hasClass + "," + (hasClass ? items.get("__class__") : "undefined") + "]";
+    };
+    for (const scope of unit.comprehensions) {
+        code += "case " + scope.id + ":return " + superArgs(scope) + ";";
+    }
+    code += "default:return " + superArgs(null) + ";}}};try{";
     return code;
 };
 
@@ -2091,6 +2096,9 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     if (vararg) {
         funcArgs.push(this.nameop(args.vararg.arg, "Param"));
     }
+    // CPython super_init_without_args reads the live first positional binding.
+    this.u.firstArg = positionalArgs.length ? Sk.unfixReserved(fixReserved(mangleName(this.u.private_, positionalArgs[0].arg).v))
+        : n._type === "GeneratorExp" ? ".0" : null;
     // Generators share normal function argument binding.
 
     if (hasFree) {
@@ -2144,10 +2152,6 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     }
     for (let i = 0; i < funcArgs.length; i++) {
         this.u.varDeclsCode += "," + funcArgs[i] + "=$args[" + i + "]";
-    }
-    const instanceForSuper = funcArgs[kwarg ? 1 : 0];
-    if (instanceForSuper) {
-        this.u.varDeclsCode += `,$sup=${instanceForSuper}`;
     }
     this.u.varDeclsCode += ";\n";
 
@@ -2849,7 +2853,8 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
                     out(mangled, "=", dataToStore, ";");
                     break;
                 case "Del":
-                    out("delete ", mangled, ";");
+                    out("if (", mangled, "===undefined) { throw new Sk.builtin.UnboundLocalError(\"cannot access local variable '", unfixReserved(mangledNoPre), "' where it is not associated with a value\"); }");
+                    out(mangled, "=undefined;");
                     break;
                 default:
                     Sk.asserts.fail("unhandled");
@@ -2881,7 +2886,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
                     out("$gbl.", mangledNoPre, "=", dataToStore, ";");
                     break;
                 case "Del":
-                    out("delete $gbl.", mangledNoPre);
+                    out("delete $gbl.", mangledNoPre, ";");
                     break;
                 default:
                     Sk.asserts.fail("unhandled case in name op_global");

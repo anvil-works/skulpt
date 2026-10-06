@@ -507,5 +507,70 @@ class TestExecutionMappingHooks(unittest.TestCase):
             exec("del value", {}, FailingDelete())
 
 
+class TestLiveSuperBindings(unittest.TestCase):
+    # CPython-checked regressions for live fast/cell and PEP 709 bindings.
+    def test_reassigned_receiver_and_alias(self):
+        class Base:
+            def value(self):
+                return self.name
+        class Child(Base):
+            def value(self, replacement):
+                alias = super
+                self = replacement
+                return alias().value()
+        a, b = Child(), Child()
+        a.name, b.name = "a", "b"
+        self.assertEqual(a.value(b), "b")
+
+    def test_cell_receiver_across_yield(self):
+        class Base:
+            def value(self):
+                return self.name
+        class Child(Base):
+            def values(self, replacement):
+                def update():
+                    nonlocal self
+                    self = replacement
+                yield super().value()
+                update()
+                yield super().value()
+        a, b = Child(), Child()
+        a.name, b.name = "a", "b"
+        self.assertEqual(list(a.values(b)), ["a", "b"])
+
+    def test_comprehension_receiver_and_class_shadowing(self):
+        class Base:
+            def value(self):
+                return self.name
+        class Child(Base):
+            def values(self, replacement):
+                values = [super().value() for self in [replacement]]
+                return values, self.name
+            def invalid(self):
+                return [super().value() for self in [42]]
+            def shadow_class(self):
+                return [super().value() for __class__ in [42]]
+        a, b = Child(), Child()
+        a.name, b.name = "a", "b"
+        self.assertEqual(a.values(b), (["b"], "a"))
+        with self.assertRaises(TypeError):
+            a.invalid()
+        with self.assertRaisesRegex(RuntimeError, "__class__ cell not found"):
+            a.shadow_class()
+
+    def test_deleted_fast_and_global_names(self):
+        def f():
+            value = 1
+            del value
+            with self.assertRaises(UnboundLocalError):
+                value
+            with self.assertRaises(UnboundLocalError):
+                del value
+        f()
+        ns = {"value": 1}
+        exec("global value; del value", ns)
+        self.assertNotIn("value", ns)
+
+
 if __name__ == "__main__":
     unittest.main()
