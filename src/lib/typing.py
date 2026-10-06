@@ -1,9 +1,10 @@
 """Compiler-created typing objects; further typing APIs remain unimplemented."""
-from _typing import TypeAliasType, TypeVar, NoDefault, ParamSpec, ParamSpecArgs, ParamSpecKwargs, TypeVarTuple, Unpack, _UnpackGenericAlias, _type_repr as _native_type_repr
+from _typing import TypeAliasType, TypeVar, NoDefault, ParamSpec, ParamSpecArgs, ParamSpecKwargs, TypeVarTuple, Unpack, _UnpackGenericAlias
 from types import GenericAlias, UnionType
 import functools
 import operator
 import collections.abc
+import types
 Union = UnionType
 
 def get_args(tp):
@@ -446,7 +447,15 @@ def _generic_init_subclass(cls, *args, **kwargs):
 def _type_repr(value):
     if isinstance(value, tuple):
         return '[' + ', '.join(_type_repr(arg) for arg in value) + ']'
-    return _native_type_repr(value)
+    # CPython typing uses annotationlib's Python formatter, distinct from
+    # the native generic-alias formatter (notably for NoneType).
+    if isinstance(value, (type, types.FunctionType, types.BuiltinFunctionType)):
+        if value.__module__ == "builtins":
+            return value.__qualname__
+        return f"{value.__module__}.{value.__qualname__}"
+    if value is ...:
+        return "..."
+    return repr(value)
 
 class _BaseGenericAlias:
     def __init__(self, origin, *, inst=True, name=None):

@@ -291,6 +291,9 @@ class CollectionsCallableTests(BaseCallableTests, Harness):
 
 class CallableCompilerRegressions(unittest.TestCase):
     def test_lazy_callable_alias_and_cached_mutable_metadata(self):
+        self.assertEqual(repr(Callable[[], None]), 'typing.Callable[[], NoneType]')
+        self.assertEqual(repr(typing.Tuple[None]), 'typing.Tuple[NoneType]')
+        self.assertEqual(repr(collections.abc.Callable[[], None]), 'collections.abc.Callable[[], None]')
         type Signature[**P, T=int] = Callable[Concatenate[str, P], T]
         concrete = Signature.__value__[[float], bytes]
         self.assertEqual(concrete, Callable[[str, float], bytes])
