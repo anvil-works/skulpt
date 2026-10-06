@@ -92,4 +92,20 @@ class FailureTestCase(unittest.TestCase):
             do_async_with(SyncManager()).send(None)
 
 
+    def test_qualified_owner_names(self):
+        # LOAD_SPECIAL uses %T, preserving the heap type's module/qualname.
+        class Outer:
+            class Missing: pass
+        cls = Outer.Missing
+        name = cls.__qualname__
+        if cls.__module__ not in ('builtins', '__main__'):
+            name = cls.__module__ + '.' + name
+        for operation in (do_with, lambda obj: do_async_with(obj).send(None)):
+            with self.assertRaises(TypeError) as cm:
+                operation(cls())
+            self.assertTrue(str(cm.exception).startswith("'" + name + "' object"))
+        cls.__module__ = 'custom'
+        with self.assertRaises(TypeError) as cm: do_with(cls())
+        self.assertTrue(str(cm.exception).startswith("'custom." + cls.__qualname__ + "' object"))
+
 if __name__ == '__main__': unittest.main()

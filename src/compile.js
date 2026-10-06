@@ -1988,7 +1988,7 @@ Compiler.prototype.cwith = function (s, itemIdx) {
         const otherEnter = "__aenter__";
         const otherExit = "__aexit__";
         const suggestion = "async with";
-        out("if(", method, "===undefined){var $contextError=", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+",
+        out("if(", method, "===undefined){var $contextError=", JSON.stringify("'"), "+Sk.abstr.typeQualifiedName(", mgr, ")+",
             JSON.stringify("' object does not support the " + protocol + " protocol (missed " + name + " method)"), ";");
         out("var $otherEnter=", mgr, ".ob$type.$typeLookup(new Sk.builtin.str(", JSON.stringify(otherEnter), "));",
             "var $otherExit=", mgr, ".ob$type.$typeLookup(new Sk.builtin.str(", JSON.stringify(otherExit), "));");
