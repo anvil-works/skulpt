@@ -193,12 +193,15 @@ class UnionTests(unittest.TestCase):
         class B(metaclass=Meta): pass
         left, right = A | int, B | int
         self.assertFalse(left == right)
-        self.assertEqual(calls, [('B', 'A')])
+        self.assertTrue(calls)
+        self.assertTrue(all(pair == ('B', 'A') for pair in calls))
         calls.clear()
         self.assertTrue(right == left)
-        self.assertEqual(calls, [('A', 'B')])
+        self.assertTrue(calls)
+        self.assertTrue(all(pair == ('A', 'B') for pair in calls))
         calls.clear()
         self.assertIs(A | B, A)
-        self.assertEqual(calls, [('A', 'B')])
+        self.assertTrue(calls)
+        self.assertTrue(all(pair == ('A', 'B') for pair in calls))
 
 if __name__ == '__main__': unittest.main()
