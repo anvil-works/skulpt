@@ -2564,7 +2564,7 @@ Compiler.prototype.cclass = function (s) {
     scopename = this.enterScope(s.name, s, s.lineno);
     entryBlock = this.newBlock("class entry");
 
-    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||new Sk.builtin.dict(),$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
+    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||this.func_globals,$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
     const needsClassClosure = this.u.ste.needsClassClosure;
     if (needsClassClosure) {
         this.u.prefixCode += "var $classcell={__class__:undefined};";
@@ -2590,7 +2590,8 @@ Compiler.prototype.cclass = function (s) {
     out("$loc.__module__=", this.nameop("__name__", "Load"), ";");
     this.cbody(s.body, s.name);
     if (needsClassClosure) {
-        out("$loc.__classcell__=new Sk.builtin.cell($classcell);return $loc.__classcell__;");
+        const classcell = this._gr("classcell", "new Sk.builtin.cell($classcell)");
+        out("$loc.__classcell__=", classcell, ";return ", classcell, ";");
     } else {
         out("return Sk.builtin.none.none$;");
     }
