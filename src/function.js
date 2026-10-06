@@ -41,10 +41,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
 
         // Preserve local cells and observe later assignments in enclosing scopes.
         // Class bodies can pass the same dictionary for both closures.
-        if (closure2 !== undefined && closure2 !== closure) {
-            Object.setPrototypeOf(closure, closure2);
-        }
-        this.func_closure = closure;
+        this.func_closure = Sk.misceval.makeClosure(closure, closure2);
         this.func_annotations = null;
         this.$memoiseFlags();
         this.memoised = code.co_fastcall || null;
