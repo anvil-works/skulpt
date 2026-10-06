@@ -251,6 +251,29 @@ class FunctionPropertiesTest(FuncAttrsTest):
         self.assertEqual(original(2), 24)
         self.assertEqual(first, 10)
 
+    def test_code_replacement_through_module_code_retains_defaults(self):
+        def f(a=42): return a
+        def g(a): return a
+        defaults = f.__defaults__
+        f.__code__ = compile('1', '<replacement>', 'eval')
+        self.assertEqual(f(), 1)
+        self.assertIs(f.__defaults__, defaults)
+        f.__code__ = g.__code__
+        self.assertIs(f.__defaults__, defaults)
+        self.assertEqual(f(), 42)
+
+    def test_module_code_uses_captured_builtins(self):
+        builtins = {'value': 1}
+        namespace = {'__builtins__': builtins}
+        exec('def f(): return value', namespace)
+        f = namespace['f']
+        f.__code__ = compile('value', '<replacement>', 'eval')
+        constructed = types.FunctionType(f.__code__, namespace)
+        namespace['__builtins__'] = {'value': 2}
+        self.assertIs(f.__builtins__, builtins)
+        self.assertEqual(f(), 1)
+        self.assertEqual(constructed(), 1)
+
     def test___code__(self):
         num_one, num_two = 7, 8
         def a(): pass
