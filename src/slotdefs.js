@@ -200,15 +200,14 @@ function slotFuncOneArg(dunderFunc) {
 
 function slotFuncGetAttribute(pyName, canSuspend) {
     let getattributeFn = this.ob$type.$typeLookup(Sk.builtin.str.$getattribute);
-    if (getattributeFn instanceof Sk.builtin.wrapper_descriptor) {
-        // we're assuming here that internal tp$getattr won't raise an exception
-        return getattributeFn.d$wrapped.call(this, pyName, canSuspend);
-    }
-    if (getattributeFn.tp$descr_get) {
+    const native = getattributeFn instanceof Sk.builtin.wrapper_descriptor;
+    if (!native && getattributeFn.tp$descr_get) {
         getattributeFn = getattributeFn.tp$descr_get(this, this.ob$type);
     }
+    // slot_tp_getattr_hook: descriptor AttributeError also triggers __getattr__.
     const ret = Sk.misceval.tryCatch(
-        () => Sk.misceval.callsimOrSuspendArray(getattributeFn, [pyName]),
+        () => native ? getattributeFn.d$wrapped.call(this, pyName, canSuspend)
+            : Sk.misceval.callsimOrSuspendArray(getattributeFn, [pyName]),
         (e) => {
             if (e instanceof Sk.builtin.AttributeError) {
                 return undefined;
