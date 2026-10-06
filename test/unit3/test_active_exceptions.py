@@ -430,6 +430,41 @@ class ActiveExceptionTests(unittest.TestCase):
 
 
 class ActiveExceptionRegression(unittest.TestCase):
+    def test_runtime_wrappers_keep_their_original_cause(self):
+        def g():
+            raise StopIteration('end')
+            yield
+        outer = ValueError('caller')
+        try:
+            raise outer
+        except ValueError:
+            try:
+                next(g())
+            except RuntimeError as error:
+                self.assertIsInstance(error.__cause__, StopIteration)
+                self.assertIs(error.__context__, error.__cause__)
+                self.assertTrue(error.__suppress_context__)
+                self.assertIs(error.__cause__.__context__, outer)
+
+    def test_propagation_does_not_replace_generator_context(self):
+        caught = ValueError('caught')
+        def g():
+            try:
+                raise caught
+            except ValueError:
+                yield
+                raise
+        it = g()
+        next(it)
+        try:
+            raise TypeError('caller')
+        except TypeError:
+            try:
+                next(it)
+            except ValueError as error:
+                self.assertIsNone(error.__context__)
+
+
     def test_handler_control_flow_and_frame_inheritance(self):
         def reraiser():
             raise
