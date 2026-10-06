@@ -135,10 +135,10 @@ class FunctionPropertiesTest(FuncAttrsTest):
     #     test.__code__ = self.b.__code__
     #     self.assertEqual(test(), 3) # self.b always returns 3, arbitrarily
 
-    # def test___globals__(self):
-    #     self.assertIs(self.b.__globals__, globals())
-    #     self.cannot_set_attr(self.b, '__globals__', 2,
-    #                          (AttributeError, TypeError))
+    def test___globals__(self):
+        self.assertIs(self.b.__globals__, globals())
+        self.cannot_set_attr(self.b, '__globals__', 2,
+                             (AttributeError, TypeError))
 
     # def test___closure__(self):
     #     a = 12

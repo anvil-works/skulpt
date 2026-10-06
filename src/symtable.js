@@ -166,7 +166,8 @@ function SymbolTableScope (table, name, type, ast, lineno) {
 
     this.table = table;
 
-    if (table.cur && (table.cur.nested || table.cur.blockType === FunctionBlock)) {
+    this.isMethod = !!(table.cur && table.cur.blockType === ClassBlock && type === FunctionBlock);
+    if (table.cur && (table.cur.isNested || table.cur.blockType === FunctionBlock)) {
         this.isNested = true;
     }
 
@@ -768,7 +769,6 @@ SymbolTable.prototype.visitExpr = function (e) {
             this.visitExpr(e.operand);
             break;
         case "Lambda":
-            this.addDef(new Sk.builtin.str("lambda"), DEF_LOCAL, e.lineno);
             if (e.args.defaults) {
                 this.SEQExpr(e.args.defaults);
                 this.SEQExpr(e.args.kw_defaults);
