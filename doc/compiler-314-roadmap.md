@@ -390,7 +390,7 @@ getters are provided. Returned ordinary frames retain their back frame; inactive
 generator/coroutine frames have no caller back frame.
 
 Fourteen unchanged CPython 3.14 methods from test_exceptions, test_types, test_sys
-and test_exception_group at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 plus five
+and test_exception_group at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 plus six
 CPython-checked regressions cover the native descriptor, frame and group contracts.
 JavaScript-generated traceback/frame bytecode offsets and frame locals proxies
 raise explicit NotImplementedError until those compiler metadata/runtime
@@ -404,3 +404,7 @@ line numbers require bytecode line mapping and have an explicit getter guard.
 
 Fresh generator.throw injection resets propagation location so injecting an
 exception into its original frame still prepends the current yield location.
+
+Throw and close injections chain against only the generator's own handled state,
+not its current caller's inherited state. Existing supplied context is preserved
+when the generator has no local handler.

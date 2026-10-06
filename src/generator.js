@@ -88,7 +88,8 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                         throw new Sk.builtin.TypeError("exception constructor must return a BaseException instance");
                     }
                     // A throw is a fresh raise at the suspended yield.
-                    error.$propagating = false;
+                    Sk.builtin.chainException(error, this.curr$susp && this.curr$susp.$handled);
+                    error.$propagating = true;
                     error.$tracebackFrame = undefined;
                     return Sk.misceval.chain(this.gi$run(() => this.gi$throw(error, throwArgs), true), (ret) => {
                         if (ret === undefined) {
@@ -225,6 +226,12 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                 throw error;
             }
             const inject = (exception) => {
+                // Direct close injections also use the generator's own handler,
+                // rather than an exception inherited from its current caller.
+                if (!exception.$propagating) {
+                    Sk.builtin.chainException(exception, this.curr$susp && this.curr$susp.$handled);
+                    exception.$propagating = true;
+                }
                 this.gi$yieldfrom = null;
                 this.gi$data.throw = exception;
                 return this.gi$resume();
