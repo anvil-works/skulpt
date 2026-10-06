@@ -82,6 +82,7 @@ require("./super.js");
 require("./generic_alias.js");
 require("./union.js");
 require("./type_alias.js");
+require("./typevar.js");
 require("./builtindict.js");
 require("./constants.js");
 require("./exception_group.js");

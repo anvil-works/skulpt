@@ -1,6 +1,7 @@
 """Compiler-created typing objects; further typing APIs remain unimplemented."""
-from _typing import TypeAliasType
+from _typing import TypeAliasType, TypeVar, NoDefault
 from types import GenericAlias, UnionType
+Union = UnionType
 
 def get_args(tp):
     if isinstance(tp, (GenericAlias, UnionType)):
