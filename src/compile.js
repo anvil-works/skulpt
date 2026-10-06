@@ -1917,11 +1917,14 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     exit = this._gr("exit", "Sk.abstr.lookupSpecial(",mgr,",new Sk.builtin.str(", JSON.stringify(exitName), "));" );
     this.u.tempsToSave.push(exit);
 
+    if (asynchronous) {
+        out("if(", exit, "===undefined){throw new Sk.builtin.TypeError(", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+", JSON.stringify("' object does not support the asynchronous context manager protocol (missed __aexit__ method)"), ");}");
+    }
+
     // value = mgr.__enter__()
     out("$ret = Sk.abstr.lookupSpecial(",mgr,",new Sk.builtin.str(", JSON.stringify(enterName), "));");
 
     if (asynchronous) {
-        out("if(", exit, "===undefined){throw new Sk.builtin.TypeError(", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+", JSON.stringify("' object does not support the asynchronous context manager protocol (missed __aexit__ method)"), ");}");
         out("if($ret===undefined){throw new Sk.builtin.TypeError(", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+", JSON.stringify("' object does not support the asynchronous context manager protocol (missed __aenter__ method)"), ");}");
     } else {
         out("if ($ret === undefined) {throw new Sk.builtin.AttributeError('__enter__');} ");
@@ -1932,6 +1935,9 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     out("$ret = Sk.misceval.callsimOrSuspendArray($ret);");
     this._checkSuspension(s);
     value = asynchronous ? this.cawait(s, "$ret", "__aenter__") : this._gr("value", "$ret");
+
+    // Preserve the enclosing handled exception, like PUSH_EXC_INFO/POP_EXCEPT.
+    const previousError = asynchronous ? this._gr("withprev", "$err") : null;
 
     // try:
     this.pushFinallyBlock(tidyUp);
@@ -1968,8 +1974,9 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     out("$ret = Sk.misceval.applyOrSuspend(",exit,",undefined,Sk.builtin.getExcInfo($err),undefined,[]);");
     this._checkSuspension(s);
     const exitResult = asynchronous ? this.cawait(s, "$ret", "__aexit__") : "$ret";
+    const suppress = asynchronous ? this._gr("withsuppress", "Sk.misceval.isTrue(", exitResult, ")") : exitResult;
     if (asynchronous) this.endExcept();
-    this._jumptrue(exitResult, carryOn);
+    this._jumptrue(suppress, carryOn);
     out("throw $err;");
     if (asynchronous) {
         this.setBlock(exitFailure);
@@ -1992,6 +1999,7 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     this._jump(carryOn);
 
     this.setBlock(carryOn);
+    if (asynchronous) out("$err=", previousError, ";");
 };
 
 Compiler.prototype.cassert = function (s) {
