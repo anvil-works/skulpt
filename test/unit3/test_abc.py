@@ -588,4 +588,21 @@ class TestABC(unittest.TestCase):
 
         C()
 
+class AbstractInstantiationRegressions(unittest.TestCase):
+    def test_native_abstract_lookup_and_unicode_names(self):
+        class Name(str):
+            def __repr__(self): raise RuntimeError('repr hook')
+        class Meta(type):
+            def __getattribute__(cls, name):
+                if name == '__abstractmethods__': raise RuntimeError('metaclass hook')
+                return super().__getattribute__(name)
+        class C(metaclass=Meta): pass
+        C.__abstractmethods__ = frozenset({Name("m'quoted")})
+        with self.assertRaises(TypeError) as caught: C()
+        self.assertIn("abstract method 'm'quoted'", str(caught.exception))
+        C.__abstractmethods__ = frozenset({42})
+        with self.assertRaisesRegex(TypeError, 'sequence item 0: expected str'): C()
+        del C.__abstractmethods__
+        C()
+
 if __name__ == '__main__': unittest.main()

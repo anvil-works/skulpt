@@ -606,6 +606,7 @@ retaining generated classes. These APIs require host WeakRef support; ordinary
 class creation remains available on older hosts.
 
 Thirty-one complete upstream `test_abc.py` TestABC methods pass in both runtimes,
-with only assertion/subTest harness helpers adapted. inspect.isabstract-dependent
+with only assertion/subTest harness helpers adapted, plus a CPython-checked native
+lookup/Unicode diagnostic regression (32 focused cases). inspect.isabstract-dependent
 methods remain deferred. This layer supplies the foundation for Callable and
 compiler-produced generator/coroutine/async iterator ABC protocols.

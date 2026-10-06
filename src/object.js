@@ -26,14 +26,16 @@ Sk.builtin.object = Sk.abstr.buildNativeClass("object", {
             }
             // Objects/typeobject.c: object_new checks Py_TPFLAGS_IS_ABSTRACT.
             if (this.constructor.$isAbstract) {
-                const names = Sk.misceval.arrayFromIterable(Sk.abstr.gattr(this.constructor,
-                                                                           new Sk.builtin.str("__abstractmethods__")));
+                const abstract = Sk.builtin.type.$getAbstractMethods.call(this.constructor);
+                const names = Sk.misceval.arrayFromIterable(abstract);
                 names.sort((a, b) => Sk.misceval.richCompareBool(a, b, "Lt") ? -1 :
                     Sk.misceval.richCompareBool(a, b, "Gt") ? 1 : 0);
-                const joined = names.map(name => Sk.misceval.objectRepr(name)).join(", ");
+                const separator = new Sk.builtin.str("', '");
+                const join = separator.tp$getattr(new Sk.builtin.str("join"));
+                const joined = Sk.misceval.callsimArray(join, [new Sk.builtin.list(names)]).v;
                 throw new Sk.builtin.TypeError("Can't instantiate abstract class " +
                     this.tp$name + " without an implementation for abstract method" +
-                    (names.length > 1 ? "s " : " ") + joined);
+                    (names.length > 1 ? "s '" : " '") + joined + "'");
             }
             return new this.constructor();
         },
