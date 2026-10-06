@@ -720,7 +720,7 @@ Compiler.prototype.cawait = function (e, value, context) {
 };
 
 Compiler.prototype.cyieldfrom = function (e, awaitIterator) {
-    if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
+    if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock && !((this.flags & 0x2000) && this.u.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock && awaitIterator !== undefined)) {
         throw new Sk.builtin.SyntaxError("'yield' outside function", this.filename, e.lineno);
     }
     var afterIter = this.newBlock("after iter");
@@ -1448,6 +1448,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
     }
     if (unit.ste.needsClassClosure) cellvars.add("__class__");
     let flags = (optimized ? 3 : 0) | (this.flags & 0x1fe0000); // CO_OPTIMIZED | CO_NEWLOCALS
+    if (!optimized && unit.ste.blockType === constants.ModuleBlock && unit.ste.coroutine) flags |= 0x80;
     if (optimized) {
         if (unit.ste.isNested) flags |= 0x10;
         if (unit.ste.coroutine && unit.ste.generator) flags |= 0x200;
@@ -3253,7 +3254,12 @@ Compiler.prototype.cmod = function (mod) {
     //this.u.suffixCode = "}}});";
 
     // New Code:
-    this.u.switchCode = "while(true){try{";
+    this.u.switchCode = this.u.ste.coroutine ?
+        "if(!$waking){$gen=new Sk.builtin.generator(this instanceof Sk.builtin.func?this.func_code:" + modf +
+        ",this instanceof Sk.builtin.func?this.$name:new Sk.builtin.str('<module>'),this instanceof Sk.builtin.func?this.$qualname:new Sk.builtin.str('<module>'),'coroutine');" +
+        "$gen.gi$setInitialSuspension((susp)=>$saveSuspension(susp," + JSON.stringify(this.filename) + ",$currLineNo,$currColNo));return new Sk.builtin.coroutine($gen);}"
+        : "";
+    this.u.switchCode += "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
     this.u.suffixCode = "}";
@@ -3276,7 +3282,7 @@ Compiler.prototype.cmod = function (mod) {
         case "Module":
         case "Interactive":
             this.cbody(mod.body);
-            out("return $loc;");
+            out(this.u.ste.coroutine ? "return Sk.builtin.none.none$;" : "return $loc;");
             break;
         case "Expression":
             out("return ", this.vexpr(mod.body), ";");
@@ -3314,7 +3320,7 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
     try {
         const ast = mode === "eval" ? Sk.parseExpression(source, filename)
             : mode === "single" ? Sk.parseInteractive(source, filename) : Sk.parseModule(source, filename);
-        const st = Sk.symboltable(ast, filename);
+        const st = Sk.symboltable(ast, filename, flags);
         c = new Compiler(filename, st, flags || 0, canSuspend, source, optimize);
         c.interactive = mode === "single";
         funcname = c.cmod(ast);

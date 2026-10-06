@@ -272,7 +272,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             if (this.func_code.$metadata && ["Module", "Interactive", "Expression"].includes(this.func_code.$metadata.scopeType)) {
                 this.$resolveArgs(posargs, kw);
                 return Sk.misceval.chain(this.func_code(this.func_globals), result =>
-                    this.func_code.$metadata.scopeType === "Expression" ? result : Sk.builtin.none.none$);
+                    this.func_code.$metadata.scopeType === "Expression" || this.func_code.$metadata.flags & 0x80 ? result : Sk.builtin.none.none$);
             }
 
             // Fast path for JS-native functions (which should be implemented
