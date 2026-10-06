@@ -806,7 +806,9 @@ SymbolTable.prototype.visitStmt = function (s) {
             VISIT_SEQ(this.visitStmt.bind(this), s.body);
             break;
 
+        case "TryStar":
         case "Try":
+            if (s._type === "TryStar" && !Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
             this.SEQStmt(s.body);
             this.visitExcepthandlers(s.handlers)
             this.SEQStmt(s.orelse);
@@ -926,6 +928,7 @@ SymbolTable.prototype.visitExpr = function (e) {
             break;
         case "Constant":
             break;
+        case "TemplateStr":
         case "TemplateStr":
             if (!(this.flags & 0x1000000)) throw new Sk.builtin.SyntaxError("TemplateStr is not supported by the Skulpt compiler", this.filename, e.lineno);
         case "JoinedStr":

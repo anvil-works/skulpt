@@ -412,3 +412,36 @@ when the generator has no local handler.
 As in _gen_throw/gen_send_ex2, delegation runs first; each generator chains its
 own handler only when its frame actually resumes with the resulting error.
 A delegate that handles injection does not acquire its outer generator's state.
+
+## Except-star compiler lowering
+
+`stu-dev/compiler/except-star` implements TryStar using codegen_try_star_except's
+ordered match/handler/error-accumulation stages and _PyExc_PrepReraiseStar's
+metadata comparison and leaf-identity projection. Naked matches are wrapped,
+partial groups invoke their actual split method, invalid catch types/group types
+and malformed split results are rejected, and reraised leaves preserve the
+original hierarchy while newly raised exceptions become siblings. None checks
+avoid invoking group truth/equality/hash protocols. Subgroups remain active
+during handler execution and suspension; targets and enclosing handled state
+are cleaned up on every exit. Except-star return and outward break/continue are
+rejected while nested loops and nested functions retain valid control flow.
+
+Try lowering is separated into except, except-star and finally emitters following
+CPython. Shared protected-block cleanup unwinds runtime catch targets on nonlocal
+exits, fixing ordinary try-body break/continue retaining a stale catch target.
+The entire 60-method CPython test_except_star module is retained unchanged, with
+only local subTest/fail harness adapters and the actual support mixin copied.
+Two unchanged test_grammar methods cover PEP 758 unparenthesized handler types;
+two deferred annotation methods rejoin their upstream fixture classes. Two
+CPython-checked regressions cover yielding handlers/error accumulation and
+normal/starred try-body nonlocal cleanup. All source/tests use CPython 3.14
+18ef0f0cb5278fa6583b753ffaaef7f46e416ab9. The existing EOFError builtin is exposed;
+BlockingIOError's OSError subclass identity is enabled for upstream hierarchy
+matching. Extended OSError errno/filename/characters_written behavior remains
+separate exception-runtime work. Python 2 rejects TryStar explicitly.
+
+Ordinary and starred matching share CHECK_EXC_MATCH-style complete tuple
+validation and native subtype matching, bypassing metaclass __instancecheck__.
+The unchanged upstream invalid-ordinary-matcher test is restored, and a
+CPython-checked regression covers metaclass overrides and raising BaseException
+itself (previously mistaken for a non-exception class).
