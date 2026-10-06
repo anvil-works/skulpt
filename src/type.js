@@ -131,11 +131,11 @@ function tp$new(args, kwargs) {
     bases = bases.sk$asarray();
     // type_new_get_bases rejects resolution in a direct type() call.
     for (const base of bases) {
-        if (Sk.builtin.checkClass(base)) continue;
+        if (Sk.builtin.checkClass(base)) {continue;}
         try {
             Sk.abstr.gattr(base, new Sk.builtin.str("__mro_entries__"));
         } catch (err) {
-            if (err instanceof Sk.builtin.AttributeError) continue;
+            if (err instanceof Sk.builtin.AttributeError) {continue;}
             throw err;
         }
         throw new Sk.builtin.TypeError("type() doesn't support MRO entry resolution; use types.new_class()");
@@ -250,7 +250,7 @@ function tp$new(args, kwargs) {
         classcell.$closure.__class__ = klass;
     }
 
-    if (originalBases.v.length) klass.sk$tuple_bases = originalBases;
+    if (originalBases.v.length) {klass.sk$tuple_bases = originalBases;}
     set_names(klass);
     init_subclass(klass, kwargs);
 
