@@ -468,6 +468,14 @@ class TestEvalNamespaces(unittest.TestCase):
         self.assertEqual(namespace["value"], 6)
         self.assertEqual(namespace["__final_res__"], 42)
 
+    def test_eval_uses_expression_grammar(self):
+        for source in ("1;", "*[1],", "a = 1", "1\n2"):
+            with self.assertRaises(SyntaxError):
+                compile(source, "probe", "eval")
+            with self.assertRaises(SyntaxError):
+                eval(source)
+        self.assertEqual(eval(compile("1, 2", "probe", "eval")), (1, 2))
+
 
 if __name__ == "__main__":
     unittest.main()

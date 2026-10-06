@@ -1214,8 +1214,13 @@ Sk.symboltable = function (ast, filename) {
     ret.top = ret.cur;
 
     //print(Sk.astDump(ast));
-    for (i = 0; i < ast.body.length; ++i) {
-        ret.visitStmt(ast.body[i]);
+    // CPython symtable_visit_mod distinguishes module suites from expressions.
+    if (ast._type === "Expression") {
+        ret.visitExpr(ast.body);
+    } else {
+        for (i = 0; i < ast.body.length; ++i) {
+            ret.visitStmt(ast.body[i]);
+        }
     }
 
     ret.exitBlock();
