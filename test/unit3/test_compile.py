@@ -631,6 +631,15 @@ class TestSpecifics(unittest.TestCase):
         # An implicit test for PyUnicode_FSDecoder().
         compile("42", FakePath("test_compile_pathlike"), "single")
 
+    def test_filename_string_identity(self):
+        class Filename(str):
+            pass
+        filename = Filename('example.py')
+        for path in [filename, FakePath(filename)]:
+            code = compile('pass', path, 'exec')
+            self.assertIs(code.co_filename, filename)
+            self.assertIs(type(code.co_filename), Filename)
+
     # CPython-checked filesystem conversion and generated-code regression.
     def test_filename_protocol_and_literal_quoting(self):
         for filename in ['quo\'te"\n\\file.py', b'caf\xc3\xa9.py', b'bad\xff.py',

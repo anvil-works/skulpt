@@ -736,8 +736,8 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
     constructor: function code(filename, compiled) {
         this.compiled = compiled;
         this.code = compiled.code;
-        this.filename = filename;
-        this.co_filename = new Sk.builtin.str(filename);
+        this.filename = filename.$jsstr();
+        this.co_filename = filename;
         this.mode = compiled.mode;
     },
     slots: {
@@ -780,9 +780,9 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (flags & ~mandatoryMask) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
-    source = compilerSource(source, filename, "compile");
+    source = compilerSource(source, filename.$jsstr(), "compile");
     mode = mode.$jsstr();
-    return new pyCode(filename, Sk.compile(source, filename, mode, true, Math.max(optimize, 0)));
+    return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0)));
 };
 
 // Objects/unicodeobject.c: PyUnicode_FSDecoder, via PyOS_FSPath.
@@ -797,11 +797,13 @@ function compileFilename(filename) {
             throw new Sk.builtin.TypeError("__fspath__ must return str or bytes, not " + Sk.abstr.typeName(filename));
         }
     }
-    const text = Sk.builtin.checkString(filename) ? filename.$jsstr() : decodeFilename(filename.v);
-    if (text.includes("\x00")) {
+    if (Sk.builtin.checkBytes(filename)) {
+        filename = new Sk.builtin.str(decodeFilename(filename.v));
+    }
+    if (filename.$jsstr().includes("\x00")) {
         throw new Sk.builtin.ValueError("embedded null character");
     }
-    return text;
+    return filename;
 }
 
 // Filesystem names use UTF-8 with surrogateescape. Invalid bytes remain
@@ -965,7 +967,7 @@ Sk.builtin.eval = function (source, globals, locals) {
         // Unicode eval sources also strip only ASCII spaces/tabs.
         let text = compilerSource(source, "<string>", "eval");
         if (!bytesSource) {text = text.replace(/^[ \t]+/, "");}
-        source = new pyCode("<string>", Sk.compile(text, "<string>", "eval", true));
+        source = new pyCode(new Sk.builtin.str("<string>"), Sk.compile(text, "<string>", "eval", true));
     }
     return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);
 };
