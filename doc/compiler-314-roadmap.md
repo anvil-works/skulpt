@@ -560,3 +560,26 @@ Twenty-three complete upstream methods from `test_typing.py`,
 compiler/substitution regressions, pass in both runtimes. Generic classes,
 Concatenate, Callable typing aliases, ForwardRef and serialization remain later
 work; string type arguments continue to raise an explicit unsupported error.
+
+### Generic class parameter scopes
+
+`stu-dev/compiler/generic-classes` creates the CPython parameter wrapper around
+base expressions and the class body, appends the implicit Generic base, and
+stores `__type_params__` before executing the body. Class/method/alias closures
+retain the declared parameters, while decorators evaluate outside the wrapper.
+Selective parameter mangling extends into base expressions and nested scopes;
+ordinary class mangling is restored on exit. Leading underscores are stripped
+from private class names, and context metadata stays off interned Python strings.
+
+The Generic runtime and user-defined `_GenericAlias` live in Python, with CPython
+collection, default preparation and substitution methods. They retain mutable
+alias metadata, specialization defaults, variadic parameters and original class
+tracking. The compiler caches the Generic reference and constructs its alias
+directly, as CPython's intrinsic does. Type-level `__type_params__` lookup is local
+to the class; conflicting bases report CPython's distinct remaining MRO heads.
+
+Sixty-three upstream `test_type_params.py` methods pass (61 bodies unchanged, two
+with only their local make_base import path redirected), plus three CPython-checked
+regressions for specialization, definition ordering, alias metadata and mangling.
+All 66 pass both interpreters. Callable/Concatenate, ForwardRef, annotation formats
+and serialization remain separate compiler-adjacent work.
