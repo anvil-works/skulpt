@@ -92,7 +92,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
                 }
                 this.$traceback = value;
                 this.$tracebackFrame = undefined;
-                if (value === Sk.builtin.none.none$) this.traceback = [];
+                if (value === Sk.builtin.none.none$) {this.traceback = [];}
             },
         },
     },
