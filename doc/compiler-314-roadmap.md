@@ -585,3 +585,12 @@ with only their local make_base import path redirected), plus four CPython-check
 regressions for specialization, definition ordering, alias metadata, mangling and
 reconstructing a class body from its closure cells. All 67 pass both interpreters. Callable/Concatenate, ForwardRef, annotation formats
 and serialization remain separate compiler-adjacent work.
+
+### Concatenate parameter expressions
+
+`stu-dev/compiler/concatenate` ports CPython's special-form and Concatenate alias
+classes, including cached subscription, nested parameter substitution and final/
+non-iterable behavior. ParamSpec substitution recognizes Concatenate expressions,
+including those created inside generic classes and lazy type aliases. Four
+upstream ConcatenateTests methods are unchanged, plus one CPython-checked compiler
+regression. Callable-dependent methods follow with Callable support.
