@@ -454,16 +454,8 @@ Sk.builtin.frozenset = Sk.abstr.buildNativeClass("frozenset", {
         tp$doc:
             "frozenset() -> empty frozenset object\nfrozenset(iterable) -> frozenset object\n\nBuild an immutable unordered collection of unique elements.",
         tp$hash() {
-            // numbers taken from Cpython 2.7 hash function
-            let hash = 1927868237;
             const entries = this.sk$asarray();
-            hash *= entries.length + 1;
-            for (let i = 0; i < entries.length; i++) {
-                const h = Sk.abstr.objectHash(entries[i]);
-                hash ^= (h ^ (h << 16) ^ 89869747) * 3644798167;
-            }
-            hash = hash * 69069 + 907133923;
-            return hash;
+            return Sk.builtin.frozenset.$hashValues(entries.map(entry => Sk.abstr.objectHash(entry)));
         },
         /**
          * @param {Array} args
@@ -533,6 +525,14 @@ Sk.builtin.frozenset = Sk.abstr.buildNativeClass("frozenset", {
 });
 
 Sk.builtin.frozenset.$emptyset = new Sk.builtin.frozenset([]);
+
+// Shared with union_hash, which must use the builder's stored entry hashes.
+Sk.builtin.frozenset.$hashValues = function (hashes) {
+    // Numbers taken from CPython 2.7's frozenset hash function.
+    let hash = 1927868237 * (hashes.length + 1);
+    for (const h of hashes) hash ^= (h ^ (h << 16) ^ 89869747) * 3644798167;
+    return hash * 69069 + 907133923;
+};
 
 Sk.exportSymbol("Sk.builtin.frozenset", Sk.builtin.frozenset);
 

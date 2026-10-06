@@ -467,3 +467,7 @@ UnionTests methods cover unhashable metaclasses, changing hashability and custom
 instance/subclass checks; three CPython-checked tests select operator, metadata,
 ordering, generic alias and invalid cases from the same suite. The broader typing
 library, ForwardRef, substitution and serialization remain separate work.
+
+The type-union review added a metaclass regression: freezing, hashing and comparing
+unions retain the builder's original entry hashes, and parameter inspection skips
+bare classes as `_Py_make_parameters` does. Nine focused cases pass both runtimes.
