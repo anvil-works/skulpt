@@ -1,6 +1,7 @@
 """Compiler-created typing objects; further typing APIs remain unimplemented."""
 from _typing import TypeAliasType, TypeVar, NoDefault, ParamSpec, ParamSpecArgs, ParamSpecKwargs, TypeVarTuple, Unpack, _UnpackGenericAlias, _type_repr as _native_type_repr
 from types import GenericAlias, UnionType
+import functools
 Union = UnionType
 
 def get_args(tp):
@@ -12,6 +13,42 @@ def get_origin(tp):
     if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias, ParamSpecArgs, ParamSpecKwargs)):
         return tp.__origin__
     return None
+
+# CPython caching preserves specialization identity while allowing unhashable arguments.
+_cleanups = []
+_caches = {}
+
+
+def _tp_cache(func=None, /, *, typed=False):
+    """Internal wrapper caching __getitem__ of generic types.
+
+    For non-hashable arguments, the original function is used as a fallback.
+    """
+    def decorator(func):
+        # The callback 'inner' references the newly created lru_cache
+        # indirectly by performing a lookup in the global '_caches' dictionary.
+        # This breaks a reference that can be problematic when combined with
+        # C API extensions that leak references to types. See GH-98253.
+
+        cache = functools.lru_cache(typed=typed)(func)
+        _caches[func] = cache
+        _cleanups.append(cache.cache_clear)
+        del cache
+
+        @functools.wraps(func)
+        def inner(*args, **kwds):
+            try:
+                return _caches[func](*args, **kwds)
+            except TypeError:
+                pass  # All real errors (not unhashable args) are raised below.
+            return func(*args, **kwds)
+        return inner
+
+    if func is not None:
+        return decorator(func)
+
+    return decorator
+
 
 # Helpers invoked by native parameters, following CPython Lib/typing.py.
 def _type_check(arg, message):
@@ -214,6 +251,7 @@ def _check_generic_specialization(cls, arguments):
                         f" for {cls}; actual {actual_len}, expected {expect_val}")
 
 
+@_tp_cache
 def _generic_class_getitem(cls, args):
     """Parameterizes a generic class.
 
@@ -366,6 +404,7 @@ class _GenericAlias(_BaseGenericAlias, _root=True):
         if not name:
             self.__module__ = origin.__module__
 
+    @_tp_cache
     def __getitem__(self, args):
         if self.__origin__ is Generic:
             raise TypeError(f"Cannot subscript already-subscripted {self}")
