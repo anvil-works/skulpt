@@ -261,6 +261,11 @@ class FunctionPropertiesTest(FuncAttrsTest):
         f.__code__ = g.__code__
         self.assertIs(f.__defaults__, defaults)
         self.assertEqual(f(), 42)
+        constructed = types.FunctionType(compile('1', '<constructed>', 'eval'), {}, argdefs=defaults)
+        self.assertEqual(constructed(), 1)
+        constructed.__code__ = g.__code__
+        self.assertIs(constructed.__defaults__, defaults)
+        self.assertEqual(constructed(), 42)
 
     def test_module_code_uses_captured_builtins(self):
         builtins = {'value': 1}

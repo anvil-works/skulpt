@@ -80,6 +80,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             func.func_defaults = defaults;
             func.$defaults = defaults === none ? null : defaults.v;
             func.func_kwdefaults = kwdefaults === none ? null : kwdefaults;
+            func.memoised = true;
             return func;
         },
         tp$descr_get(obj, objtype) {
