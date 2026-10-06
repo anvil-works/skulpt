@@ -333,5 +333,16 @@ class ModuleTests(unittest.TestCase):
         import builtins
         self.assertIsInstance(repr(vars(builtins)), str)
 
+    def test_module_attribute_names_outside_identifier_syntax(self):
+        module = ModuleType('example')
+        module.__dict__['$value'] = 42
+        self.assertEqual(getattr(module, '$value'), 42)
+        setattr(module, '$other', 99)
+        self.assertEqual(module.__dict__['$other'], 99)
+        self.assertEqual(getattr(module, '$other'), 99)
+        delattr(module, '$value')
+        self.assertNotIn('$value', module.__dict__)
+        self.assertRaises(AttributeError, delattr, module, '$value')
+
 if __name__ == '__main__':
     unittest.main()
