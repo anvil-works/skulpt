@@ -255,6 +255,29 @@ class SysExceptionInfoTests(unittest.TestCase):
 
 
 class TracebackRegression(unittest.TestCase):
+    def test_throw_context_uses_local_handler_not_the_caller(self):
+        def plain(): yield
+        def protected():
+            try: yield
+            finally: pass
+        def local():
+            try: raise KeyError('local')
+            except KeyError as error: yield error
+        for factory in (plain, protected, local):
+            for previous in (None, OSError('previous')):
+                it = factory()
+                own = next(it)
+                injected = TypeError('injected')
+                injected.__context__ = previous
+                try:
+                    raise ValueError('caller')
+                except ValueError:
+                    try:
+                        it.throw(injected)
+                    except TypeError as caught:
+                        self.assertIs(caught, injected)
+                        self.assertIs(caught.__context__, own if factory is local else previous)
+
     def test_throwing_existing_error_adds_the_injection_location(self):
         saved = ValueError('saved')
         def g():
