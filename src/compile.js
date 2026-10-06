@@ -1345,7 +1345,7 @@ Compiler.prototype.outputAllUnits = function () {
             ret += frame;
             ret += unit.varDeclsCode;
             if (unit.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock) {
-                ret += "$loc=Sk.misceval.namespaceToJs($loc);$gbl=Sk.misceval.namespaceToJs($gbl,true);Sk.globals=$gbl;if(!$waking){$builtins=$gbl.__builtins__===undefined?Sk.misceval.namespaceDict(Sk.builtins):Sk.misceval.getBuiltins($gbl);}";
+                ret += "$loc=Sk.misceval.namespaceToJs($loc);$gbl=Sk.misceval.namespaceToJs($gbl,true);Sk.globals=$gbl;if(!$waking){$builtins=this instanceof Sk.builtin.func?this.func_builtins:($gbl.__builtins__===undefined?Sk.misceval.namespaceDict(Sk.builtins):Sk.misceval.getBuiltins($gbl));}";
             }
             ret += unit.switchCode;
         }
