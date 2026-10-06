@@ -72,38 +72,9 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         },
         tp$as_sequence_or_mapping: true,
         mp$subscript(item) {
-            if (this.$params === null) {
-                this.mk$params();
-            }
-            const nparams = this.$params.sq$length();
-            if (nparams === 0) {
-                throw new Sk.builtin.TypeError("There are no type variables left in " + Sk.misceval.objectRepr(this));
-            }
-
-            /**@todo the following only makes sense when we do typing*/
-
-            // const is_tuple = item instanceof Sk.builtin.tuple;
-            // if (is_tuple) {
-            //     const nitems = item.sq$length();
-            //     if (nitems !== nparams) {
-            //         throw new Sk.builtin.TypeError("Too " + (nitems > nparams ? "many" : "few") + " arguments for " + Sk.misceval.objectRepr(this));
-            //     }
-            // }
-            // const args = this.$args.v;
-            // const new_args = [];
-            // args.forEach((arg) => {
-            //     if (this.is$typevar(arg)) {
-            //         const iparam = this.tuple$index(this.$params.v, arg);
-            //         if (is_tuple) {
-            //             arg = item.v[iparam];
-            //         } else {
-            //             arg = item;
-            //         }
-            //     }
-            //     new_args.push(arg);
-            // });
-            // const res = new Sk.builtin.GenericAlias(this.$origin, new Sk.builtin.tuple(new_args));
-            // return res;
+            if (this.$params === null) this.mk$params();
+            return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(this, this.$args, this.$params, item),
+                args => new Sk.builtin.GenericAlias(this.$origin, args));
         },
     },
     methods: {
@@ -150,30 +121,7 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
     proto: {
         // functions here match similar functions in Objects/genericaliasobject.c
         mk$params() {
-            const arg_arr = this.$args.v;
-            const params = [];
-            arg_arr.forEach((t) => {
-                if (this.is$typevar(t)) {
-                    if (this.tuple$index(params, t) < 0) {
-                        params.push(t);
-                    }
-                }
-            });
-            this.$params = new Sk.builtin.tuple(params);
-        },
-        tuple$index(tup_arr, item) {
-            return tup_arr.indexOf(item);
-        },
-        is$typevar(type) {
-            if (type.tp$name !== "TypeVar") {
-                return false;
-            }
-            const module = Sk.abstr.lookupSpecial(type, Sk.builtin.str.$module);
-            if (module === undefined) {
-                // throw some sort of error but all objects have __module_ so we shouldn't be here.
-                throw Sk.builtin.RuntimeError("found object withought a __module__");
-            }
-            return module.toString() === "typing";
+            this.$params = Sk.builtin.makeTypeParameters(this.$args);
         },
         ga$repr(item) {
             if (item === Sk.builtin.Ellipsis) {
@@ -208,3 +156,70 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         ],
     },
 });
+
+// Objects/genericaliasobject.c: _Py_make_parameters.
+Sk.builtin.makeTypeParameters = function (args) {
+    const parameters = [];
+    for (const arg of args.v) {
+        if (Sk.builtin.checkClass(arg)) continue;
+        if (Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_subst__")) !== undefined) {
+            if (!parameters.includes(arg)) parameters.push(arg);
+            continue;
+        }
+        let nested = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__parameters__"));
+        if (nested === undefined && (arg instanceof Sk.builtin.tuple || arg instanceof Sk.builtin.list)) {
+            nested = Sk.builtin.makeTypeParameters(arg);
+        }
+        if (nested instanceof Sk.builtin.tuple) {
+            for (const param of nested.v) if (!parameters.includes(param)) parameters.push(param);
+        }
+    }
+    return new Sk.builtin.tuple(parameters);
+};
+
+// _Py_subs_parameters: prepare defaults, then substitute in argument order.
+Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
+    if (!parameters.v.length) throw new Sk.builtin.TypeError(Sk.misceval.objectRepr(self) + " is not a generic class");
+    let items = item instanceof Sk.builtin.tuple ? item : new Sk.builtin.tuple([item]);
+    let result;
+    for (const param of parameters.v) {
+        result = Sk.misceval.chain(result, () => {
+            const prepare = Sk.abstr.lookupAttr(param, new Sk.builtin.str("__typing_prepare_subst__"));
+            if (prepare !== undefined && !Sk.builtin.checkNone(prepare)) {
+                return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(prepare, [self, items]), value => { items = value; });
+            }
+        });
+    }
+    return Sk.misceval.chain(result, () => {
+        const values = items instanceof Sk.builtin.tuple ? items.v : [items];
+        if (values.length !== parameters.v.length) {
+            throw new Sk.builtin.TypeError("Too " + (values.length > parameters.v.length ? "many" : "few") + " arguments for " +
+                Sk.misceval.objectRepr(self) + "; actual " + values.length + ", expected " + parameters.v.length);
+        }
+        const substituted = [];
+        let pending;
+        for (const arg of args.v) {
+            pending = Sk.misceval.chain(pending, () => {
+                if (Sk.builtin.checkClass(arg)) return arg;
+                if (arg instanceof Sk.builtin.tuple || arg instanceof Sk.builtin.list) {
+                    return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(self, arg, parameters, items),
+                        value => arg instanceof Sk.builtin.list ? new Sk.builtin.list(value.v) : value);
+                }
+                const subst = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_subst__"));
+                if (subst !== undefined) {
+                    const index = parameters.v.indexOf(arg);
+                    if (index < 0) throw new Sk.builtin.TypeError("stale __parameters__ in " + Sk.misceval.objectRepr(self));
+                    return Sk.misceval.callsimOrSuspendArray(subst, [values[index]]);
+                }
+                const nested = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__parameters__"));
+                if (!(nested instanceof Sk.builtin.tuple) || !nested.v.length) return arg;
+                const replacements = nested.v.map(param => {
+                    const index = parameters.v.indexOf(param);
+                    return index < 0 ? param : values[index];
+                });
+                return Sk.abstr.objectGetItem(arg, new Sk.builtin.tuple(replacements), true);
+            }, value => { substituted.push(value); });
+        }
+        return Sk.misceval.chain(pending, () => new Sk.builtin.tuple(substituted));
+    });
+};

@@ -34,8 +34,10 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
             return op === "Eq" ? equal : !equal;
         },
         tp$as_sequence_or_mapping: true,
-        mp$subscript() {
-            throw new Sk.builtin.TypeError("There are no type variables left in " + Sk.misceval.objectRepr(this));
+        mp$subscript(item) {
+            if (!this.$params) this.$params = Sk.builtin.makeTypeParameters(this.$args);
+            return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(this, this.$args, this.$params, item),
+                args => Sk.builtin.makeUnion(args.v, true));
         },
     },
     classmethods: {
@@ -49,14 +51,7 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
     getsets: {
         __args__: { $get() { return this.$args; } },
         __parameters__: { $get() {
-            for (const arg of this.$args.v) {
-                if (Sk.builtin.checkClass(arg)) {continue;}
-                const parameters = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__parameters__"));
-                if (parameters && Sk.misceval.isTrue(parameters)) {
-                    throw new Sk.builtin.NotImplementedError("union type-parameter substitution is not yet supported");
-                }
-            }
-            return new Sk.builtin.tuple([]);
+            return this.$params || (this.$params = Sk.builtin.makeTypeParameters(this.$args));
         } },
         __origin__: { $get() { return Sk.builtin.UnionType; } },
         __name__: { $get() { return new Sk.builtin.str("Union"); } },
