@@ -628,3 +628,17 @@ expressions instead of validating them as individual type arguments.
 Seven complete upstream test_collections methods and their validation helpers
 are unchanged, plus a CPython-checked alias/subclass substitution regression.
 Awaitable's upstream GC-dependent cleanup test remains deferred.
+
+### Callable aliases and parameter-expression substitution
+
+`stu-dev/compiler/callable` ports CPython's typing Callable alias classes and
+special generic alias base, with Any/NoReturn, List and Tuple as direct prerequisites
+of the unchanged Callable tests. It restores the CPython Callable argument
+flattening branch, alias MRO behavior and get_args unflattening contract for
+both typing.Callable and collections.abc.Callable. Subscriptions preserve
+cached mutable metadata and nested ParamSpec/Concatenate/TypeVarTuple expressions.
+
+Eighteen complete BaseCallableTests methods run against both alias variants,
+plus CPython's consistency method and one compiler/type-alias regression (38
+cases). The complete Concatenate valid_uses method is restored. Type-hint evaluation, weakref and pickle
+methods remain deferred with those runtime facilities.

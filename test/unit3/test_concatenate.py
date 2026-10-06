@@ -1,8 +1,8 @@
 # CPython 3.14 Lib/test/test_typing.py at 18ef0f0cb52.
-# Four complete ConcatenateTests methods unchanged. Callable-dependent valid_uses
-# follows with Callable support. Harness subTest is adapted for Skulpt.
+# Five complete ConcatenateTests methods unchanged. Harness subTest is adapted for Skulpt.
 import unittest
-from typing import Concatenate, ParamSpec, TypeVar, Union, get_args, get_origin
+import collections.abc
+from typing import Callable, Concatenate, ParamSpec, TypeVar, Union, get_args, get_origin
 from test_type_parameters import SubTest
 
 class ConcatenateTests(unittest.TestCase):
@@ -54,6 +54,25 @@ class ConcatenateTests(unittest.TestCase):
         self.assertEqual(C[[]], (int,))
         self.assertEqual(C[Concatenate[str, P2]], Concatenate[int, str, P2])
         self.assertEqual(C[...], Concatenate[int, ...])
+
+
+    def test_valid_uses(self):
+        P = ParamSpec('P')
+        T = TypeVar('T')
+        C1 = Callable[Concatenate[int, P], int]
+        self.assertEqual(C1.__args__, (Concatenate[int, P], int))
+        self.assertEqual(C1.__parameters__, (P,))
+        C2 = Callable[Concatenate[int, T, P], T]
+        self.assertEqual(C2.__args__, (Concatenate[int, T, P], T))
+        self.assertEqual(C2.__parameters__, (T, P))
+
+        # Test collections.abc.Callable too.
+        C3 = collections.abc.Callable[Concatenate[int, P], int]
+        self.assertEqual(C3.__args__, (Concatenate[int, P], int))
+        self.assertEqual(C3.__parameters__, (P,))
+        C4 = collections.abc.Callable[Concatenate[int, T, P], T]
+        self.assertEqual(C4.__args__, (Concatenate[int, T, P], T))
+        self.assertEqual(C4.__parameters__, (T, P))
 
 
 class ConcatenateRegressions(unittest.TestCase):
