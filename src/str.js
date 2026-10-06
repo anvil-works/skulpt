@@ -240,6 +240,9 @@ Sk.builtin.str = Sk.abstr.buildNativeClass("str", {
         },
         sq$concat(other) {
             if (!(other instanceof Sk.builtin.str)) {
+                if (Sk.__future__.python3) {
+                    throw new Sk.builtin.TypeError('can only concatenate str (not "' + other.tp$name + '") to str');
+                }
                 throw new Sk.builtin.TypeError("cannot concatenate 'str' and '" + Sk.abstr.typeName(other) + "' objects");
             }
             return new Sk.builtin.str(this.v + other.v);
