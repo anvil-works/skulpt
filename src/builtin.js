@@ -1335,6 +1335,13 @@ Sk.builtin.memoryview = function memoryview() {
     throw new Sk.builtin.NotImplementedError("memoryview is not yet implemented");
 };
 
+// Python/bltinmodule.c: builtin_aiter / builtin_anext_impl.
+Sk.builtin.aiter = function (value) { return Sk.builtin.getAsyncIterator(value, true); };
+Sk.builtin.anext = function (iterator, defaultValue) {
+    return Sk.misceval.chain(Sk.builtin.getAsyncNext(iterator), awaitable =>
+        defaultValue === undefined ? awaitable : new Sk.builtin.anextawaitable(awaitable, defaultValue));
+};
+
 Sk.builtin.next_ = function next_(iter, default_) {
     if (!iter.tp$iternext) {
         throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(iter) + "' object is not an iterator");
