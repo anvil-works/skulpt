@@ -4,12 +4,16 @@ const load = require("../support/run/require-skulpt").requireSkulpt;
 load(false);
 const events = [];
 Sk.builtins.suspend_probe = new Sk.builtin.func(function (phase) {
+    const handled = Sk.misceval.getException();
+    if (phase.v === "body") assert.strictEqual(handled, undefined);
+    else assert(handled instanceof (phase.v === "throw" ? Sk.builtin.ValueError : Sk.builtin.GeneratorExit));
     events.push("start " + phase.v);
     const suspension = new Sk.misceval.Suspension();
     suspension.data = { type: "generator test" };
     suspension.resume = () => {
         assert.strictEqual(Sk.globals.g.gi$running, true);
         assert.strictEqual(Sk.globals.child.gi$running, true);
+        assert.strictEqual(Sk.misceval.getException(), handled);
         events.push("finish " + phase.v);
         return Sk.builtin.none.none$;
     };
@@ -41,6 +45,7 @@ assert list(g) == []
 `;
 let result = Sk.importMainWithBody("<generator suspension test>", false, source, true);
 while (result instanceof Sk.misceval.Suspension) {
+    assert.strictEqual(Sk.misceval.getException(), undefined);
     assert.strictEqual(Sk.globals.g.gi$running, true);
     assert.throws(() => Sk.globals.g.tp$iternext(true), (e) => e instanceof Sk.builtin.ValueError);
     result = result.resume();

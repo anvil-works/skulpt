@@ -28,6 +28,13 @@ var $builtinmodule = function (name) {
      */
     sys.maxsize = new Sk.builtin.int_(Math.pow(2,53)-1);
 
+    if (Sk.__future__.python3) {
+        sys.exception = new Sk.builtin.func(function () {
+            Sk.abstr.checkArgsLen("exception", arguments, 0, 0);
+            return Sk.misceval.getException() || Sk.builtin.none.none$;
+        });
+    }
+
     sys.modules = Sk.sysmodules;
 
     sys.path = Sk.realsyspath;
