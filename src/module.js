@@ -65,6 +65,50 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
         },
     },
     getsets: {
+        // moduleobject.c: module annotation cache lives in the module dict.
+        __annotate__: {
+            $get() {
+                if (this.$d.__annotate__ === undefined) this.$d.__annotate__ = Sk.builtin.none.none$;
+                return this.$d.__annotate__;
+            },
+            $set(value) {
+                if (value === undefined) throw new Sk.builtin.TypeError("cannot delete __annotate__ attribute");
+                if (!Sk.builtin.checkNone(value) && !Sk.builtin.checkCallable(value)) {
+                    throw new Sk.builtin.TypeError("__annotate__ must be callable or None");
+                }
+                this.$d.__annotate__ = value;
+                if (!Sk.builtin.checkNone(value) && this.$d.__annotations__ !== undefined) delete this.$d.__annotations__;
+            },
+        },
+        __annotations__: {
+            $get() {
+                if (this.$d.__annotations__ !== undefined) return this.$d.__annotations__;
+                const annotate = this.$d.__annotate__;
+                const result = annotate !== undefined && Sk.builtin.checkCallable(annotate)
+                    ? Sk.misceval.callsimOrSuspendArray(annotate, [new Sk.builtin.int_(1)]) : new Sk.builtin.dict([]);
+                return Sk.misceval.chain(result, result => {
+                    if (!(result instanceof Sk.builtin.dict)) {
+                        throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
+                    }
+                    const spec = this.$d.__spec__;
+                    const initializing = spec !== undefined && !Sk.builtin.checkNone(spec)
+                        ? spec.tp$getattr(new Sk.builtin.str("_initializing")) : undefined;
+                    if (!this.$initializing && (initializing === undefined || !Sk.misceval.isTrue(initializing))) {
+                        this.$d.__annotations__ = result;
+                    }
+                    return result;
+                });
+            },
+            $set(value) {
+                if (value === undefined) {
+                    if (this.$d.__annotations__ === undefined) throw new Sk.builtin.AttributeError("__annotations__");
+                    delete this.$d.__annotations__;
+                } else {
+                    this.$d.__annotations__ = value;
+                }
+                if (this.$d.__annotate__ !== undefined) delete this.$d.__annotate__;
+            },
+        },
         __dict__: {
             $get() {
                 return Sk.misceval.namespaceDict(this.$d);
