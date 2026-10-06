@@ -2668,7 +2668,7 @@ Compiler.prototype.cclass = function (s) {
     this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||this.func_globals,$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
     const needsClassClosure = this.u.ste.needsClassClosure;
     const needsClassdict = this.u.ste.needsClassdict;
-    if (needsClassClosure || needsClassdict) {
+    if (needsClassClosure || needsClassdict || this.u.ste.hasConditionalAnnotations) {
         this.u.prefixCode += "var $classcell={__class__:undefined,__classdict__:undefined};";
     }
     this.u.switchCode += "return (function $" + s.name + "$_closure($cell){";
