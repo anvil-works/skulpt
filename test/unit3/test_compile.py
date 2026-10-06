@@ -7,6 +7,23 @@ import types
 # Global fixture from CPython test_builtin.py.
 A_GLOBAL_VALUE = 123
 
+class FakePath:
+    """Simple implementation of the path protocol.
+    """
+    def __init__(self, path):
+        self.path = path
+
+    def __repr__(self):
+        return f'<FakePath {self.path!r}>'
+
+    def __fspath__(self):
+        if (isinstance(self.path, BaseException) or
+            isinstance(self.path, type) and
+                issubclass(self.path, BaseException)):
+            raise self.path
+        else:
+            return self.path
+
 class TestSpecifics(unittest.TestCase):
     def test_exec_with_general_mapping_for_locals(self):
 
@@ -587,6 +604,58 @@ class TestSpecifics(unittest.TestCase):
         self.assertEqual(calls, ['value', 'len'])
         with self.assertRaisesRegex(ValueError, 'lookup failure'):
             locals_map['h']()
+
+    def test_compile_filename(self):
+        for filename in 'file.py', b'file.py':
+            code = compile('pass', filename, 'exec')
+            self.assertEqual(code.co_filename, 'file.py')
+        # Buffer filename rejection awaits bytearray/memoryview fixtures.
+        self.assertRaises(TypeError, compile, 'pass', list(b'file.py'), 'exec')
+
+    def test_compile_filename_refleak(self):
+        # Regression tests for reference leak in PyUnicode_FSDecoder.
+        # See https://github.com/python/cpython/issues/139748.
+        mortal_str = 'this is a mortal string'
+        # check error path when 'mode' AC conversion failed
+        self.assertRaises(TypeError, compile, b'', mortal_str, mode=1234)
+        # check error path when 'optimize' AC conversion failed
+        self.assertRaises(OverflowError, compile, b'', mortal_str,
+                          'exec', optimize=1 << 1000)
+        # check error path when 'dont_inherit' AC conversion failed
+        class EvilBool:
+            def __bool__(self): raise ValueError
+        self.assertRaises(ValueError, compile, b'', mortal_str,
+                          'exec', dont_inherit=EvilBool())
+
+    def test_path_like_objects(self):
+        # An implicit test for PyUnicode_FSDecoder().
+        compile("42", FakePath("test_compile_pathlike"), "single")
+
+    # CPython-checked filesystem conversion and generated-code regression.
+    def test_filename_protocol_and_literal_quoting(self):
+        for filename in ['quo\'te"\n\\file.py', b'caf\xc3\xa9.py', b'bad\xff.py',
+                         b'bad\xed\xa0\x80.py', b'\xef\xbb\xbf.py', b'\xf0\x9f\x90\x8d.py']:
+            code = compile('def f(): return 42\ndef g(): yield f()\nclass C: value = f()\nresult = [x for x in g()]', filename, 'exec')
+            namespace = {}
+            exec(code, namespace)
+            self.assertEqual(namespace['result'], [42])
+            self.assertEqual(namespace['C'].value, 42)
+        self.assertEqual(compile('pass', b'caf\xc3\xa9.py', 'exec').co_filename, 'café.py')
+        self.assertEqual(compile('pass', b'bad\xff.py', 'exec').co_filename, 'bad\udcff.py')
+        self.assertEqual(compile('pass', b'bad\xed\xa0\x80.py', 'exec').co_filename, 'bad\udced\udca0\udc80.py')
+        self.assertEqual(compile('pass', b'\xef\xbb\xbf.py', 'exec').co_filename, '\ufeff.py')
+        self.assertEqual(compile('pass', FakePath(b'file.py'), 'exec').co_filename, 'file.py')
+        for value in ['a\x00.py', b'a\x00.py']:
+            self.assertRaises(ValueError, compile, 'pass', value, 'exec')
+        self.assertRaises(TypeError, compile, 'pass', FakePath(123), 'exec')
+        self.assertRaises(ValueError, compile, 'pass', FakePath(ValueError), 'exec')
+        class InstanceOnly:
+            pass
+        path = InstanceOnly()
+        path.__fspath__ = lambda: 'file.py'
+        self.assertRaises(TypeError, compile, 'pass', path, 'exec')
+        code = compile('def f(): raise ValueError("expected")\nf()', 'quo\'te"\nfile.py', 'exec')
+        self.assertRaisesRegex(ValueError, 'expected', exec, code, {})
 
 if __name__ == "__main__":
     unittest.main()

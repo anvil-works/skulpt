@@ -737,6 +737,7 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
         this.compiled = compiled;
         this.code = compiled.code;
         this.filename = filename;
+        this.co_filename = new Sk.builtin.str(filename);
         this.mode = compiled.mode;
     },
     slots: {
@@ -747,10 +748,15 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
             return new Sk.builtin.str("<code object <module>, file " + this.filename + ">");
         },
     },
+    getsets: {
+        co_filename: {
+            $get() { return this.co_filename; },
+        },
+    },
 });
 
 Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, optimize) {
-    Sk.builtin.pyCheckType("filename", "str", Sk.builtin.checkString(filename));
+    filename = compileFilename(filename);
     Sk.builtin.pyCheckType("mode", "str", Sk.builtin.checkString(mode));
     // Python/bltinmodule.c: builtin_compile_impl validates integer options
     // before selecting the grammar and invoking the compiler.
@@ -774,11 +780,59 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (flags & ~mandatoryMask) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
-    filename = filename.$jsstr();
     source = compilerSource(source, filename, "compile");
     mode = mode.$jsstr();
     return new pyCode(filename, Sk.compile(source, filename, mode, true, Math.max(optimize, 0)));
 };
+
+// Objects/unicodeobject.c: PyUnicode_FSDecoder, via PyOS_FSPath.
+function compileFilename(filename) {
+    if (!Sk.builtin.checkString(filename) && !Sk.builtin.checkBytes(filename)) {
+        const fspath = Sk.abstr.lookupSpecial(filename, new Sk.builtin.str("__fspath__"));
+        if (fspath === undefined) {
+            throw new Sk.builtin.TypeError("expected str, bytes or os.PathLike object, not " + Sk.abstr.typeName(filename));
+        }
+        filename = Sk.misceval.callsimArray(fspath, []);
+        if (!Sk.builtin.checkString(filename) && !Sk.builtin.checkBytes(filename)) {
+            throw new Sk.builtin.TypeError("__fspath__ must return str or bytes, not " + Sk.abstr.typeName(filename));
+        }
+    }
+    const text = Sk.builtin.checkString(filename) ? filename.$jsstr() : decodeFilename(filename.v);
+    if (text.includes("\x00")) {
+        throw new Sk.builtin.ValueError("embedded null character");
+    }
+    return text;
+}
+
+// Filesystem names use UTF-8 with surrogateescape. Invalid bytes remain
+// individually recoverable as U+DC80..U+DCFF, rather than replacement chars.
+function decodeFilename(bytes) {
+    let text = "";
+    for (let i = 0; i < bytes.length;) {
+        const first = bytes[i];
+        if (first < 0x80) {
+            text += String.fromCharCode(first);
+            i++;
+            continue;
+        }
+        const size = first >= 0xc2 && first <= 0xdf ? 2 :
+            first >= 0xe0 && first <= 0xef ? 3 : first >= 0xf0 && first <= 0xf4 ? 4 : 0;
+        let valid = size > 0 && i + size <= bytes.length;
+        let codepoint = first & (0x7f >> size);
+        for (let j = 1; valid && j < size; j++) {
+            const next = bytes[i + j];
+            valid = next >= 0x80 && next <= 0xbf;
+            if (j === 1) {
+                valid = valid && !(first === 0xe0 && next < 0xa0) && !(first === 0xed && next >= 0xa0) &&
+                    !(first === 0xf0 && next < 0x90) && !(first === 0xf4 && next >= 0x90);
+            }
+            codepoint = (codepoint << 6) | (next & 0x3f);
+        }
+        text += valid ? String.fromCodePoint(codepoint) : String.fromCharCode(0xdc00 + first);
+        i += valid ? size : 1;
+    }
+    return text;
+}
 
 function compileIntOption(value, fallback) {
     if (value === undefined) {
