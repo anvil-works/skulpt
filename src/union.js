@@ -96,7 +96,7 @@ Sk.builtin.makeUnion = function (values, checked) {
         if (checked && !isUnionable(arg)) {
             // CPython's checked builder delegates non-unionable arguments to typing.
             return Sk.misceval.chain(Sk.builtin.callTypingFunction("_type_check", [arg,
-                new Sk.builtin.str("Union[arg, ...]: each arg must be a type.")]), addUnchecked);
+                                                                                   new Sk.builtin.str("Union[arg, ...]: each arg must be a type.")]), addUnchecked);
         }
         return addUnchecked(arg);
     }
