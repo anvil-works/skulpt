@@ -83,5 +83,6 @@ require("./generic_alias.js");
 require("./union_type.js");
 require("./builtindict.js");
 require("./constants.js");
+require("./exception_group.js");
 
 /* jshint ignore:end */
