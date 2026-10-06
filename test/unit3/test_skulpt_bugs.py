@@ -399,9 +399,13 @@ class TestExceptionProtocols(unittest.TestCase):
         class EnterOnly:
             def __enter__(self):
                 entered.append(True)
-        with self.assertRaises(TypeError):
-            with EnterOnly():
-                self.fail("body must not run")
+        class ExitOnly:
+            def __exit__(self, *args):
+                pass
+        for manager in (EnterOnly(), ExitOnly()):
+            with self.assertRaises(TypeError):
+                with manager:
+                    self.fail("body must not run")
         self.assertEqual(entered, [])
 
     def test_cause_constructor_must_return_exception(self):
