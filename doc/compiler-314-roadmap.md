@@ -238,3 +238,5 @@ The review follow-up caches each compiled root code object on its executable and
 The replacement follow-up marks refreshed call metadata ready immediately. Executing replacement module/expression code cannot refresh metadata again and discard retained defaults. The CPython-checked regression replaces code through an expression and back to an ordinary function; retained defaults still bind. The redundant single-argument makeClosure adapter is removed.
 
 Module/expression code entered through a function uses that function's captured builtin mapping, including after code replacement. Ordinary exec/import entry still resolves the execution namespace. A regression changes globals' builtin entry after capture and checks both constructed and replaced functions.
+
+Constructed root-code functions also mark constructor-refreshed metadata ready before their first call, preserving supplied defaults through execution and later replacement. The same replacement regression covers this constructor path.
