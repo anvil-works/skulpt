@@ -1061,6 +1061,9 @@ SymbolTable.prototype.visitNamedExpr = function (e) {
         const name = e.target.id;
         const mangled = Sk.fixReserved(Sk.mangleName(this.curClass, name).v);
         for (const scope of [this.cur].concat(this.stack.slice().reverse())) {
+            if (scope.annotationKind === "type alias") {
+                throw new Sk.builtin.SyntaxError("assignment expression within a comprehension cannot be used in a type alias", this.filename, e.lineno);
+            }
             if (scope.annotationScope) continue;
             const flags = scope.symFlags[mangled] || 0;
             if (scope.comprehension) {

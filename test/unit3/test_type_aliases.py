@@ -171,4 +171,30 @@ class TypeAliasScopes(unittest.TestCase):
             with self.assertRaises(AttributeError): setattr(alias, name, None)
             with self.assertRaises(AttributeError): delattr(alias, name)
 
+    def test_constant_evaluator_and_alias_scope_restrictions(self):
+        evaluator = TypeAliasType('A', int).evaluate_value
+        for format in (-1, 0, 1, 2, 3, 5, True): self.assertIs(evaluator(format), int)
+        self.assertEqual(evaluator(4), 'int')
+        self.assertEqual(TypeAliasType('A', (int, str)).evaluate_value(4), '(int, str)')
+        self.assertEqual(TypeAliasType('A', type(None)).evaluate_value(4), 'None')
+        class Index:
+            def __index__(self): return 1
+        self.assertIs(evaluator(Index()), int)
+        for args in ((), (1, 2), (1.0,), ('1',)):
+            with self.assertRaises(TypeError): evaluator(*args)
+        with self.assertRaises(TypeError): evaluator(format=1)
+        for format in (-2**31-1, 2**31, 2**100):
+            with self.assertRaises(OverflowError): evaluator(format)
+        for source in ('type A = [(x := int) for _ in range(1)]',
+                       'type A = ((x := int) for _ in range(1))'):
+            with self.assertRaisesRegex(SyntaxError, 'assignment expression within a comprehension cannot be used in a type alias'):
+                compile(source, '<test>', 'exec')
+        type A = lambda: (x := int)
+        self.assertIs(A.__value__(), int)
+        self.assertEqual(A.__value__.__qualname__, type(self).test_constant_evaluator_and_alias_scope_restrictions.__qualname__ + '.<locals>.<lambda>')
+        ns = {}
+        exec('type A = lambda: 1\nclass C:\n type A = lambda: 2', ns)
+        self.assertEqual(ns['A'].__value__.__qualname__, '<lambda>')
+        self.assertEqual(ns['C'].A.__value__.__qualname__, 'C.<lambda>')
+
 if __name__ == '__main__': unittest.main()
