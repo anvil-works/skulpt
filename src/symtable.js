@@ -684,7 +684,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             if (s.type_params.length) this.visitTypeParameters(s);
             this.visitAnnotations(s.args, s.returns, s);
             this.enterBlock(s.name, FunctionBlock, s, s.lineno);
-            this.cur.isMethod = parent.blockType === ClassBlock;
+            this.cur.isMethod = parent.blockType === ClassBlock && !s.type_params.length;
             this.visitArguments(s.args, s.lineno);
             this.SEQStmt(s.body);
             this.exitBlock();
