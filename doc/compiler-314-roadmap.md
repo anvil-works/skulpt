@@ -200,3 +200,5 @@ CPython's unchanged function qualified-name method, complete generator-name meth
 Full validation caught Python2 repr regressions from applying nested qualified names to both modes. The follow-up gates nested qualified-name emission to Python3 and retains Python2's existing class-method names.
 
 The Spec review caught generator-expression children gaining an extra `<locals>` and implicit class-name stores bypassing declared scopes. Scope entry now retains the actual code-unit kind (distinct from temporarily inlined comprehension symbol tables), and implicit `__qualname__`/`__module__` stores use `nameop`. CPython-checked regressions cover lambda/nested-generator names plus global/nonlocal metadata bindings.
+
+A second Spec pass caught the module nesting check still consulting an inlined symbol table. Module/Expression/Interactive code-unit kinds now determine that boundary, with module-comprehension names checked through exec/eval/single in both runtimes.

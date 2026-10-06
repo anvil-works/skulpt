@@ -42,6 +42,14 @@ class FuncAttrsTest(unittest.TestCase):
 
 
 class ClassQualnameTests(unittest.TestCase):
+    def test_module_comprehension_names(self):
+        for mode in ['exec', 'single']:
+            namespace = {}
+            exec(compile('functions = [lambda: None for x in [1]]', '<names>', mode), namespace)
+            self.assertEqual(namespace['functions'][0].__qualname__, '<lambda>')
+        self.assertEqual(eval('[lambda: None for x in [1]]')[0].__qualname__, '<lambda>')
+        self.assertEqual(eval('{x: lambda: None for x in [1]}')[1].__qualname__, '<lambda>')
+
     def test_generator_expression_child_names(self):
         def outer():
             return (lambda: None for x in [1])
