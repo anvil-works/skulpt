@@ -785,3 +785,8 @@ Existing native slots' JavaScript booleans become Python booleans at that bounda
 Six complete CPython richcmp/grammar methods cover mixed Vector and Number
 results, operator aliases, Boolean errors and comparison-chain short circuiting.
 This is also a prerequisite for annotationlib's expression stringifier.
+
+Rich-comparison review also corrects the native dictionary-view equality slot:
+unequal view lengths return False explicitly instead of leaking JavaScript
+undefined. CPython's existing test_keys_contained and its complete key/item-view
+comparison helper cover this case through compiled expressions.
