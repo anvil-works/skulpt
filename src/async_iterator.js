@@ -35,14 +35,14 @@ Sk.builtin.anextawaitable = Sk.abstr.buildIteratorClass("anext_awaitable", {
             });
         },
         $next() {
-            return this.$withDefault(() => Sk.misceval.chain(this.$iterator(), iterator =>
+            return Sk.misceval.chain(this.$iterator(), iterator => this.$withDefault(() =>
                 Sk.misceval.chain(iterator.tp$iternext(true), value => {
                     if (value !== undefined) return value;
                     throw iterator.gi$stopIteration || new Sk.builtin.StopIteration(iterator.gi$ret);
                 })));
         },
         $proxy(method, args) {
-            return this.$withDefault(() => Sk.misceval.chain(this.$iterator(), iterator =>
+            return Sk.misceval.chain(this.$iterator(), iterator => this.$withDefault(() =>
                 Sk.misceval.chain(Sk.abstr.gattr(iterator, new Sk.builtin.str(method), true), callable =>
                     Sk.misceval.callsimOrSuspendArray(callable, args))));
         },

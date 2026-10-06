@@ -128,6 +128,16 @@ class AsyncIterationBuiltinTest(unittest.TestCase):
         with self.assertRaises(StopIteration) as cm: op.send(None)
         self.assertEqual(cm.exception.args, ())
 
+    def test_await_resolution_exhaustion_propagates(self):
+        class Awaitable:
+            def __await__(self): raise StopAsyncIteration('await lookup')
+        class Iterator:
+            def __anext__(self): return Awaitable()
+        for operation in [lambda obj: next(obj), lambda obj: obj.send(None),
+                          lambda obj: obj.throw(ValueError()), lambda obj: obj.close()]:
+            with self.assertRaisesRegex(StopAsyncIteration, 'await lookup'):
+                operation(anext(Iterator(), 'default'))
+
     def setUp(self): self.loop = Loop()
     def subTest(self, *args, **kwargs): return SubTest()
     def check_async_iterator_anext(self, ait_class):
