@@ -167,51 +167,49 @@ Sk.builtin.matchExceptionGroup = function (exception, condition, frame, lineno) 
         throw new Sk.builtin.TypeError("catching ExceptionGroup with except* is not allowed. Use except instead.");
     }
     const none = Sk.builtin.none.none$;
-    if (exception === none) return [none, none];
+    if (exception === none) {return [none, none];}
     if (types.some(cls => exception.ob$type.$isSubType(cls))) {
-        if (exception instanceof Sk.builtin.BaseExceptionGroup) return [exception, none];
+        if (exception instanceof Sk.builtin.BaseExceptionGroup) {return [exception, none];}
         return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(Sk.builtin.BaseExceptionGroup,
-            [Sk.builtin.str.$emptystr, new Sk.builtin.tuple([exception])]), wrapped => {
-                Sk.builtin.addTraceback(wrapped, frame, lineno, undefined, frame.getCode().filename);
-                return [wrapped, none];
-            });
-    }
-    if (!(exception instanceof Sk.builtin.BaseExceptionGroup)) return [none, exception];
-    return Sk.misceval.chain(Sk.abstr.gattr(exception, new Sk.builtin.str("split"), true),
-        split => Sk.misceval.callsimOrSuspendArray(split, [condition]), pair => {
-            if (pair.ob$type !== Sk.builtin.tuple) {
-                throw new Sk.builtin.TypeError(Sk.abstr.typeName(exception) + ".split must return a tuple, not " + Sk.abstr.typeName(pair));
-            }
-            if (pair.v.length < 2) {
-                throw new Sk.builtin.TypeError(Sk.abstr.typeName(exception) + ".split must return a 2-tuple, got tuple of size " + pair.v.length);
-            }
-            return [pair.v[0], pair.v[1]];
+                                                                   [Sk.builtin.str.$emptystr, new Sk.builtin.tuple([exception])]), wrapped => {
+            Sk.builtin.addTraceback(wrapped, frame, lineno, undefined, frame.getCode().filename);
+            return [wrapped, none];
         });
+    }
+    if (!(exception instanceof Sk.builtin.BaseExceptionGroup)) {return [none, exception];}
+    return Sk.misceval.chain(Sk.abstr.gattr(exception, new Sk.builtin.str("split"), true),
+                             split => Sk.misceval.callsimOrSuspendArray(split, [condition]), pair => {
+                                 if (pair.ob$type !== Sk.builtin.tuple) {
+                                     throw new Sk.builtin.TypeError(Sk.abstr.typeName(exception) + ".split must return a tuple, not " + Sk.abstr.typeName(pair));
+                                 }
+                                 if (pair.v.length < 2) {
+                                     throw new Sk.builtin.TypeError(Sk.abstr.typeName(exception) + ".split must return a 2-tuple, got tuple of size " + pair.v.length);
+                                 }
+                                 return [pair.v[0], pair.v[1]];
+                             });
 };
 
 // Objects/exceptions.c: _PyExc_PrepReraiseStar partitions by raw metadata and
 // projects reraised leaf identities back into the original group's hierarchy.
 Sk.builtin.prepReraiseStar = function (original, exceptions) {
     const none = Sk.builtin.none.none$;
-    if (!(original instanceof Sk.builtin.BaseExceptionGroup)) return exceptions[0] || none;
+    if (!(original instanceof Sk.builtin.BaseExceptionGroup)) {return exceptions[0] || none;}
     const raised = [], keep = new Set();
     const metadata = exception => [exception.$traceback || none, exception.$cause || none, exception.context || none];
     const originalMetadata = metadata(original);
     function collectLeaves(exception) {
-        if (exception instanceof Sk.builtin.BaseExceptionGroup) exception.$exceptions.v.forEach(collectLeaves);
-        else keep.add(exception);
+        if (exception instanceof Sk.builtin.BaseExceptionGroup) {exception.$exceptions.v.forEach(collectLeaves);} else {keep.add(exception);}
     }
     for (const exception of exceptions) {
-        if (exception === none) continue;
-        if (metadata(exception).every((value, index) => value === originalMetadata[index])) collectLeaves(exception);
-        else raised.push(exception);
+        if (exception === none) {continue;}
+        if (metadata(exception).every((value, index) => value === originalMetadata[index])) {collectLeaves(exception);} else {raised.push(exception);}
     }
     return Sk.misceval.chain(exceptionGroupPartition(original, exception => keep.has(exception), false), pair => {
         const reraised = pair[0];
-        if (!raised.length) return reraised;
-        if (reraised !== none) raised.push(reraised);
-        if (raised.length === 1) return raised[0];
+        if (!raised.length) {return reraised;}
+        if (reraised !== none) {raised.push(reraised);}
+        if (raised.length === 1) {return raised[0];}
         return Sk.misceval.callsimOrSuspendArray(Sk.builtin.BaseExceptionGroup,
-            [Sk.builtin.str.$emptystr, new Sk.builtin.list(raised)]);
+                                                 [Sk.builtin.str.$emptystr, new Sk.builtin.list(raised)]);
     });
 };
