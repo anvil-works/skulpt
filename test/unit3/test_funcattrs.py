@@ -42,6 +42,31 @@ class FuncAttrsTest(unittest.TestCase):
 
 
 class ClassQualnameTests(unittest.TestCase):
+    def test_generator_expression_child_names(self):
+        def outer():
+            return (lambda: None for x in [1])
+        base = 'ClassQualnameTests.test_generator_expression_child_names.<locals>.outer.<locals>.<genexpr>'
+        self.assertEqual(next(outer()).__qualname__, base + '.<lambda>')
+        def nested():
+            return ((x for x in [1]) for y in [1])
+        base = 'ClassQualnameTests.test_generator_expression_child_names.<locals>.nested.<locals>.<genexpr>'
+        self.assertEqual(next(nested()).__qualname__, base + '.<genexpr>')
+
+    def test_implicit_class_names_honor_declarations(self):
+        namespace = {'__name__': 'test_module', '__qualname__': 'before', '__module__': 'before'}
+        exec('class C:\n global __qualname__, __module__', namespace)
+        self.assertEqual(namespace['__qualname__'], 'C')
+        self.assertEqual(namespace['__module__'], 'test_module')
+        self.assertNotIn('__qualname__', vars(namespace['C']))
+        self.assertEqual(namespace['C'].__module__, 'test_module')
+        def outer():
+            __qualname__ = 'before'
+            __module__ = 'before'
+            class C:
+                nonlocal __qualname__, __module__
+            return __qualname__, __module__
+        self.assertEqual(outer(), ('ClassQualnameTests.test_implicit_class_names_honor_declarations.<locals>.outer.<locals>.C', __name__))
+
     # CPython compiler_set_qualname and class-body namespace ordering.
     def test_nested_class_namespace(self):
         seen = []

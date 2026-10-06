@@ -2588,9 +2588,9 @@ Compiler.prototype.cclass = function (s) {
 
     this.u.private_ = s.name;
 
-    out("$loc.__module__=", this.nameop("__name__", "Load"), ";");
+    this.nameop("__module__", "Store", this.nameop("__name__", "Load"));
     if (Sk.__future__.python3) {
-        out("$loc.__qualname__=new Sk.builtin.str(", JSON.stringify(this.u.qualname), ");");
+        this.nameop("__qualname__", "Store", "new Sk.builtin.str(" + JSON.stringify(this.u.qualname) + ")");
     }
     this.cbody(s.body, s.name);
     if (needsClassClosure) {
@@ -2968,6 +2968,7 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     var u = new CompilerUnit();
     u.ste = this.st.getStsForAst(key);
     u.name = name;
+    u.scopeType = key._type;
     // Python/compile.c: compiler_set_qualname. Explicit global declarations
     // reset named functions/classes to a module name; lambdas retain nesting.
     u.qualname = name.v;
@@ -2975,7 +2976,7 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
         const scope = this.u.ste.getScope(fixReserved(mangleName(this.u.private_, name).v));
         const named = key._type === "FunctionDef" || key._type === "AsyncFunctionDef" || key._type === "ClassDef";
         if (!named || scope !== Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT) {
-            u.qualname = this.u.qualname + (this.u.ste.blockType === Sk.SYMTAB_CONSTS.FunctionBlock ? ".<locals>." : ".") + name.v;
+            u.qualname = this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".") + name.v;
         }
     }
     u.firstlineno = lineno;
@@ -3012,7 +3013,11 @@ Compiler.prototype.exitScope = function () {
 
     if (this.u) {
         out(prev.scopename, ".co_name=new Sk.builtin.str(", JSON.stringify(prev.name.v), ");");
-        out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(prev.qualname), ");");
+        if (Sk.__future__.python3) {
+            out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(prev.qualname), ");");
+        } else if (this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock) {
+            out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(this.u.name.v + "." + prev.name.v), ");");
+        }
     }
     for (var constant in prev.consts) {
         if (prev.consts.hasOwnProperty(constant)) {
