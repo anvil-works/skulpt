@@ -124,10 +124,22 @@ function tp$new(args, kwargs) {
         throw new Sk.builtin.TypeError("type() argument 1 must be str, not " + Sk.abstr.typeName(name));
     }
     // argument bases must be of type tuple
-    if (bases.tp$name !== "tuple") {
+    if (!(bases instanceof Sk.builtin.tuple)) {
         throw new Sk.builtin.TypeError("type() argument 2 must be tuple, not " + Sk.abstr.typeName(bases));
     }
+    const originalBases = bases;
     bases = bases.sk$asarray();
+    // type_new_get_bases rejects resolution in a direct type() call.
+    for (const base of bases) {
+        if (Sk.builtin.checkClass(base)) continue;
+        try {
+            Sk.abstr.gattr(base, new Sk.builtin.str("__mro_entries__"));
+        } catch (err) {
+            if (err instanceof Sk.builtin.AttributeError) continue;
+            throw err;
+        }
+        throw new Sk.builtin.TypeError("type() doesn't support MRO entry resolution; use types.new_class()");
+    }
 
     /**
      * @type {!typeObject}
@@ -238,6 +250,7 @@ function tp$new(args, kwargs) {
         classcell.$closure.__class__ = klass;
     }
 
+    if (originalBases.sq$length()) klass.sk$tuple_bases = originalBases;
     set_names(klass);
     init_subclass(klass, kwargs);
 

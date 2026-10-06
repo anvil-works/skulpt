@@ -1524,10 +1524,11 @@ Sk.exportSymbol("Sk.misceval.localsSnapshot", Sk.misceval.localsSnapshot);
  */
 Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closure2) {
     const _name = new Sk.builtin.str(name);
-    const _bases = update_bases(bases); // todo this function should go through the bases and check for __mro_entries__
+    const origBases = new Sk.builtin.tuple(bases);
+    const _bases = update_bases(origBases);
+    bases = _bases.sk$asarray();
 
     kws = kws || [];
-    bases = bases || [];
     let meta;
     let is_class = true;
     const meta_idx = kws.indexOf("metaclass");
@@ -1594,6 +1595,9 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
     }
     const classcell = bodyResult instanceof Sk.builtin.cell ? bodyResult : undefined;
 
+    // builtin___build_class__ stores original bases after executing the body,
+    // so this compiler-generated value wins over a body assignment.
+    if (_bases !== origBases) locals.__orig_bases__ = origBases;
     const klass = Sk.misceval.callsimOrSuspendArray(meta, [_name, _bases, ns], kws);
 
     // type.__new__ must populate the cell, including when called by a metaclass.
@@ -1612,9 +1616,32 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
 };
 Sk.exportSymbol("Sk.misceval.buildClass", Sk.misceval.buildClass);
 
+// Python/bltinmodule.c:update_bases. Resolve each original non-type once;
+// replacement tuples are not recursively resolved.
 function update_bases(bases) {
-    /** @todo this function should go through the bases and check for __mro_entries__ */
-    return new Sk.builtin.tuple(bases);
+    const resolved = [];
+    let changed = false;
+    for (const base of bases.sk$asarray()) {
+        let entries;
+        if (!Sk.builtin.checkClass(base)) {
+            try {
+                entries = Sk.abstr.gattr(base, new Sk.builtin.str("__mro_entries__"));
+            } catch (err) {
+                if (!(err instanceof Sk.builtin.AttributeError)) throw err;
+            }
+        }
+        if (entries === undefined) {
+            resolved.push(base);
+        } else {
+            const replacement = Sk.misceval.callsimArray(entries, [bases]);
+            if (!(replacement instanceof Sk.builtin.tuple)) {
+                throw new Sk.builtin.TypeError("__mro_entries__ must return a tuple");
+            }
+            resolved.push(...replacement.sk$asarray());
+            changed = true;
+        }
+    }
+    return changed ? new Sk.builtin.tuple(resolved) : bases;
 }
 
 function calculate_meta(meta, bases) {
