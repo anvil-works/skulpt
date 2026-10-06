@@ -98,6 +98,16 @@ Sk.builtin.property = Sk.abstr.buildNativeClass("property", {
         },
     },
     getsets: {
+        __isabstractmethod__: {
+            $get() {
+                return Sk.misceval.chain(Sk.misceval.iterArray([this.prop$get, this.prop$set, this.prop$del], func =>
+                    Sk.misceval.chain(Sk.abstr.isAbstract(func), flag => {
+                        if (flag) {
+                            return new Sk.misceval.Break(true);
+                        }
+                    })), flag => new Sk.builtin.bool(flag));
+            },
+        },
         fget: {
             $get() {
                 return this.prop$get;
@@ -195,6 +205,11 @@ Sk.builtin.classmethod = Sk.abstr.buildNativeClass("classmethod", {
         },
     },
     getsets: {
+        __isabstractmethod__: {
+            $get() {
+                return Sk.misceval.chain(Sk.abstr.isAbstract(this.cm$callable), flag => new Sk.builtin.bool(flag));
+            },
+        },
         __func__: {
             $get() {
                 return this.cm$callable;
@@ -245,6 +260,11 @@ Sk.builtin.staticmethod = Sk.abstr.buildNativeClass("staticmethod", {
         },
     },
     getsets: {
+        __isabstractmethod__: {
+            $get() {
+                return Sk.misceval.chain(Sk.abstr.isAbstract(this.sm$callable), flag => new Sk.builtin.bool(flag));
+            },
+        },
         __func__: {
             $get() {
                 return this.sm$callable;
