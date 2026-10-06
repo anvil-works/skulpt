@@ -310,8 +310,9 @@ class TestCase(object):
 
 
 
-def main(verbosity=1):
-    glob = globals() # globals() still needs work
+def main(verbosity=1, module="__main__"):
+    import sys
+    glob = vars(sys.modules[module])
     for name in glob:
         if type(glob[name]) == type and issubclass(glob[name], TestCase):
             try:
