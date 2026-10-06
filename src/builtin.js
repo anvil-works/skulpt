@@ -556,7 +556,10 @@ Sk.builtin.dir = function dir(obj) {
         return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(obj_dir_func, []), (dir) => Sk.builtin.sorted(dir));
         // now iter through the keys and check they are all stings
     }
-    return Sk.builtin.sorted(new Sk.builtin.list(Sk.builtin.locals().sk$asarray()));
+    return Sk.misceval.chain(
+        Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(Sk.builtin.locals(), Sk.builtin.str.$keys)),
+        keys => Sk.builtin.sorted(keys)
+    );
 };
 
 Sk.builtin.repr = function repr(x) {
