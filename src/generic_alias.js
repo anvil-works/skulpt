@@ -142,28 +142,8 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
             this.$params = Sk.builtin.makeTypeParameters(this.$args);
         },
         ga$repr(item) {
-            if (item === Sk.builtin.Ellipsis) {
-                return "...";
-            }
-            if (Sk.abstr.lookupAttr(item, this.str$orig)) {
-                if (Sk.abstr.lookupAttr(item, this.str$args)) {
-                    return Sk.misceval.objectRepr(item);
-                }
-            }
-            const qualname = Sk.abstr.lookupAttr(item, Sk.builtin.str.$qualname);
-            if (qualname === undefined) {
-                return Sk.misceval.objectRepr(item);
-            }
-            const mod = Sk.abstr.lookupAttr(item, Sk.builtin.str.$module);
-            if (mod === undefined || Sk.builtin.checkNone(mod)) {
-                return Sk.misceval.objectRepr(item);
-            } else if (mod.toString() === "builtins") {
-                return qualname.toString();
-            }
-            return mod.toString() + "." + qualname.toString();
+            return Sk.builtin.typingTypeRepr(item);
         },
-        str$orig: new Sk.builtin.str("__origin__"),
-        str$args: new Sk.builtin.str("__args__"),
         attr$exc: [
             "__class__",
             "__origin__",

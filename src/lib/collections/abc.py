@@ -2,8 +2,7 @@
 from abc import ABCMeta, abstractmethod
 from types import GenericAlias
 
-__all__ = ["Awaitable", "Coroutine", "AsyncIterable", "AsyncIterator", "AsyncGenerator",
-           "Iterable", "Iterator", "Generator", "Callable"]
+__all__ = ["Iterable", "Iterator", "Generator", "Callable"]
 
 
 def _check_methods(C, *methods):
@@ -17,148 +16,6 @@ def _check_methods(C, *methods):
         else:
             return NotImplemented
     return True
-
-
-class Awaitable(metaclass=ABCMeta):
-
-    __slots__ = ()
-
-    @abstractmethod
-    def __await__(self):
-        yield
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is Awaitable:
-            return _check_methods(C, "__await__")
-        return NotImplemented
-
-    __class_getitem__ = classmethod(GenericAlias)
-
-
-class Coroutine(Awaitable):
-
-    __slots__ = ()
-
-    @abstractmethod
-    def send(self, value):
-        """Send a value into the coroutine.
-        Return next yielded value or raise StopIteration.
-        """
-        raise StopIteration
-
-    @abstractmethod
-    def throw(self, typ, val=None, tb=None):
-        """Raise an exception in the coroutine.
-        Return next yielded value or raise StopIteration.
-        """
-        if val is None:
-            if tb is None:
-                raise typ
-            val = typ()
-        if tb is not None:
-            val = val.with_traceback(tb)
-        raise val
-
-    def close(self):
-        """Raise GeneratorExit inside coroutine.
-        """
-        try:
-            self.throw(GeneratorExit)
-        except (GeneratorExit, StopIteration):
-            pass
-        else:
-            raise RuntimeError("coroutine ignored GeneratorExit")
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is Coroutine:
-            return _check_methods(C, '__await__', 'send', 'throw', 'close')
-        return NotImplemented
-
-
-class AsyncIterable(metaclass=ABCMeta):
-
-    __slots__ = ()
-
-    @abstractmethod
-    def __aiter__(self):
-        return AsyncIterator()
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is AsyncIterable:
-            return _check_methods(C, "__aiter__")
-        return NotImplemented
-
-    __class_getitem__ = classmethod(GenericAlias)
-
-
-class AsyncIterator(AsyncIterable):
-
-    __slots__ = ()
-
-    @abstractmethod
-    async def __anext__(self):
-        """Return the next item or raise StopAsyncIteration when exhausted."""
-        raise StopAsyncIteration
-
-    def __aiter__(self):
-        return self
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is AsyncIterator:
-            return _check_methods(C, "__anext__", "__aiter__")
-        return NotImplemented
-
-
-class AsyncGenerator(AsyncIterator):
-
-    __slots__ = ()
-
-    async def __anext__(self):
-        """Return the next item from the asynchronous generator.
-        When exhausted, raise StopAsyncIteration.
-        """
-        return await self.asend(None)
-
-    @abstractmethod
-    async def asend(self, value):
-        """Send a value into the asynchronous generator.
-        Return next yielded value or raise StopAsyncIteration.
-        """
-        raise StopAsyncIteration
-
-    @abstractmethod
-    async def athrow(self, typ, val=None, tb=None):
-        """Raise an exception in the asynchronous generator.
-        Return next yielded value or raise StopAsyncIteration.
-        """
-        if val is None:
-            if tb is None:
-                raise typ
-            val = typ()
-        if tb is not None:
-            val = val.with_traceback(tb)
-        raise val
-
-    async def aclose(self):
-        """Raise GeneratorExit inside coroutine.
-        """
-        try:
-            await self.athrow(GeneratorExit)
-        except (GeneratorExit, StopAsyncIteration):
-            pass
-        else:
-            raise RuntimeError("asynchronous generator ignored GeneratorExit")
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is AsyncGenerator:
-            return _check_methods(C, '__aiter__', '__anext__',
-                                  'asend', 'athrow', 'aclose')
-        return NotImplemented
 
 
 class Iterable(metaclass=ABCMeta):
@@ -335,11 +192,4 @@ class Callable(metaclass=ABCMeta):
 # Native compiler-produced types are explicitly registered, as in CPython.
 _generator = type((lambda: (yield))())
 Generator.register(_generator)
-async def _coro(): pass
-_coroutine = _coro()
-Coroutine.register(type(_coroutine))
-_coroutine.close()
-async def _ag(): yield
-_async_generator = _ag()
-AsyncGenerator.register(type(_async_generator))
-del _generator, _coro, _coroutine, _ag, _async_generator
+del _generator
