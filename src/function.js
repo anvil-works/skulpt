@@ -31,6 +31,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
 
         this.func_code = code;
         this.func_globals = globals || null;
+        this.func_builtins = globals ? Sk.misceval.getBuiltins(globals) : null;
 
         // use python str to preserve identity from compilation
         this.$name = code.co_name || new Sk.builtin.str(code.name || "<native JS>");
@@ -91,6 +92,9 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             },
         },
         __dict__: Sk.generic.getSetDict,
+        __builtins__: {
+            $get() { return this.func_builtins; },
+        },
         __annotations__: {
             $get() {
                 if (this.func_annotations === null) {
