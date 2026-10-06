@@ -62,7 +62,7 @@ Sk.builtin.bool = Sk.abstr.buildNativeClass("bool", {
     methods: {
         __format__: {
             $meth(formatSpec) {
-                if (Sk.builtin.checkString(formatSpec) && formatSpec.$jsstr() === "") return this.$r();
+                if (Sk.builtin.checkString(formatSpec) && formatSpec.$jsstr() === "") {return this.$r();}
                 return int_proto.__format__.$meth.call(new Sk.builtin.int_(this.v), formatSpec);
             },
             $flags: {OneArg: true},
