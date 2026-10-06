@@ -52,6 +52,7 @@ function CompilerUnit () {
     this.lineno = 0;
     this.linenoSet = false;
     this.localnames = [];
+    this.comprehensions = [];
 
     this.localtemps = [];
     this.tempsToSave = [];
@@ -560,11 +561,18 @@ Compiler.prototype.ccomprehension = function (e, type, value, key) {
         }
     }
     this.u.ste = ste;
-    this.u.inlineScope = { names, cell, free };
+    const scope = { names, cell, free, ste, outer: outerInline, id: this.u.comprehensions.length + 1 };
+    this.u.comprehensions.push(scope);
+    if (!this.u.tempsToSave.includes("$localsScope")) {
+        this.u.tempsToSave.push("$localsScope");
+    }
+    out("$localsScope=", scope.id, ";");
+    this.u.inlineScope = scope;
     const result = this._gr("compr", "new Sk.builtins['", type, "']([])");
     this.ccompgen(type, result, e.generators, 0, value, key, e, iter);
     this.u.ste = outerSte;
     this.u.inlineScope = outerInline;
+    out("$localsScope=", outerInline ? outerInline.id : 0, ";");
     return result;
 };
 
@@ -1287,7 +1295,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
         }
     }
 
-    output +=  "try { $ret=susp.child.resume(); } catch(err) { if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
+    output +=  "try { $ret=susp.child.resume(); } catch(err) { $localsScope=0; if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
                 "};";
     output += "var $self = this;";
     output += unit.ste.generator?"var $gen = $self;":"";
@@ -1330,8 +1338,18 @@ Compiler.prototype.outputAllUnits = function () {
         if (unit.doesSuspend || unit.ste.generator) {
             ret += this.outputSuspensionHelpers(unit);
         }
-        ret += unit.varDeclsCode;
-        ret += unit.switchCode;
+        const frame = this.outputFrame(unit);
+        if (unit.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock) {
+            ret += unit.varDeclsCode;
+            ret += unit.switchCode.replace("while(true){", frame + "while(true){");
+        } else {
+            ret += frame;
+            ret += unit.varDeclsCode;
+            if (unit.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock) {
+                ret += "$loc=Sk.misceval.namespaceToJs($loc);$gbl=Sk.misceval.namespaceToJs($gbl,true);Sk.globals=$gbl;";
+            }
+            ret += unit.switchCode;
+        }
         blocks = unit.blocks;
         generatedBlocks = Object.create(null);
         for (i = 0; i < blocks.length; ++i) {
@@ -1357,9 +1375,64 @@ Compiler.prototype.outputAllUnits = function () {
                 }
             }
         }
-        ret += unit.suffixCode;
+        const end = "}finally{Sk.misceval.currentFrame=$prevFrame;}";
+        const suffix = unit.suffixCode.replace(/catch\(err\)\{/, "catch(err){$localsScope=0;");
+        ret += suffix.replace("/* frame end */", end);
     }
     return ret;
+};
+
+// CPython frame locals: optimized scopes produce independent snapshots;
+// module/class scopes expose their shared namespace. PEP 709 comprehensions
+// temporarily overlay iteration bindings on an enclosing optimized frame.
+Compiler.prototype.outputFrame = function (unit) {
+    const constants = Sk.SYMTAB_CONSTS;
+    const optimized = unit.ste.blockType === constants.FunctionBlock;
+    const bindings = (ste, scope) => {
+        const items = new Map();
+        for (const name of Object.keys(ste.symFlags)) {
+            const kind = ste.getScope(name);
+            let value;
+            if (name === ".0") {
+                value = "$iter0";
+            } else if (kind === constants.LOCAL) {
+                value = scope ? scope.names[name] : name;
+            } else if (kind === constants.CELL) {
+                value = (scope ? scope.cell : "$cell") + "." + name;
+            } else if (kind === constants.FREE) {
+                value = (scope ? scope.free : "$free") + "." + name;
+            } else {
+                continue;
+            }
+            if (value) {
+                items.set(Sk.unfixReserved(name), "typeof " + value + "==='undefined'?undefined:" + value);
+            }
+        }
+        return items;
+    };
+    const snapshot = items => "Sk.misceval.localsSnapshot([" + Array.from(items, ([name, value]) => "[" + JSON.stringify(name) + "," + value + "]").join(",") + "])";
+    let code = "var $localsScope=0,$prevFrame=Sk.misceval.currentFrame;";
+    if (unit.ste.blockType === constants.ClassBlock) {
+        code += "$loc=Sk.misceval.namespaceToJs($loc);";
+    }
+    code += "Sk.misceval.currentFrame={getGlobals:function(){return $gbl;},getLocals:function(){switch($localsScope){";
+    for (const scope of unit.comprehensions) {
+        const items = optimized ? bindings(unit.ste) : new Map();
+        const chain = [];
+        for (let current = scope; current; current = current.outer) {
+            chain.unshift(current);
+        }
+        for (const current of chain) {
+            for (const [name, value] of bindings(current.ste, current)) {
+                if (name !== ".0") {
+                    items.set(name, value);
+                }
+            }
+        }
+        code += "case " + scope.id + ":return " + snapshot(items) + ";";
+    }
+    code += "default:return " + (optimized ? snapshot(bindings(unit.ste)) : "Sk.misceval.namespaceDict($loc)") + ";}}};try{";
+    return code;
 };
 
 Compiler.prototype.cif = function (s) {
@@ -2140,7 +2213,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     this.u.switchCode = "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }});";
+    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }/* frame end */});";
 
     //
     // jump back to the handler so it can do the main actual work of the
@@ -2499,10 +2572,11 @@ Compiler.prototype.cclass = function (s) {
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
     this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
-    this.u.suffixCode += "}).call(null, $cell);});";
+    this.u.suffixCode += "/* frame end */}).call(null, $cell);});";
 
     this.u.private_ = s.name;
 
+    out("$loc.__module__=$gbl.__name__===undefined?new Sk.builtin.str('builtins'):$gbl.__name__;");
     this.cbody(s.body, s.name);
     if (needsClassClosure) {
         out("$loc.__classcell__=new Sk.builtin.cell($classcell);");
@@ -3007,7 +3081,7 @@ Compiler.prototype.cmod = function (mod) {
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
     this.u.suffixCode = "}";
-    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } });";
+    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } /* frame end */});";
 
     // Note - this change may need to be adjusted for all the other instances of
     // switchCode and suffixCode in this file.  Not knowing how to test those
