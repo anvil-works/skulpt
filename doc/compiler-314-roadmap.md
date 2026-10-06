@@ -573,13 +573,15 @@ from private class names, and context metadata stays off interned Python strings
 
 The Generic runtime and user-defined `_GenericAlias` live in Python, with CPython
 collection, default preparation and substitution methods. They retain mutable
-alias metadata, specialization defaults, variadic parameters and original class
-tracking. The compiler caches the Generic reference and constructs its alias
+alias metadata, CPython specialization caching, defaults, variadic parameters
+and original class tracking. Checked unions validate Python typing aliases
+through the same typing helper as CPython. Public closure metadata maps hidden
+compiler bindings to CPython names while preserving the JavaScript binding ABI. The compiler caches the Generic reference and constructs its alias
 directly, as CPython's intrinsic does. Type-level `__type_params__` lookup is local
 to the class; conflicting bases report CPython's distinct remaining MRO heads.
 
 Sixty-three upstream `test_type_params.py` methods pass (61 bodies unchanged, two
-with only their local make_base import path redirected), plus three CPython-checked
-regressions for specialization, definition ordering, alias metadata and mangling.
-All 66 pass both interpreters. Callable/Concatenate, ForwardRef, annotation formats
+with only their local make_base import path redirected), plus four CPython-checked
+regressions for specialization, definition ordering, alias metadata, mangling and
+reconstructing a class body from its closure cells. All 67 pass both interpreters. Callable/Concatenate, ForwardRef, annotation formats
 and serialization remain separate compiler-adjacent work.
