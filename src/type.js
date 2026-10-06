@@ -116,7 +116,7 @@ function tp$new(args, kwargs) {
     const dict = args[2];
     // first check that we only have 3 args and they're of the correct type
     // argument dict must be of type dict
-    if (dict.tp$name !== "dict") {
+    if (!(dict instanceof Sk.builtin.dict)) {
         throw new Sk.builtin.TypeError("type() argument 3 must be dict, not " + Sk.abstr.typeName(dict));
     }
     // checks if name must be string
