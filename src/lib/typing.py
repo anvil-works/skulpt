@@ -236,6 +236,8 @@ def _type_convert(arg):
     return _type_check(arg, "Expected a type.")
 
 def _generic_alias_mro_entries(alias, bases):
+    if isinstance(alias.__origin__, _SpecialForm):
+        raise TypeError(f"Cannot subclass {alias!r}")
     if alias.__origin__ is Generic:
         i = bases.index(alias)
         for base in bases[i+1:]:
