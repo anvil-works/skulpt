@@ -134,6 +134,22 @@ var $builtinmodule = function (name) {
     sys.__stdin__ = new Sk.builtin.file(new Sk.builtin.str("/dev/stdin"), new Sk.builtin.str("r"));
     sys.__stderr__ = new Sk.builtin.file(new Sk.builtin.str("/dev/stderr"), new Sk.builtin.str("w"));
 
+    sys.displayhook = new Sk.builtin.func(function (value) {
+        Sk.abstr.checkArgsLen("displayhook", arguments, 1, 1);
+        if (Sk.builtin.checkNone(value)) return Sk.builtin.none.none$;
+        Sk.builtins._ = Sk.builtin.none.none$;
+        return Sk.misceval.chain(Sk.builtin.repr(value), representation => {
+            if (sys.stdout === undefined) {
+                throw new Sk.builtin.RuntimeError("lost sys.stdout");
+            }
+            const write = Sk.abstr.gattr(sys.stdout, Sk.builtin.str.$write);
+            return Sk.misceval.callsimOrSuspendArray(write, [new Sk.builtin.str(representation.$jsstr() + "\n")]);
+        }, () => {
+            Sk.builtins._ = value;
+            return Sk.builtin.none.none$;
+        });
+    });
+    sys.__displayhook__ = sys.displayhook;
     sys.stdout = sys.__stdout__;
     sys.stdin = sys.__stdin__;
     sys.stderr = sys.__stderr__;

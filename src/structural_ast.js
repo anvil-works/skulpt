@@ -40,3 +40,38 @@ Sk.parseExpression = function (source, filename) {
 };
 Sk.exportSymbol("Sk.parseModule", Sk.parseModule);
 Sk.exportSymbol("Sk.parseExpression", Sk.parseExpression);
+
+// The parser currently exports module/expression entry points. Apply the
+// interactive single_input boundary to its module AST and lexical newlines.
+Sk.parseInteractive = function (source, filename) {
+    const ast = Sk.parseModule(source, filename);
+    if (ast.body.length === 0) {
+        throw new Sk.builtin.SyntaxError("invalid syntax", filename);
+    }
+    const compound = Array.isArray(ast.body[0].body) || ast.body[0]._type === "Match";
+    let indent = 0;
+    let firstNewline;
+    let lastNewline;
+    let lastNewlineIndent = 0;
+    for (const token of scan(source, { filename, pythonVersion: Sk.__future__.python3 ? 3 : 2, extraTokens: false })) {
+        if (token.type === "INDENT") indent++;
+        if (token.type === "DEDENT") indent--;
+        if (token.type === "NEWLINE") {
+            firstNewline = firstNewline || token;
+            lastNewline = token;
+            lastNewlineIndent = indent;
+        }
+    }
+    const multiple = compound ? ast.body.length !== 1
+        : ast.body.some(stmt => stmt.lineno > firstNewline.start[0]);
+    if (multiple) {
+        throw new Sk.builtin.SyntaxError("multiple statements found while compiling a single statement", filename);
+    }
+    // A simple suite following a compound header requires an actual newline;
+    // an indented suite may end at EOF with the parser's implied dedent.
+    if (compound && lastNewlineIndent === 0 && !/[\r\n]$/.test(lastNewline.line)) {
+        throw new Sk.builtin.SyntaxError("invalid syntax", filename);
+    }
+    return { _type: "Interactive", body: ast.body };
+};
+Sk.exportSymbol("Sk.parseInteractive", Sk.parseInteractive);

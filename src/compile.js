@@ -2738,7 +2738,11 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
                 out("debugger;");
                 break;
             }
-            this.vexpr(s.value);
+            val = this.vexpr(s.value);
+            if (this.interactive && this.u.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock) {
+                out("$ret=Sk.misceval.displayhook(", val, ");");
+                this._checkSuspension(s);
+            }
             break;
         case "Pass":
             break;
@@ -3018,7 +3022,8 @@ Compiler.prototype.cbody = function (stmts, class_for_super) {
     // the expression when properly compiling the rest of the body.  This
     // happens for class and module bodies.
     //
-    const maybeDocstring = this.maybeCDocstringOfBody(stmts);
+    const maybeDocstring = this.interactive && this.u.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock
+        ? null : this.maybeCDocstringOfBody(stmts);
     if (maybeDocstring !== null) {
         out("$loc.__doc__ = ", maybeDocstring, ";");
         i = 1;
@@ -3114,6 +3119,7 @@ Compiler.prototype.cmod = function (mod) {
 
     switch (mod._type) {
         case "Module":
+        case "Interactive":
             this.cbody(mod.body);
             out("return $loc;");
             break;
@@ -3150,12 +3156,11 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize) {
     var c;
     var funcname;
     try {
-        const ast = mode === "eval" ? Sk.parseExpression(source, filename) : Sk.parseModule(source, filename);
+        const ast = mode === "eval" ? Sk.parseExpression(source, filename)
+            : mode === "single" ? Sk.parseInteractive(source, filename) : Sk.parseModule(source, filename);
         const st = Sk.symboltable(ast, filename);
-        if (mode === "single") {
-            throw new Sk.builtin.NotImplementedError("interactive compilation is not yet supported");
-        }
         c = new Compiler(filename, st, 0, canSuspend, source, optimize);
+        c.interactive = mode === "single";
         funcname = c.cmod(ast);
     } finally {
         Sk.__future__ = savedFlags;
