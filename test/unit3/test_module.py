@@ -1,3 +1,5 @@
+# Five namespace methods restored from CPython3.14 test_module at18ef0f0cb52;
+# existing module regressions retained.
 # Test the module type
 import unittest
 # import weakref
@@ -21,14 +23,14 @@ class ModuleTests(unittest.TestCase):
         # An uninitialized module has no __dict__ or __name__,
         # and __doc__ is None
         foo = ModuleType.__new__(ModuleType)
-        self.assertFalse(foo.__dict__) # None or {} are acceptable
-        # self.assertRaises(SystemError, dir, foo)
+        self.assertTrue(isinstance(foo.__dict__, dict))
+        self.assertEqual(dir(foo), [])
         try:
             s = foo.__name__
             self.fail("__name__ = %s" % repr(s))
         except AttributeError:
             pass
-        self.assertEqual(foo.__doc__, ModuleType.__doc__)
+        self.assertEqual(foo.__doc__, ModuleType.__doc__ or '')
 
     def test_uninitialized_missing_getattr(self):
         # Issue 8297
@@ -66,8 +68,8 @@ class ModuleTests(unittest.TestCase):
         self.assertEqual(foo.__doc__, "foodoc")
         self.assertEqual(foo.__dict__,
                          {"__name__": "foo", "__doc__": "foodoc",
-                          "__package__": None,
-                          "__loader__": None, "__spec__": None})
+                          "__loader__": None, "__package__": None,
+                          "__spec__": None})
 
     def test_unicode_docstring(self):
         # Unicode docstring
@@ -91,6 +93,7 @@ class ModuleTests(unittest.TestCase):
         self.assertEqual(foo.__dict__,
               {"__name__": "foo", "__doc__": "foodoc", "bar": 42,
                "__loader__": None, "__package__": None, "__spec__": None})
+        self.assertTrue(foo.__dict__ is d)
         # self.assertTrue(foo.__dict__ is d)
         # skulpt returns a mapping proxy of the object literal
 
@@ -290,6 +293,45 @@ class ModuleTests(unittest.TestCase):
 
     # frozen and namespace module reprs are tested in importlib.
 
+
+    def test_live_dictionary_and_execution(self):
+        module = ModuleType('example')
+        namespace = vars(module)
+        self.assertIs(namespace, module.__dict__)
+        module.value = 1
+        self.assertEqual(namespace['value'], 1)
+        namespace['value'] = 2
+        self.assertEqual(module.value, 2)
+        exec('result = value + 1', namespace)
+        self.assertEqual(module.result, 3)
+        del namespace['value']
+        self.assertFalse(hasattr(module, 'value'))
+        namespace['__dict__'] = 'shadow'
+        self.assertIs(module.__dict__, namespace)
+        with self.assertRaises(AttributeError):
+            module.__dict__ = {}
+
+
+    def test_native_function_reads_dictionary_mutation(self):
+        import sys
+        class Output:
+            def __init__(self):
+                self.chunks = []
+            def write(self, text):
+                self.chunks.append(text)
+        original = sys.stdout
+        output = Output()
+        try:
+            sys.__dict__['stdout'] = output
+            sys.__displayhook__(42)
+        finally:
+            sys.stdout = original
+        self.assertEqual(output.chunks, ['42', '\n'])
+
+
+    def test_builtin_dictionary_repr(self):
+        import builtins
+        self.assertIsInstance(repr(vars(builtins)), str)
 
 if __name__ == '__main__':
     unittest.main()

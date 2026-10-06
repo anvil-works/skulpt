@@ -4,19 +4,22 @@
  */
 Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
     constructor: function module_() {
-        this.$d = {}; // set this now - we could subclass from Module so override sk$klass $d object
+        this.$d = Sk.misceval.namespaceToJs({});
     },
     slots: {
         tp$doc: "Create a module object.\n\nThe name must be a string; the optional doc argument can have any type.",
         tp$getattr(pyName, canSuspend) {
+            // Module dictionaries are data descriptors; subclasses can replace
+            // them, while a namespace key cannot shadow a data descriptor.
+            const descr = this.ob$type.$typeLookup(pyName);
+            if (descr !== undefined && descr.tp$descr_set !== undefined && descr.tp$descr_get !== undefined) {
+                return descr.tp$descr_get(this, this.ob$type, canSuspend);
+            }
             const jsMangled = pyName.$mangled;
             const ret = this.$d[jsMangled];
             if (ret !== undefined) {
                 return ret;
             }
-            // technically this is the wrong way round but its seems performance wise better
-            // to just return the module elements before checking for descriptors
-            const descr = this.ob$type.$typeLookup(pyName);
             if (descr !== undefined) {
                 const f = descr.tp$descr_get;
                 if (f) {
@@ -63,9 +66,7 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
     getsets: {
         __dict__: {
             $get() {
-                // modules in skulpt have a $d as a js object so just return it as a mapping proxy;
-                // TODO we should really have a dict object
-                return new Sk.builtin.mappingproxy(this.$d);
+                return Sk.misceval.namespaceDict(this.$d);
             },
         },
     },
