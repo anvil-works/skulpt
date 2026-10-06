@@ -1801,7 +1801,7 @@ Compiler.prototype.craise = function (s) {
         out("Sk.builtin.chainException(", exc, ",Sk.misceval.getException());", exc, ".$propagating=true;", exc, ".$tracebackFrame=undefined;throw ", exc, ";");
     } else {
         // Python/ceval.c: do_raise rejects a bare raise with no active exception.
-        out("var $active=Sk.misceval.getException();if($active===undefined){throw new Sk.builtin.RuntimeError('No active exception to reraise');}$active.$propagating=true;$active.$tracebackFrame=$frame;throw $active;");
+        out("var $active=Sk.misceval.getException();if($active===undefined){throw new Sk.builtin.RuntimeError('No active exception to reraise');}$active.$propagating=true;$active.$tracebackFrame=Sk.builtin.getFrame($frame);throw $active;");
     }
 };
 

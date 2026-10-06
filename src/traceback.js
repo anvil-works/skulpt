@@ -46,7 +46,7 @@ Sk.builtin.traceback = Sk.abstr.buildNativeClass("traceback", {
             if (!(frame instanceof Sk.builtin.frame)) {
                 throw new Sk.builtin.TypeError("traceback() argument 'tb_frame' must be frame, not " + Sk.abstr.typeName(frame));
             }
-            return new Sk.builtin.traceback(next, frame, Sk.misceval.asIndexSized(lasti), Sk.misceval.asIndexSized(lineno));
+            return new Sk.builtin.traceback(next, frame, tracebackInt(lasti), tracebackInt(lineno));
         },
     },
     getsets: {
@@ -64,7 +64,12 @@ Sk.builtin.traceback = Sk.abstr.buildNativeClass("traceback", {
             },
         },
         tb_frame: { $get() { return this.$frame; } },
-        tb_lineno: { $get() { return new Sk.builtin.int_(this.$lineno); } },
+        tb_lineno: {
+            $get() {
+                if (this.$lineno < 0) throw new Sk.builtin.NotImplementedError("resolving traceback lines requires bytecode offsets");
+                return new Sk.builtin.int_(this.$lineno);
+            },
+        },
         tb_lasti: {
             $get() {
                 if (this.$lasti === undefined) throw new Sk.builtin.NotImplementedError("JavaScript code has no bytecode offsets");
@@ -75,13 +80,22 @@ Sk.builtin.traceback = Sk.abstr.buildNativeClass("traceback", {
     flags: { sk$acceptable_as_base_class: false },
 });
 
+function tracebackInt(value) {
+    const result = Sk.misceval.asIndexSized(value, Sk.builtin.OverflowError);
+    if (result < -2147483648 || result > 2147483647) {
+        throw new Sk.builtin.OverflowError("Python int too large to convert to C int");
+    }
+    return result;
+}
+
 Sk.builtin.addTraceback = function (error, state, lineno, colno, filename) {
     // RERAISE keeps the current traceback; caller frames prepend their call site.
     // Compiler cleanup can catch the same propagation more than once per frame.
-    if (error.$tracebackFrame === state) return;
-    error.$tracebackFrame = state;
+    const frame = Sk.builtin.getFrame(state);
+    if (error.$tracebackFrame === frame) return;
+    error.$tracebackFrame = frame;
     if (lineno === undefined) lineno = state.getLine();
-    error.$traceback = new Sk.builtin.traceback(error.$traceback || Sk.builtin.none.none$, Sk.builtin.getFrame(state), undefined, lineno);
+    error.$traceback = new Sk.builtin.traceback(error.$traceback || Sk.builtin.none.none$, frame, undefined, lineno);
     // Retain the existing JavaScript error rendering contract without sharing a
     // mutable array between an original exception group and derived subgroups.
     error.traceback = error.traceback.concat([{lineno: lineno, colno: colno, filename: filename}]);

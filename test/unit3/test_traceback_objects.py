@@ -255,6 +255,42 @@ class SysExceptionInfoTests(unittest.TestCase):
 
 
 class TracebackRegression(unittest.TestCase):
+    def test_throwing_existing_error_adds_the_injection_location(self):
+        saved = ValueError('saved')
+        def g():
+            try:
+                raise saved
+            except ValueError:
+                yield saved
+                yield 2
+        it = g()
+        error = next(it)
+        original = error.__traceback__
+        try:
+            it.throw(error)
+        except ValueError as caught:
+            injected = caught.__traceback__.tb_next
+            self.assertIs(injected.tb_next, original)
+            self.assertIs(injected.tb_frame, original.tb_frame)
+            self.assertEqual(injected.tb_lineno, g.__code__.co_firstlineno + 4)
+
+    def test_pending_finally_error_keeps_traceback_across_yield(self):
+        def g():
+            try:
+                raise ValueError('first')
+            finally:
+                yield 1
+        it = g()
+        self.assertEqual(next(it), 1)
+        try:
+            next(it)
+        except ValueError as error:
+            inner = error.__traceback__.tb_next
+            self.assertIsNone(inner.tb_next)
+            self.assertIs(inner.tb_frame.f_code, g.__code__)
+            self.assertEqual(inner.tb_lineno, g.__code__.co_firstlineno + 2)
+
+
     def test_raise_locations_reraise_and_frame_identity(self):
         def f():
             try:
@@ -288,6 +324,9 @@ class TracebackRegression(unittest.TestCase):
         except ValueError as error:
             tb = error.__traceback__
         made = types.TracebackType(None, tb.tb_frame, 7, 123)
+        for value in (-2**31 - 1, 2**31, 2**100):
+            with self.assertRaises(OverflowError): types.TracebackType(None, tb.tb_frame, value, 1)
+            with self.assertRaises(OverflowError): types.TracebackType(None, tb.tb_frame, 0, value)
         self.assertEqual(made.tb_lasti, 7)
         self.assertEqual(made.tb_lineno, 123)
         self.assertIs(made.tb_frame, tb.tb_frame)
