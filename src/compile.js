@@ -563,7 +563,7 @@ Compiler.prototype.ccomprehension = function (e, type, value, key) {
         }
     }
     this.u.ste = ste;
-    this.u.inlineScope = { names, cell, free, outerSte, outerInline };
+    this.u.inlineScope = { names, cell, free };
     const result = this._gr("compr", "new Sk.builtins['", type, "']([])");
     this.ccompgen(type, result, e.generators, 0, value, key, e, iter);
     this.u.ste = outerSte;
@@ -2796,7 +2796,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
                 case "Param":
                 case "Del":
                     // Need to check that it is bound!
-                    out("if (", mangled, " === undefined) { throw new Sk.builtin.UnboundLocalError('local variable \\\'", mangled, "\\\' referenced before assignment'); }\n");
+                    out("if (", mangled, " === undefined) { throw new Sk.builtin.UnboundLocalError('local variable \\\'", unfixReserved(mangledNoPre), "\\\' referenced before assignment'); }\n");
                     if (ctx === "Del") {
                         out(mangled, "=undefined;");
                         break;
