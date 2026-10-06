@@ -1,6 +1,9 @@
 var $builtinmodule = function () {
     return {
-        _type_repr: new Sk.builtin.func(function(value) { return new Sk.builtin.str(Sk.builtin.typingTypeRepr(value)); }),
+        _type_repr: new Sk.builtin.func(function(value) {
+            Sk.abstr.checkArgsLen("_type_repr", arguments, 1, 1);
+            return new Sk.builtin.str(Sk.builtin.typingTypeRepr(value));
+        }),
         TypeAliasType: Sk.builtin.TypeAliasType,
         TypeVar: Sk.builtin.TypeVar,
         NoDefault: Sk.builtin.NoDefault,
