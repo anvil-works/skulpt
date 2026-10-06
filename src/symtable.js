@@ -442,7 +442,7 @@ SymbolTable.prototype.visitAnnotation = function (annotation, statement) {
             this.stack.push(parent);
             this.cur = this.getStsForAst(parent.variableAnnotationScope);
         }
-        if (parent.hasConditionalAnnotations) this.addDef("__conditional_annotations__", USE, annotation.lineno);
+        if (statement.simple && statement.conditionalAnnotation) this.addDef("__conditional_annotations__", USE, annotation.lineno);
         this.visitExpr(annotation);
         this.exitBlock();
         return;
