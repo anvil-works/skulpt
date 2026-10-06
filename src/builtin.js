@@ -902,13 +902,15 @@ Sk.builtin.eval = function (source, globals, locals) {
     if (!(source instanceof pyCode)) {
         // builtin_eval_impl strips leading byte whitespace before tokenization,
         // allowing a UTF-8 BOM immediately after those spaces/tabs.
-        if (Sk.builtin.checkBytes(source)) {
+        const bytesSource = Sk.builtin.checkBytes(source);
+        if (bytesSource) {
             let start = 0;
             while (source.v[start] === 32 || source.v[start] === 9) start++;
             source = new Sk.builtin.bytes(source.v.subarray(start));
         }
         // Unicode eval sources also strip only ASCII spaces/tabs.
-        const text = compilerSource(source, "<string>", "eval").replace(/^[ \t]+/, "");
+        let text = compilerSource(source, "<string>", "eval");
+        if (!bytesSource) text = text.replace(/^[ \t]+/, "");
         source = new pyCode("<string>", Sk.compile(text, "<string>", "eval", true));
     }
     return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);

@@ -89,6 +89,8 @@ class MiscSourceEncodingTest(unittest.TestCase):
     def test_eval_whitespace_before_bom(self):
         self.assertEqual(eval(b' \t\xef\xbb\xbf1'), 1)
         self.assertRaises(SyntaxError, eval, b'\xef\xbb\xbf\xef\xbb\xbf1')
+        self.assertRaises(IndentationError, eval, b'\xef\xbb\xbf 1')
+        self.assertRaises(IndentationError, eval, b' \t\xef\xbb\xbf 1')
 
 if __name__ == "__main__":
     unittest.main()
