@@ -2344,7 +2344,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // binding.
     //
     if (argnamesarr.length > 0) {
-        out(scopename, ".co_varnames=['", argnamesarr.join("','"), "'];");
+        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(name => name === "$annotationFormat" ? "format" : name)), ";");
     } else {
         out(scopename, ".co_varnames=[];");
     }

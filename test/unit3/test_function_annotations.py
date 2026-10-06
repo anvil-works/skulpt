@@ -60,7 +60,8 @@ def f(a: mark(value), /, b: mark(value + 1)) -> mark(value + 2): pass
         for value in [3, 4]:
             with self.assertRaises(NotImplementedError): annotate(value)
         with self.assertRaises(TypeError): annotate(None)
-        with self.assertRaises(TypeError): annotate(format=1)
+        with self.assertRaisesRegex(TypeError, "missing.*'format'"): annotate()
+        with self.assertRaisesRegex(TypeError, "positional.only.*'format'"): annotate(format=1)
         self.assertEqual(scope['seen'], [])
         first = f.__annotations__
         self.assertEqual(list(first), ['b', 'a', 'return'])
