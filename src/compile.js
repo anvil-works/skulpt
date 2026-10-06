@@ -3152,6 +3152,9 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize) {
     try {
         const ast = mode === "eval" ? Sk.parseExpression(source, filename) : Sk.parseModule(source, filename);
         const st = Sk.symboltable(ast, filename);
+        if (mode === "single") {
+            throw new Sk.builtin.NotImplementedError("interactive compilation is not yet supported");
+        }
         c = new Compiler(filename, st, 0, canSuspend, source, optimize);
         funcname = c.cmod(ast);
     } finally {
