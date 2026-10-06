@@ -233,7 +233,12 @@ def _is_unpacked_typevartuple(x):
     return not isinstance(x, type) and getattr(x, '__typing_is_unpacked_typevartuple__', False) is True
 
 def _type_convert(arg):
-    return _type_check(arg, "Expected a type.")
+    # CPython converts forward references here without validating parameter expressions.
+    if arg is None:
+        return type(None)
+    if isinstance(arg, str):
+        raise NotImplementedError("string type arguments require ForwardRef support")
+    return arg
 
 def _generic_alias_mro_entries(alias, bases):
     if isinstance(alias.__origin__, _SpecialForm):
