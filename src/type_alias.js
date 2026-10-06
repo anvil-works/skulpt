@@ -24,14 +24,14 @@ Sk.builtin.constevaluator = Sk.abstr.buildNativeClass("_typing._ConstEvaluator",
 
 // _Py_typing_type_repr uses ordinary attribute lookup, including descriptors.
 Sk.builtin.typingTypeRepr = function (value) {
-    if (value === Sk.builtin.Ellipsis) return "...";
-    if (value === Sk.builtin.none) return "None";
+    if (value === Sk.builtin.Ellipsis) {return "...";}
+    if (value === Sk.builtin.none) {return "None";}
     if (Sk.abstr.lookupAttr(value, new Sk.builtin.str("__origin__")) !== undefined &&
-        Sk.abstr.lookupAttr(value, new Sk.builtin.str("__args__")) !== undefined) return Sk.misceval.objectRepr(value);
+        Sk.abstr.lookupAttr(value, new Sk.builtin.str("__args__")) !== undefined) {return Sk.misceval.objectRepr(value);}
     const qualname = Sk.abstr.lookupAttr(value, Sk.builtin.str.$qualname);
-    if (qualname === undefined) return Sk.misceval.objectRepr(value);
+    if (qualname === undefined) {return Sk.misceval.objectRepr(value);}
     const module = Sk.abstr.lookupAttr(value, Sk.builtin.str.$module);
-    if (module === undefined || Sk.builtin.checkNone(module)) return Sk.misceval.objectRepr(value);
+    if (module === undefined || Sk.builtin.checkNone(module)) {return Sk.misceval.objectRepr(value);}
     return (Sk.builtin.checkString(module) && module.v === "builtins" ? "" : new Sk.builtin.str(module).v + ".") +
         new Sk.builtin.str(qualname).v;
 };
@@ -51,9 +51,9 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             if (args.length > 2 || name === undefined || value === undefined) {
                 throw new Sk.builtin.TypeError("TypeAliasType() requires name and value, with keyword-only type_params");
             }
-            if (!Sk.builtin.checkString(name)) throw new Sk.builtin.TypeError("name must be a str");
-            if (!(params instanceof Sk.builtin.tuple)) throw new Sk.builtin.TypeError("type_params must be a tuple");
-            if (params.v.length) throw new Sk.builtin.NotImplementedError("generic type aliases require type-parameter support");
+            if (!Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("name must be a str");}
+            if (!(params instanceof Sk.builtin.tuple)) {throw new Sk.builtin.TypeError("type_params must be a tuple");}
+            if (params.v.length) {throw new Sk.builtin.NotImplementedError("generic type aliases require type-parameter support");}
             const frame = Sk.misceval.currentFrame;
             const globals = frame && frame.getGlobals();
             const module = globals && (globals instanceof Sk.builtin.dict ? globals.quick$lookup(Sk.builtin.str.$name) : globals.__name__);
@@ -74,14 +74,14 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
         __parameters__: { $get() { return new Sk.builtin.tuple([]); } },
         __type_params__: { $get() { return new Sk.builtin.tuple([]); } },
         __value__: { $get() {
-            if (this.$value !== undefined) return this.$value;
+            if (this.$value !== undefined) {return this.$value;}
             return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(this.$compute), value => {
                 this.$value = value;
                 return value;
             });
         } },
         evaluate_value: { $get() {
-            if (this.$compute) return this.$compute;
+            if (this.$compute) {return this.$compute;}
             return new Sk.builtin.constevaluator(this.$value);
         } },
     },
