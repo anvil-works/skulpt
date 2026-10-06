@@ -390,9 +390,17 @@ getters are provided. Returned ordinary frames retain their back frame; inactive
 generator/coroutine frames have no caller back frame.
 
 Fourteen unchanged CPython 3.14 methods from test_exceptions, test_types, test_sys
-and test_exception_group at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 plus three
+and test_exception_group at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 plus five
 CPython-checked regressions cover the native descriptor, frame and group contracts.
 JavaScript-generated traceback/frame bytecode offsets and frame locals proxies
 raise explicit NotImplementedError until those compiler metadata/runtime
 increments land. Frame tracing/line jumps, frame clearing, sys._getframe and
 traceback formatting modules remain separate work.
+
+Traceback propagation compares persistent Python frame identity across resume,
+so a pending error passing through a yielding finally block gains no duplicate
+node. TracebackType arguments use CPython's signed C-int bounds; negative stored
+line numbers require bytecode line mapping and have an explicit getter guard.
+
+Fresh generator.throw injection resets propagation location so injecting an
+exception into its original frame still prepends the current yield location.

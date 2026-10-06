@@ -203,6 +203,10 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                     throw error;
                 }
                 this.gi$yieldfrom = null;
+                // Injection resumes this saved frame; delegation has already finished.
+                Sk.builtin.chainException(error, this.gi$frame.$handled);
+                error.$propagating = true;
+                error.$tracebackFrame = undefined;
                 this.gi$data.throw = error;
                 return this.gi$resume();
             }, true);
