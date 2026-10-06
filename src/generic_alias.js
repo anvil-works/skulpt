@@ -160,7 +160,8 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
 // Objects/genericaliasobject.c: _Py_make_parameters.
 Sk.builtin.makeTypeParameters = function (args) {
     const parameters = [];
-    for (const arg of args.v) {
+    const argumentsArray = args instanceof Sk.builtin.list ? Sk.misceval.arrayFromIterable(args) : args.v;
+    for (const arg of argumentsArray) {
         if (Sk.builtin.checkClass(arg)) continue;
         if (Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_subst__")) !== undefined) {
             if (!parameters.includes(arg)) parameters.push(arg);
@@ -186,7 +187,8 @@ Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
         result = Sk.misceval.chain(result, () => {
             const prepare = Sk.abstr.lookupAttr(param, new Sk.builtin.str("__typing_prepare_subst__"));
             if (prepare !== undefined && !Sk.builtin.checkNone(prepare)) {
-                return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(prepare, [self, items]), value => { items = value; });
+                const preparedArgs = items instanceof Sk.builtin.tuple ? items : new Sk.builtin.tuple([items]);
+                return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(prepare, [self, preparedArgs]), value => { items = value; });
             }
         });
     }
@@ -198,7 +200,8 @@ Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
         }
         const substituted = [];
         let pending;
-        for (const arg of args.v) {
+        const argumentsArray = args instanceof Sk.builtin.list ? Sk.misceval.arrayFromIterable(args) : args.v;
+        for (const arg of argumentsArray) {
             pending = Sk.misceval.chain(pending, () => {
                 if (Sk.builtin.checkClass(arg)) return arg;
                 if (arg instanceof Sk.builtin.tuple || arg instanceof Sk.builtin.list) {
