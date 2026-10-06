@@ -580,6 +580,10 @@ class VariableAnnotationReviewTests(HarnessCase):
             return C
         self.assertEqual(only_nonsimple.__code__.co_cellvars, ('x',))
         self.assertEqual(only_nonsimple(42).__annotations__, {})
+        for body in ['y: int\nif False: (z): int', 'if False: (z): int\ny: int']:
+            ns = run_code('class C:\n' + textwrap.indent(body, ' '))
+            self.assertEqual(ns['C'].__annotate__.__code__.co_freevars, ('__classdict__',))
+            self.assertEqual(ns['C'].__annotations__, {'y': int})
         ns = run_code("from __future__ import annotations\nclass C:\n if True:\n  x: int")
         self.assertEqual(ns['C'].__annotations__, {'x': 'int'})
 
