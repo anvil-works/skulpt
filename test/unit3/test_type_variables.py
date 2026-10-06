@@ -217,6 +217,37 @@ class TypeVarTests(unittest.TestCase):
             with self.assertRaises(TypeError): eval(source)
 
 
+    def test_preparation_hooks_and_list_subclass_iteration(self):
+        from types import GenericAlias
+        T = TypeVar('T')
+        with self.assertRaises(ValueError): T.__typing_prepare_subst__(list[int], ())
+        calls = []
+        class Parameter:
+            def __init__(self, first): self.first = first
+            def __typing_prepare_subst__(self, alias, args):
+                calls.append(args)
+                if self.first: return int
+                self_arg, = args
+                return self_arg, str
+            def __typing_subst__(self, arg): return arg
+        first, second = Parameter(True), Parameter(False)
+        alias = GenericAlias(list, (first, second))
+        self.assertEqual(alias[float], list[int, str])
+        self.assertEqual(calls, [(float,), (int,)])
+        class BadList(list):
+            def __iter__(self): raise ValueError('list iteration')
+        alias = GenericAlias(list, (BadList([T]),))
+        with self.assertRaises(ValueError): alias.__parameters__
+        class LiveList(list):
+            def __iter__(self): return iter(self.current)
+        values = LiveList([T])
+        values.current = [T]
+        alias = GenericAlias(list, (values,))
+        self.assertEqual(alias.__parameters__, (T,))
+        values.current = [int]
+        self.assertEqual(alias[str].__args__, ([int],))
+
+
 class TypeVarUnionTests(unittest.TestCase):
 
     def test_union_unique(self):

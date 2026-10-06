@@ -77,6 +77,7 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
             $meth(alias, args) {
                 const parameters = Sk.abstr.gattr(alias, new Sk.builtin.str("__parameters__"));
                 const index = parameters.v.indexOf(this);
+                if (index < 0) throw new Sk.builtin.ValueError("sequence.index(x): x not in sequence");
                 if (index < args.v.length) return args;
                 if (index === args.v.length) {
                     return Sk.misceval.chain(this.$getValue("default"), value => {
