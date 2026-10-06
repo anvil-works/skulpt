@@ -794,20 +794,20 @@ function compileIntOption(value, fallback) {
 // Parser/tokenizer/helpers.c: check_bom, get_coding_spec, get_normal_name.
 // Unicode sources ignore cookies; bytes are decoded before AST parsing.
 function compilerSource(source, filename, caller) {
-    if (Sk.builtin.checkString(source)) return source.$jsstr();
-    if (typeof source === "string") return source;
+    if (Sk.builtin.checkString(source)) {return source.$jsstr();}
+    if (typeof source === "string") {return source;}
     if (!Sk.builtin.checkBytes(source)) {
         throw new Sk.builtin.TypeError(caller + "() arg 1 must be a string, bytes or code object");
     }
     let bytes = source.v;
     const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
-    if (bom) bytes = bytes.subarray(3);
+    if (bom) {bytes = bytes.subarray(3);}
     let end = 0;
     let lines = 0;
     while (end < bytes.length && lines < 2) {
         const byte = bytes[end++];
         if (byte === 13) {
-            if (bytes[end] === 10) end++;
+            if (bytes[end] === 10) {end++;}
             lines++;
         } else if (byte === 10) {
             lines++;
@@ -830,7 +830,7 @@ function compilerSource(source, filename, caller) {
             }
             break;
         }
-        if (!/^[ \t\f]*(#.*)?$/.test(header[i])) break;
+        if (!/^[ \t\f]*(#.*)?$/.test(header[i])) {break;}
     }
     const codec = encoding.toLowerCase().replace(/_/g, "-");
     if (["latin1", "latin-1", "iso8859-1", "iso-8859-1", "l1", "cp819"].includes(codec)) {
@@ -905,12 +905,12 @@ Sk.builtin.eval = function (source, globals, locals) {
         const bytesSource = Sk.builtin.checkBytes(source);
         if (bytesSource) {
             let start = 0;
-            while (source.v[start] === 32 || source.v[start] === 9) start++;
+            while (source.v[start] === 32 || source.v[start] === 9) {start++;}
             source = new Sk.builtin.bytes(source.v.subarray(start));
         }
         // Unicode eval sources also strip only ASCII spaces/tabs.
         let text = compilerSource(source, "<string>", "eval");
-        if (!bytesSource) text = text.replace(/^[ \t]+/, "");
+        if (!bytesSource) {text = text.replace(/^[ \t]+/, "");}
         source = new pyCode("<string>", Sk.compile(text, "<string>", "eval", true));
     }
     return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);
