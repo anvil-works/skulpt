@@ -950,13 +950,13 @@ Sk.builtin.exec = function (code, globals, locals, closure) {
     // Python/bltinmodule.c: builtin_exec_impl validates cells before execution.
     if (code instanceof pyCode) {
         const count = code.$jsCode.$metadata.freevars.length;
-        if (!count && hasClosure) throw new Sk.builtin.TypeError("cannot use a closure with this code object");
+        if (!count && hasClosure) {throw new Sk.builtin.TypeError("cannot use a closure with this code object");}
         if (count && !(hasClosure && closure.ob$type === Sk.builtin.tuple && closure.v.length === count &&
                 closure.v.every(cell => cell instanceof Sk.builtin.cell))) {
             throw new Sk.builtin.TypeError("code object requires a closure of exactly length " + count);
         }
     } else {
-        if (hasClosure) throw new Sk.builtin.TypeError("closure can only be used when source is a code object");
+        if (hasClosure) {throw new Sk.builtin.TypeError("closure can only be used when source is a code object");}
         code = Sk.compile(compilerSource(code, filename, "exec"), filename, "exec", true);
     }
     Sk.asserts.assert(
@@ -980,7 +980,7 @@ Sk.builtin.exec = function (code, globals, locals, closure) {
             if (!(co instanceof pyCode)) {return Sk.global["eval"](co.code)(globals, locals);}
             if (co.mode !== "function") {return co.$jsCode(globals, locals);}
             const func = Sk.builtin.func.prototype.tp$new([co, Sk.misceval.namespaceDict(globals),
-                Sk.builtin.none.none$, Sk.builtin.none.none$, hasClosure ? closure : Sk.builtin.none.none$]);
+                                                           Sk.builtin.none.none$, Sk.builtin.none.none$, hasClosure ? closure : Sk.builtin.none.none$]);
             func.$defaults = null;
             func.$kwdefs = [];
             func.$classLocals = locals;
