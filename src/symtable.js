@@ -152,12 +152,14 @@ function SymbolTableScope (table, name, type, ast, lineno) {
     this.varnames = [];
     this.children = [];
     this.blockType = type;
+    this.ast = ast;
 
     this.isNested = false;
     this.hasFree = false;
     this.childHasFree = false;  // true if child block has free vars including free refs to globals
     this.hasCells = false;  // true if this scope has cell variables (locals accessed by nested functions)
     this.generator = false;
+    this.inConditionalBlock = false;
     this.varargs = false;
     this.varkeywords = false;
     this.returnsValue = false;
@@ -166,7 +168,7 @@ function SymbolTableScope (table, name, type, ast, lineno) {
 
     this.table = table;
 
-    this.isMethod = !!(table.cur && table.cur.blockType === ClassBlock && type === FunctionBlock);
+    this.isMethod = !!(table.cur && table.cur.blockType === ClassBlock && type === FunctionBlock && ast._type !== "Annotation");
     if (table.cur && (table.cur.isNested || table.cur.blockType === FunctionBlock)) {
         this.isNested = true;
     }
@@ -404,10 +406,43 @@ SymbolTable.prototype.visitParams = function (args, toplevel) {
     }
 };
 
-// symtable.c: future AnnotationBlock names have no effect on enclosing scopes.
-// Visit its expressions for syntax validation, then omit this block from analysis.
-SymbolTable.prototype.visitAnnotation = function (annotation) {
-    if (!(this.flags & 0x1000000)) return this.visitExpr(annotation);
+// symtable_visit_annotation: variable annotations share one annotation block.
+// Local/nonsimple annotations and future annotations validate syntax only.
+SymbolTable.prototype.visitAnnotation = function (annotation, statement) {
+    const parent = this.cur;
+    const deferred = Sk.__future__.python3 && !(this.flags & 0x1000000) &&
+        statement && statement.simple && [ClassBlock, ModuleBlock].includes(parent.blockType);
+    if (deferred) {
+        statement.conditionalAnnotation = parent.blockType === ModuleBlock || parent.inConditionalBlock;
+        if (statement.conditionalAnnotation) parent.hasConditionalAnnotations = true;
+        const annotations = parent.deferredVariableAnnotations || (parent.deferredVariableAnnotations = []);
+        statement.conditionalAnnotationIndex = statement.conditionalAnnotation ? (parent.nextAnnotationIndex || 0) : -1;
+        if (statement.conditionalAnnotation) parent.nextAnnotationIndex = statement.conditionalAnnotationIndex + 1;
+        annotations.push({ statement, index: statement.conditionalAnnotationIndex });
+        if (!parent.variableAnnotationScope) {
+            const key = { _type: "Annotation", variableAnnotations: true,
+                lineno: parent.ast.lineno || (parent.ast.body[0] && parent.ast.body[0].lineno) || 1,
+                args: { posonlyargs: [{ _type: "arg", arg: "$annotationFormat", annotation: null }], args: [],
+                    defaults: [], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null } };
+            parent.variableAnnotationScope = key;
+            this.enterBlock("__annotate__", FunctionBlock, key, annotation.lineno);
+            this.cur.annotationScope = true;
+            if (parent.blockType === ClassBlock) {
+                this.cur.classScope = parent;
+                this.cur.hasFree = true;
+                parent.needsClassdict = true;
+                this.addDef("__classdict__", USE, annotation.lineno);
+            }
+            this.visitArguments(key.args, annotation.lineno);
+        } else {
+            this.stack.push(parent);
+            this.cur = this.getStsForAst(parent.variableAnnotationScope);
+        }
+        if (statement.conditionalAnnotation) this.addDef("__conditional_annotations__", USE, annotation.lineno);
+        this.visitExpr(annotation);
+        this.exitBlock();
+        return;
+    }
     this.enterBlock("__annotate__", FunctionBlock, {}, annotation.lineno);
     this.cur.annotationScope = true;
     this.visitExpr(annotation);
@@ -427,6 +462,8 @@ SymbolTable.prototype.visitAnnotations = function (a, returns, owner) {
         this.cur.annotationScope = true;
         if (classScope && !(this.flags & 0x1000000)) {
             this.cur.classScope = classScope;
+            this.cur.hasFree = true;
+            classScope.needsClassdict = true;
             this.addDef("__classdict__", USE, owner.lineno);
         }
         this.visitArguments(key.args, owner.lineno);
@@ -564,6 +601,11 @@ SymbolTable.prototype.visitStmt = function (s) {
     var tmp;
     var e_name;
     Sk.asserts.assert(s !== undefined, "visitStmt called with undefined");
+    const parent = this.cur;
+    const inConditional = parent.inConditionalBlock;
+    if (["If", "While", "For", "AsyncFor", "With", "AsyncWith", "Try", "TryStar", "Match"].includes(s._type)) {
+        parent.inConditionalBlock = true;
+    }
     switch (s._type) {
         case "FunctionDef":
             if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
@@ -627,7 +669,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             } else {
                 this.visitExpr(s.target);
             }
-            this.visitAnnotation(s.annotation);
+            this.visitAnnotation(s.annotation, s);
             if (s.value) {
                 this.visitExpr(s.value);
             }
@@ -770,6 +812,7 @@ SymbolTable.prototype.visitStmt = function (s) {
         default:
             throw new Sk.builtin.SyntaxError(s._type + " is not supported by the Skulpt compiler", this.filename, s.lineno);
     }
+    parent.inConditionalBlock = inConditional;
 };
 
 SymbolTable.prototype.visit_withitem = function(item) {
@@ -1083,6 +1126,7 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
         }
         newbound.__class__ = null;
         newbound.__classdict__ = null;
+        if (ste.hasConditionalAnnotations) newbound.__conditional_annotations__ = null;
     }
 
     for (name in ste.symFlags) {
@@ -1122,6 +1166,7 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
         delete newfree.__classdict__;
         ste.needsClassdict = true;
     }
+    if (ste.blockType === ClassBlock && ste.hasConditionalAnnotations) delete newfree.__conditional_annotations__;
     this.updateSymbols(ste, ste.symFlags, scope, bound, newfree, ste.blockType === ClassBlock);
 
     _dictUpdate(free, newfree);
