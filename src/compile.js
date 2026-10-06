@@ -2713,10 +2713,6 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     }
     Sk.asserts.assert(name.v !== "None");
 
-    if (name.v === "NotImplemented") {
-        return "Sk.builtin.NotImplemented.NotImplemented$";
-    }
-
     mangled = mangleName(this.u.private_, name).v;
     // Have to do this before looking it up in the scope
     mangled = fixReserved(mangled);
