@@ -939,14 +939,24 @@ function compilerSource(source, filename, caller) {
  *
  * Internally call with javascript objects for globals and locals
  */
-Sk.builtin.exec = function (code, globals, locals) {
+Sk.builtin.exec = function (code, globals, locals, closure) {
+    const hasClosure = closure !== undefined && !Sk.builtin.checkNone(closure);
     let filename = globals && globals.__file__;
     if (filename !== undefined && Sk.builtin.checkString(filename)) {
         filename = filename.toString();
     } else {
         filename = "<string>";
     }
-    if (!(code instanceof pyCode)) {
+    // Python/bltinmodule.c: builtin_exec_impl validates cells before execution.
+    if (code instanceof pyCode) {
+        const count = code.$jsCode.$metadata.freevars.length;
+        if (!count && hasClosure) throw new Sk.builtin.TypeError("cannot use a closure with this code object");
+        if (count && !(hasClosure && closure.ob$type === Sk.builtin.tuple && closure.v.length === count &&
+                closure.v.every(cell => cell instanceof Sk.builtin.cell))) {
+            throw new Sk.builtin.TypeError("code object requires a closure of exactly length " + count);
+        }
+    } else {
+        if (hasClosure) throw new Sk.builtin.TypeError("closure can only be used when source is a code object");
         code = Sk.compile(compilerSource(code, filename, "exec"), filename, "exec", true);
     }
     Sk.asserts.assert(
@@ -969,10 +979,8 @@ Sk.builtin.exec = function (code, globals, locals) {
         (co) => {
             if (!(co instanceof pyCode)) {return Sk.global["eval"](co.code)(globals, locals);}
             if (co.mode !== "function") {return co.$jsCode(globals, locals);}
-            if (co.$jsCode.$metadata.freevars.length) {
-                throw new Sk.builtin.TypeError("code object passed to exec() may not contain free variables");
-            }
-            const func = new Sk.builtin.func(co.$jsCode, globals);
+            const func = Sk.builtin.func.prototype.tp$new([co, Sk.misceval.namespaceDict(globals),
+                Sk.builtin.none.none$, Sk.builtin.none.none$, hasClosure ? closure : Sk.builtin.none.none$]);
             func.$defaults = null;
             func.$kwdefs = [];
             func.$classLocals = locals;
