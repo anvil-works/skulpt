@@ -107,10 +107,20 @@ delete Sk.builtins.adapter_pause;
 delete baseline.builtins.adapter_pause;
 count++;
 
+// Newly implemented syntax compares with CPython; the checkpoint predates it.
+const namedExpressionSource = "x = (y := 1)\nprint(x, y)";
+const namedExpressionOracle = spawnSync(python, ["-c", namedExpressionSource], { encoding: "utf8" });
+assert.equal(namedExpressionOracle.status, 0, namedExpressionOracle.stderr);
+Sk.configure({ __future__: { ...Sk.python3 } });
+const namedExpressionFlags = Sk.__future__;
+Sk.compile(namedExpressionSource, "namedexpr.py", "exec", true);
+assert.equal(Sk.__future__, namedExpressionFlags, "Successful compilation must restore configured flags");
+assert.equal(await run(namedExpressionSource, true), namedExpressionOracle.stdout);
+count++;
+
 for (const source of [
     "match x:\n    case 1: pass",
     "def f[T](): pass",
-    "x = (y := 1)",
     "try:\n    pass\nexcept* ValueError: pass",
     "x = t'{value}'",
 ]) {
