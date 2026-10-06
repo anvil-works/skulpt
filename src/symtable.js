@@ -158,6 +158,7 @@ function SymbolTableScope (table, name, type, ast, lineno) {
     this.childHasFree = false;  // true if child block has free vars including free refs to globals
     this.hasCells = false;  // true if this scope has cell variables (locals accessed by nested functions)
     this.generator = false;
+    this.coroutine = false;
     this.varargs = false;
     this.varkeywords = false;
     this.returnsValue = false;
@@ -527,7 +528,9 @@ SymbolTable.prototype.visitStmt = function (s) {
     var e_name;
     Sk.asserts.assert(s !== undefined, "visitStmt called with undefined");
     switch (s._type) {
+        case "AsyncFunctionDef":
         case "FunctionDef":
+            if (s._type === "AsyncFunctionDef" && !Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
             if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
             this.addDef(s.name, DEF_LOCAL, s.lineno);
             if (s.args.defaults) {
@@ -539,6 +542,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             }
             this.visitAnnotations(s.args, s.returns);
             this.enterBlock(s.name, FunctionBlock, s, s.lineno);
+            this.cur.coroutine = s._type === "AsyncFunctionDef";
             this.visitArguments(s.args, s.lineno);
             this.SEQStmt(s.body);
             this.exitBlock();
@@ -805,6 +809,10 @@ SymbolTable.prototype.visitExpr = function (e) {
         case "GeneratorExp":
             this.visitGenexp(e);
             break;
+        case "Await":
+            if (!this.cur.coroutine) throw new Sk.builtin.SyntaxError("'await' outside async function", this.filename, e.lineno);
+            this.visitExpr(e.value);
+            break;
         case "YieldFrom":
         case "Yield":
             if (this.cur.comprehension) {
@@ -813,8 +821,9 @@ SymbolTable.prototype.visitExpr = function (e) {
             if (e.value) {
                 this.visitExpr(e.value);
             }
+            if (this.cur.coroutine) throw new Sk.builtin.SyntaxError(e._type === "YieldFrom" ? "'yield from' inside async function" : "Async generators are not yet supported", this.filename, e.lineno);
             this.cur.generator = true;
-            if (this.cur.returnsValue) {
+            if (!Sk.__future__.python3 && this.cur.returnsValue) {
                 throw new Sk.builtin.SyntaxError("'return' with argument inside generator", this.filename);
             }
             break;
