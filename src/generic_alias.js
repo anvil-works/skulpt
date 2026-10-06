@@ -69,6 +69,7 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
             if (!(other instanceof Sk.builtin.GenericAlias) || (op !== "Eq" && op !== "NotEq")) {
                 return Sk.builtin.NotImplemented.NotImplemented$;
             }
+            if (this.$starred !== other.$starred) return op === "NotEq";
             const eq = Sk.misceval.richCompareBool(this.$origin, other.$origin, "Eq");
             if (!eq) {
                 return op === "Eq" ? eq : !eq;

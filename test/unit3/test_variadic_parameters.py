@@ -262,6 +262,10 @@ class VariadicCompilerRegressions(unittest.TestCase):
         self.assertEqual(tuple[*Ts][*tuple[int, str]], tuple[int, str])
         self.assertIs(tuple[int].__class__, type(tuple[int]))
         self.assertFalse(isinstance(tuple[int], type))
+        starred, = tuple[int]
+        self.assertNotEqual(starred, tuple[int])
+        self.assertEqual(len({starred, tuple[int]}), 2)
+        self.assertEqual((starred | tuple[int]).__args__, (starred, tuple[int]))
         self.assertEqual(tuple[T, *Ts, U][*tuple[float, ...]].__args__, (float, *tuple[float, ...], float))
         with self.assertRaises(TypeError): tuple[*Ts, *TypeVarTuple('Us')][int]
         with self.assertRaises(TypeError): tuple[Ts][int]
@@ -290,6 +294,12 @@ class VariadicCompilerRegressions(unittest.TestCase):
         with self.assertRaises(TypeError): tuple[P][P, int]
         self.assertEqual(repr(ParamSpecArgs(42)), '42.args')
         with self.assertRaises(TypeError): hash(P.args)
+        self.assertEqual((P | int).__args__, (P, int))
+        self.assertEqual((int | P).__args__, (int, P))
+        self.assertEqual((Unpack[int] | str).__args__, (Unpack[int], str))
+        self.assertIs(Unpack[None].__args__[0], type(None))
+        for value in ((), (int,), (int, str)):
+            with self.assertRaises(TypeError): Unpack[value]
         from typing import get_origin, get_args
         self.assertIs(get_origin(P.args), P)
         self.assertEqual(get_args(P.args), ())
