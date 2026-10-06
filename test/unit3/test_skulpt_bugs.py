@@ -598,5 +598,19 @@ class TestLiveSuperBindings(unittest.TestCase):
         self.assertNotIn("value", ns)
 
 
+class TestCompilerDebugValidation(unittest.TestCase):
+    # CPython test_syntax.py __debug__ assignment/deletion doctest cases,
+    # also placed in dead suites to guard validation before optimization.
+    def test_debug_writes_in_dead_code(self):
+        sources = ("__debug__ = 1", "(__debug__ := 1)", "def __debug__(): pass",
+                   "class __debug__: pass", "del __debug__", "obj.__debug__ = 1")
+        for source in sources:
+            for optimize in (0, 1, 2):
+                with self.assertRaises(SyntaxError):
+                    compile("if False:\n    " + source, "probe", "exec", optimize=optimize)
+        with self.assertRaises(SyntaxError):
+            compile("assert (__debug__ := 1)", "probe", "exec", optimize=2)
+
+
 if __name__ == "__main__":
     unittest.main()

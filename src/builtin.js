@@ -753,11 +753,44 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     Sk.builtin.pyCheckType("source", "str", Sk.builtin.checkString(source));
     Sk.builtin.pyCheckType("filename", "str", Sk.builtin.checkString(filename));
     Sk.builtin.pyCheckType("mode", "str", Sk.builtin.checkString(mode));
+    // Python/bltinmodule.c: builtin_compile_impl validates integer options
+    // before selecting the grammar and invoking the compiler.
+    flags = compileIntOption(flags, 0);
+    optimize = compileIntOption(optimize, -1);
+    if (dont_inherit !== undefined) {
+        Sk.misceval.isTrue(dont_inherit);
+    }
+    const futureMask = 0x1fe0000;
+    const compileMask = 0xf600;
+    if (flags & ~(futureMask | compileMask | 0x10)) {
+        throw new Sk.builtin.ValueError("compile(): unrecognised flags");
+    }
+    if (optimize < -1 || optimize > 2) {
+        throw new Sk.builtin.ValueError("compile(): invalid optimize value");
+    }
+    // Historical mandatory future features have no effect in Python 3.
+    // AST return/typing, top-level await, incomplete input, Barry syntax and
+    // stringized annotations need their own implementations, not ignored flags.
+    const mandatoryMask = Sk.__future__.python3 ? 0xbe0010 : 0;
+    if (flags & ~mandatoryMask) {
+        throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
+    }
     source = source.$jsstr();
     filename = filename.$jsstr();
     mode = mode.$jsstr();
-    return Sk.misceval.chain(Sk.compile(source, filename, mode, true), (co) => new pyCode(filename, co));
+    return new pyCode(filename, Sk.compile(source, filename, mode, true, Math.max(optimize, 0)));
 };
+
+function compileIntOption(value, fallback) {
+    if (value === undefined) {
+        return fallback;
+    }
+    const index = Sk.misceval.asIndexOrThrow(value);
+    if (typeof index !== "number" || index < -2147483648 || index > 2147483647) {
+        throw new Sk.builtin.OverflowError("Python int too large to convert to C int");
+    }
+    return index;
+}
 
 /**
  *

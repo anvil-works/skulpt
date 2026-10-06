@@ -10,11 +10,13 @@ Sk.gensymcount = 0;
  * @param {number} flags
  * @param {boolean=} canSuspend whether compiled code can suspend
  * @param {string=} sourceCodeForAnnotation used to add original source to listing if desired
+ * @param {number=} optimize optimization level
  */
-function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation) {
+function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation, optimize) {
     this.filename = filename;
     this.st = st;
     this.flags = flags;
+    this.optimize = optimize || 0;
     this.canSuspend = canSuspend;
     this.interactive = false;
     this.nestlevel = 0;
@@ -1172,6 +1174,7 @@ Compiler.prototype.caugassign = function (s) {
  * optimize some constant exprs. returns 0 if always false, 1 if always true or -1 otherwise.
  */
 Compiler.prototype.exprConstant = function (e) {
+    if (e._type === "Name" && e.id === "__debug__") return this.optimize === 0 ? 1 : 0;
     if (e._type !== "Constant") return -1;
     const v = e.value;
     switch (v.type) {
@@ -1887,6 +1890,7 @@ Compiler.prototype.cwith = function (s, itemIdx) {
 };
 
 Compiler.prototype.cassert = function (s) {
+    if (this.optimize > 0) return;
     /* todo; warnings method
      if (s.test instanceof Tuple && s.test.elts.length > 0)
      Sk.warn("assertion is always true, perhaps remove parentheses?");
@@ -2379,6 +2383,7 @@ Compiler.prototype.cannotations = function (args, returns) {
  * body has no docstring.
  */
 Compiler.prototype.maybeCDocstringOfBody = function(body) {
+    if (this.optimize >= 2) return null;
     if (body.length === 0)  // Don't think this can happen?
         return null;
 
@@ -2788,6 +2793,9 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     var optype;
     var op;
     var mangled;
+    if (ctx === "Load" && name.v === "__debug__") {
+        return "Sk.builtin.bool." + (this.optimize === 0 ? "true$" : "false$");
+    }
     if ((ctx === "Store" || ctx === "AugStore" || ctx === "Del") && name.v === "__debug__") {
         throw new Sk.builtin.SyntaxError("can not assign to __debug__", this.filename, this.u.lineno);
     }
@@ -3126,8 +3134,12 @@ Compiler.prototype.cmod = function (mod) {
  * @param {string} filename where it came from
  * @param {string} mode one of 'exec', 'eval', or 'single'
  * @param {boolean=} canSuspend if the generated code supports suspension
+ * @param {number=} optimize optimization level
  */
-Sk.compile = function (source, filename, mode, canSuspend) {
+Sk.compile = function (source, filename, mode, canSuspend, optimize) {
+    if (!["exec", "eval", "single"].includes(mode)) {
+        throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
+    }
     //print("FILE:", filename);
     // __future__ flags can be set from code
     // (with "from __future__ import ..." statements),
@@ -3140,7 +3152,7 @@ Sk.compile = function (source, filename, mode, canSuspend) {
     try {
         const ast = mode === "eval" ? Sk.parseExpression(source, filename) : Sk.parseModule(source, filename);
         const st = Sk.symboltable(ast, filename);
-        c = new Compiler(filename, st, 0, canSuspend, source);
+        c = new Compiler(filename, st, 0, canSuspend, source, optimize);
         funcname = c.cmod(ast);
     } finally {
         Sk.__future__ = savedFlags;

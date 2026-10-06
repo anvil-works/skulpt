@@ -455,6 +455,10 @@ SymbolTable.prototype.newTmpname = function (lineno) {
 };
 
 SymbolTable.prototype.addDef = function (name, flag, lineno, scope) {
+    // Validation precedes optimization, including skipped suites and asserts.
+    if ((typeof name === "string" ? name : name.v) === "__debug__" && (flag & (DEF_LOCAL | DEF_PARAM | DEF_IMPORT))) {
+        throw new Sk.builtin.SyntaxError("cannot assign to __debug__", this.filename, lineno);
+    }
     scope = scope || this.cur;
     var fromGlobal;
     var val;
@@ -845,6 +849,9 @@ SymbolTable.prototype.visitExpr = function (e) {
             }
             break;
         case "Attribute":
+            if (e.attr === "__debug__" && e.ctx._type !== "Load") {
+                throw new Sk.builtin.SyntaxError("cannot " + (e.ctx._type === "Del" ? "delete" : "assign to") + " __debug__", this.filename, e.lineno);
+            }
             this.visitExpr(e.value);
             break;
         case "Subscript":
@@ -852,6 +859,9 @@ SymbolTable.prototype.visitExpr = function (e) {
             this.visitSlice(e.slice);
             break;
         case "Name":
+            if (e.id === "__debug__" && e.ctx._type === "Del") {
+                throw new Sk.builtin.SyntaxError("cannot delete __debug__", this.filename, e.lineno);
+            }
             this.addDef(e.id, e.ctx._type === "Load" ? USE : DEF_LOCAL, e.lineno);
             if (e.ctx._type === "Load" && this.cur.blockType === FunctionBlock && e.id === "super") {
                 this.addDef("__class__", USE, e.lineno);
