@@ -88,7 +88,7 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             return this.$compute ? this.$compute.tp$getattr(Sk.builtin.str.$module) : this.$module;
         } },
         __parameters__: { $get() {
-            if (!this.$params.v.some(param => param instanceof Sk.builtin.TypeVarTuple)) return this.$params;
+            if (!this.$params.v.some(param => param instanceof Sk.builtin.TypeVarTuple)) {return this.$params;}
             return new Sk.builtin.tuple(this.$params.v.map(param => param instanceof Sk.builtin.TypeVarTuple ? new Sk.builtin.UnpackAlias(param) : param));
         } },
         __type_params__: { $get() { return this.$params; } },
