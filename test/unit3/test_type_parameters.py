@@ -404,6 +404,9 @@ class DefaultsTest(unittest.TestCase):
 # CPython-checked regressions for wrapper arguments, metadata and lazy failures.
 class TypeParameterCompilerRegressions(unittest.TestCase):
     def test_defaults_decorators_and_metadata(self):
+        class C:
+            def method[T](self): return T
+        self.assertFalse(C.method.__code__.co_flags & 0x8000000)
         events = []
         def value(label):
             events.append(label)
