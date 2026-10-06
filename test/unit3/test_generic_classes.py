@@ -931,6 +931,13 @@ class GenericClassRegressions(unittest.TestCase):
         with self.assertRaises(AttributeError): alias.__unpacked__
         with self.assertRaises(TypeError): isinstance(Box(), Box[int])
         with self.assertRaises(TypeError): Generic[T][int]
+        import typing
+        for union in (lambda: Generic[T] | int, lambda: int | Generic[T],
+                      lambda: typing.Union[Generic[T], int], lambda: T | Generic[T]):
+            with self.assertRaisesRegex(TypeError, "is not valid as type argument"):
+                union()
+        # Native class operands take the CPython union fast path.
+        self.assertEqual(typing.Union[Generic, int].__args__, (Generic, int))
         class Derived(Box): pass
         self.assertEqual(Derived.__type_params__, ())
         self.assertEqual(Derived.__parameters__, ())

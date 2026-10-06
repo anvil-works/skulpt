@@ -56,6 +56,10 @@ def _type_check(arg, message):
         return type(None)
     if isinstance(arg, str):
         raise NotImplementedError("string type arguments require ForwardRef support")
+    if isinstance(arg, _GenericAlias) and arg.__origin__ in (Generic,):
+        raise TypeError(f"{arg} is not valid as type argument")
+    if arg is Unpack or arg in (Generic,):
+        raise TypeError(f"Plain {arg} is not valid as type argument")
     if type(arg) is tuple:
         raise TypeError(message + " Got " + repr(arg) + ".")
     return arg

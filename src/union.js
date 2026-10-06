@@ -71,12 +71,16 @@ function unionContainsHash(buckets, arg, hash) {
         value === arg || Sk.misceval.richCompareBool(value, arg, "Eq"));
 }
 
-// _Py_union_type_or and unionbuilder_add_single_unchecked.
-Sk.builtin.typeUnion = function (left, right) {
-    const unionable = value => Sk.builtin.checkNone(value) || Sk.builtin.checkClass(value) ||
+// Objects/unionobject.c: is_unionable, shared by the operator and type_check fast path.
+function isUnionable(value) {
+    return Sk.builtin.checkNone(value) || Sk.builtin.checkClass(value) ||
         value instanceof Sk.builtin.GenericAlias || value instanceof Sk.builtin.UnionType ||
         value instanceof Sk.builtin.TypeAliasType;
-    if (!Sk.__future__.python3 || !unionable(left) || !unionable(right)) {
+}
+
+// _Py_union_type_or and unionbuilder_add_single_unchecked.
+Sk.builtin.typeUnion = function (left, right) {
+    if (!Sk.__future__.python3 || !isUnionable(left) || !isUnionable(right)) {
         return Sk.builtin.NotImplemented.NotImplemented$;
     }
     return Sk.builtin.makeUnion([left, right], false);
@@ -87,17 +91,16 @@ Sk.builtin.makeUnion = function (values, checked) {
     function add(arg) {
         if (Sk.builtin.checkNone(arg)) {arg = Sk.builtin.none;}
         if (arg instanceof Sk.builtin.UnionType) {
-            arg.$args.v.forEach(add);
-            return;
+            return Sk.misceval.iterArray(arg.$args.v, add);
         }
-        if (checked) {
-            if (Sk.builtin.checkString(arg)) {
-                throw new Sk.builtin.NotImplementedError("union string arguments require typing ForwardRef support");
-            }
-            if (arg.ob$type === Sk.builtin.tuple) {
-                throw new Sk.builtin.TypeError("Union[arg, ...]: each arg must be a type. Got " + Sk.misceval.objectRepr(arg) + ".");
-            }
+        if (checked && !isUnionable(arg)) {
+            // CPython's checked builder delegates non-unionable arguments to typing.
+            return Sk.misceval.chain(Sk.builtin.callTypingFunction("_type_check", [arg,
+                new Sk.builtin.str("Union[arg, ...]: each arg must be a type.")]), addUnchecked);
         }
+        return addUnchecked(arg);
+    }
+    function addUnchecked(arg) {
         let canHash = true;
         try { Sk.abstr.objectHash(arg); } catch (_) { canHash = false; }
         if (canHash) {
@@ -115,7 +118,8 @@ Sk.builtin.makeUnion = function (values, checked) {
         }
         args.push(arg);
     }
-    values.forEach(add);
-    if (!args.length) {throw new Sk.builtin.TypeError("Cannot take a Union of no types.");}
-    return args.length === 1 ? args[0] : new Sk.builtin.UnionType(args, hashable, unhashable);
+    return Sk.misceval.chain(Sk.misceval.iterArray(values, add), () => {
+        if (!args.length) {throw new Sk.builtin.TypeError("Cannot take a Union of no types.");}
+        return args.length === 1 ? args[0] : new Sk.builtin.UnionType(args, hashable, unhashable);
+    });
 };
