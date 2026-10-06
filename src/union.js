@@ -2,7 +2,11 @@
 Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
     constructor: function Union(args, hashable, unhashable) {
         this.$args = new Sk.builtin.tuple(args);
-        this.$hashable = new Sk.builtin.frozenset(hashable);
+        // Freezing the private builder set must not rehash its Python keys.
+        this.$hashable = new Sk.builtin.frozenset();
+        this.$hashable.v = hashable.v;
+        this.$hashEntries = Object.entries(hashable.v.buckets).flatMap(([hash, bucket]) =>
+            bucket.map(([arg]) => [arg, Number(hash)]));
         this.$unhashable = unhashable;
     },
     slots: {
@@ -19,13 +23,14 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
                 for (const arg of this.$unhashable) Sk.abstr.objectHash(arg);
                 throw new Sk.builtin.TypeError("union contains " + this.$unhashable.length + " unhashable elements");
             }
-            return this.$hashable.tp$hash();
+            return Sk.builtin.frozenset.$hashValues(this.$hashEntries.map(entry => entry[1]));
         },
         tp$richcompare(other, op) {
             if (!(other instanceof Sk.builtin.UnionType) || (op !== "Eq" && op !== "NotEq")) {
                 return Sk.builtin.NotImplemented.NotImplemented$;
             }
-            const equal = Sk.misceval.richCompareBool(this.$hashable, other.$hashable, "Eq") &&
+            const equal = this.$hashEntries.length === other.$hashEntries.length &&
+                this.$hashEntries.every(([arg, hash]) => other.$hashable.v.get$bucket_item(arg, hash) !== undefined) &&
                 this.$unhashable.length === other.$unhashable.length &&
                 this.$unhashable.every(arg => unionContains(other.$unhashable, arg)) &&
                 other.$unhashable.every(arg => unionContains(this.$unhashable, arg));
@@ -48,6 +53,7 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
         __args__: { $get() { return this.$args; } },
         __parameters__: { $get() {
             for (const arg of this.$args.v) {
+                if (Sk.builtin.checkClass(arg)) continue;
                 const parameters = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__parameters__"));
                 if (parameters && Sk.misceval.isTrue(parameters)) {
                     throw new Sk.builtin.NotImplementedError("union type-parameter substitution is not yet supported");
@@ -105,5 +111,5 @@ Sk.builtin.makeUnion = function (values, checked) {
     }
     values.forEach(add);
     if (!args.length) throw new Sk.builtin.TypeError("Cannot take a Union of no types.");
-    return args.length === 1 ? args[0] : new Sk.builtin.UnionType(args, hashable.sk$asarray(), unhashable);
+    return args.length === 1 ? args[0] : new Sk.builtin.UnionType(args, hashable, unhashable);
 };

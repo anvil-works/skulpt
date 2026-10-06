@@ -156,4 +156,30 @@ class UnionTests(unittest.TestCase):
         with self.assertRaises(ZeroDivisionError): bt | bt2
         with self.assertRaises(ZeroDivisionError): (int | bt) == (int | bt2)
 
+    def test_stored_hashes_and_class_parameters(self):
+        hashes = []
+        enabled = True
+        class Meta(type):
+            def __hash__(cls):
+                if not enabled: raise ValueError('hash disabled')
+                hashes.append(cls)
+                if len(hashes) > 3: raise ValueError('rehashed')
+                return 123
+            @property
+            def __parameters__(cls): raise ValueError('class parameters queried')
+        class A(metaclass=Meta): pass
+        union = A | int
+        self.assertEqual(hashes, [A, A, A])
+        self.assertEqual(union.__parameters__, ())
+        enabled = False
+        self.assertEqual(hash(union), hash(union))
+        self.assertEqual(union, union)
+        # Independent unions still compare using their stored entry hashes.
+        enabled = True
+        hashes.clear()
+        other = int | A
+        enabled = False
+        self.assertEqual(union, other)
+        self.assertEqual(hash(union), hash(other))
+
 if __name__ == '__main__': unittest.main()
