@@ -445,3 +445,25 @@ validation and native subtype matching, bypassing metaclass __instancecheck__.
 The unchanged upstream invalid-ordinary-matcher test is restored, and a
 CPython-checked regression covers metaclass overrides and raising BaseException
 itself (previously mistaken for a non-exception class).
+
+
+### Type unions (PEP 604)
+
+`stu-dev/compiler/type-unions` implements the existing binary-operator path's
+runtime contract, following `Objects/unionobject.c` in the pinned CPython 3.14
+checkout. The union builder flattens nested unions, converts None to NoneType,
+preserves first-occurrence order and separates hashable and unhashable arguments
+for equality and hashing. It handles generic aliases and metaclass overrides.
+`types.UnionType` exposes readonly arguments and supports class subscription;
+Python 3.14's checked builder accepts ordinary non-type arguments as CPython
+does, rejecting exact tuples. String arguments explicitly require the pending
+ForwardRef implementation. Parameter substitution remains guarded until native
+type parameters are added.
+
+`isinstance` and `issubclass` unwrap union arguments in order and invoke native
+metaclass checks. Thus `isinstance(1, int | list[int])` succeeds, while reversing
+the operands raises the parameterized-generic TypeError. Five unchanged CPython
+UnionTests methods cover unhashable metaclasses, changing hashability and custom
+instance/subclass checks; three CPython-checked tests select operator, metadata,
+ordering, generic alias and invalid cases from the same suite. The broader typing
+library, ForwardRef, substitution and serialization remain separate work.
