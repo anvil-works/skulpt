@@ -251,6 +251,17 @@ function tp$new(args, kwargs) {
         classcell.$closure.__class__ = klass;
     }
 
+    // typeobject.c: heap types retain their own dictionary. Annotation scopes
+    // will capture this dictionary through __classdictcell__, not a body copy.
+    klass.$dict = new Sk.builtin.dict(dict.$items().flat());
+    for (const name of ["__classcell__", "__qualname__"]) {
+        klass.$dict.dict$delItem(new Sk.builtin.str(name));
+    }
+    for (const [key, value] of Object.entries(klassProto)) {
+        if (value && value.ob$type && !Sk.unfixReserved(key).includes("$")) {
+            klass.$dict.dict$setItem(new Sk.builtin.str(Sk.unfixReserved(key)), value);
+        }
+    }
     if (originalBases.v.length) {klass.sk$tuple_bases = originalBases;}
     set_names(klass);
     init_subclass(klass, kwargs);
@@ -359,10 +370,11 @@ function tp$setattr(pyName, value, canSuspend) {
 
     if (value === undefined) {
         const proto = this.prototype;
-        if (!proto.hasOwnProperty(jsName)) {
+        if (this.$dict !== undefined ? this.$dict.quick$lookup(pyName) === undefined : !proto.hasOwnProperty(jsName)) {
             throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '" + pyName.$jsstr() + "'");
         } else {
             delete proto[jsName];
+            if (this.$dict !== undefined) this.$dict.dict$delItem(pyName);
             // delete the slot_func
             // TODO what about slot funcs that are dual slots...
             const slot_name = Sk.dunderToSkulpt[jsName];
@@ -377,6 +389,7 @@ function tp$setattr(pyName, value, canSuspend) {
         }
     } else {
         this.prototype[jsName] = value;
+        if (this.$dict !== undefined) this.$dict.dict$setItem(pyName, value);
         if (jsName in Sk.dunderToSkulpt) {
             this.$allocateSlot(jsName, value);
         }
@@ -384,8 +397,8 @@ function tp$setattr(pyName, value, canSuspend) {
 }
 
 function fastLookup(pyName) {
-    var jsName = pyName.$mangled;
-    return this.prototype[jsName];
+    if (this.$dict !== undefined) return slowLookup.call(this, pyName);
+    return this.prototype[pyName.$mangled];
 }
 
 function slowLookup(pyName) {
@@ -393,7 +406,11 @@ function slowLookup(pyName) {
     const mro = this.prototype.tp$mro;
     for (let i = 0; i < mro.length; ++i) {
         const base_proto = mro[i].prototype;
-        if (base_proto.hasOwnProperty(jsName)) {
+        const dict = mro[i].$dict;
+        if (dict !== undefined) {
+            const value = dict.quick$lookup(pyName);
+            if (value !== undefined) return value;
+        } else if (base_proto.hasOwnProperty(jsName)) {
             return base_proto[jsName];
         }
     }
@@ -688,7 +705,7 @@ Sk.builtin.type.prototype.tp$getsets = {
     },
     __dict__: {
         $get() {
-            return new Sk.builtin.mappingproxy(this.prototype);
+            return new Sk.builtin.mappingproxy(this.$dict || this.prototype);
         },
     },
     __doc__: {
@@ -701,13 +718,14 @@ Sk.builtin.type.prototype.tp$getsets = {
                     }
                     return doc.tp$descr_get(null, this);
                 }
-                return this.prototype.__doc__;
+                return doc;
             }
             return Sk.builtin.none.none$;
         },
         $set(value) {
             check_special_type_attr(this, value, Sk.builtin.str.$doc);
             this.prototype.__doc__ = value;
+            this.$dict.dict$setItem(Sk.builtin.str.$doc, value);
         },
     },
     __name__: {
@@ -751,7 +769,7 @@ Sk.builtin.type.prototype.tp$getsets = {
     __module__: {
         $get() {
             const typeproto = this.prototype;
-            const mod = typeproto.__module__;
+            const mod = this.$dict !== undefined ? this.$dict.quick$lookup(Sk.builtin.str.$module) : typeproto.__module__;
             if (mod && !(mod.ob$type === Sk.builtin.getset_descriptor)) {
                 return mod;
             }
@@ -764,6 +782,7 @@ Sk.builtin.type.prototype.tp$getsets = {
             // they can set the module to whatever they like
             check_special_type_attr(this, value, Sk.builtin.str.$module);
             this.prototype.__module__ = value;
+            this.$dict.dict$setItem(Sk.builtin.str.$module, value);
         },
     },
 };
