@@ -655,9 +655,6 @@ SymbolTable.prototype.visitStmt = function (s) {
             this.visitExpr(s.value);
             break;
         case "AnnAssign":
-            if (!Sk.__future__.python3) {
-                throw new Sk.builtin.SyntaxError("Annotated assignment is not supported in Python 2", this.filename, s.lineno);
-            }
             if (s.target._type == "Name") {
                 e_name = s.target;
                 name = Sk.mangleName(this.curClass, e_name.id).v;

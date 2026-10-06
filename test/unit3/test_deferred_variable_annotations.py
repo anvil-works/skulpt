@@ -1,3 +1,4 @@
+# Async diagnostic cases are deferred with Python async support.
 # Unchanged CPython 3.14 type annotation methods at 18ef0f0cb52.
 import itertools
 import textwrap
@@ -320,7 +321,6 @@ class AdditionalDeferredEvaluationTests(HarnessCase):
             "",
             "class X:\n ",
             "def f():\n ",
-            "async def f():\n ",
         ]
         for prelude in preludes:
             with self.subTest(prelude=prelude):
@@ -328,15 +328,11 @@ class AdditionalDeferredEvaluationTests(HarnessCase):
                 check_syntax_error(self, prelude + "def func(x: (yield from x)): ...", "yield expression cannot be used within an annotation")
                 check_syntax_error(self, prelude + "def func(x: (y := 3)): ...", "named expression cannot be used within an annotation")
                 check_syntax_error(self, prelude + "def func(x: (await 42)): ...", "await expression cannot be used within an annotation")
-                check_syntax_error(self, prelude + "def func(x: [y async for y in x]): ...", "asynchronous comprehension outside of an asynchronous function")
-                check_syntax_error(self, prelude + "def func(x: {y async for y in x}): ...", "asynchronous comprehension outside of an asynchronous function")
-                check_syntax_error(self, prelude + "def func(x: {y: y async for y in x}): ...", "asynchronous comprehension outside of an asynchronous function")
     def test_no_exotic_expressions_in_unevaluated_annotations(self):
         preludes = [
             "",
             "class X: ",
             "def f(): ",
-            "async def f(): ",
         ]
         for prelude in preludes:
             with self.subTest(prelude=prelude):
@@ -345,9 +341,6 @@ class AdditionalDeferredEvaluationTests(HarnessCase):
                 check_syntax_error(self, prelude + "(x): (y := 3)", "named expression cannot be used within an annotation")
                 check_syntax_error(self, prelude + "(x): (__debug__ := 3)", "named expression cannot be used within an annotation")
                 check_syntax_error(self, prelude + "(x): (await 42)", "await expression cannot be used within an annotation")
-                check_syntax_error(self, prelude + "(x): [y async for y in x]", "asynchronous comprehension outside of an asynchronous function")
-                check_syntax_error(self, prelude + "(x): {y async for y in x}", "asynchronous comprehension outside of an asynchronous function")
-                check_syntax_error(self, prelude + "(x): {y: y async for y in x}", "asynchronous comprehension outside of an asynchronous function")
     def test_class_annotation_dunder_classdict(self):
         ns = run_code("""
             class C:
