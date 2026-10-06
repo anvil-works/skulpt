@@ -15,6 +15,18 @@ class ClassDictionaryTests(unittest.TestCase):
             pass
         self.assertEqual(type(C.__dict__), type(B.__dict__))
 
+    def test_builtin_namespaces_and_string_subclasses(self):
+        self.assertIn('upper', str.__dict__)
+        self.assertIn('upper', dir(str))
+        self.assertEqual(str.__module__, 'builtins')
+        class Text(str):
+            value = 1
+        self.assertEqual(Text('abc').upper(), 'ABC')
+        self.assertEqual(Text.value, 1)
+        self.assertEqual(Text.__module__, __name__)
+        Text.__module__ = 'elsewhere'
+        self.assertEqual(Text.__dict__['__module__'], 'elsewhere')
+
     def test_live_proxy_mutation_and_inheritance(self):
         class Base:
             value = 1
@@ -52,6 +64,29 @@ class ClassDictionaryTests(unittest.TestCase):
         self.assertEqual(cls.__dict__[42], 'nonstring')
         self.assertNotIn('__qualname__', cls.__dict__)
         self.assertEqual(cls.__qualname__, 'Qualified')
+
+    def test_namespace_copy_retains_hashes_and_descriptor_names(self):
+        calls = []
+        class HashKey:
+            def __hash__(self):
+                calls.append('hash')
+                if len(calls) > 1:
+                    raise RuntimeError('key was rehashed')
+                return 17
+        class Name(str): pass
+        names = []
+        class Descriptor:
+            def __set_name__(self, owner, name):
+                names.append((owner, name))
+        hash_key = HashKey()
+        name = Name('value')
+        body = {hash_key: 1, name: Descriptor(), 42: Descriptor()}
+        cls = type('C', (), body)
+        self.assertEqual(calls, ['hash'])
+        self.assertEqual(len(names), 2)
+        self.assertIs(names[0][0], cls)
+        self.assertIs(names[0][1], name)
+        self.assertEqual(names[1], (cls, 42))
 
     def test_module_doc_and_implicit_method_descriptors(self):
         class C:
