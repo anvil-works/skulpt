@@ -35,9 +35,9 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
         },
         tp$as_sequence_or_mapping: true,
         mp$subscript(item) {
-            if (!this.$params) this.$params = Sk.builtin.makeTypeParameters(this.$args);
+            if (!this.$params) {this.$params = Sk.builtin.makeTypeParameters(this.$args);}
             return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(this, this.$args, this.$params, item),
-                args => Sk.builtin.makeUnion(args.v, true));
+                                     args => Sk.builtin.makeUnion(args.v, true));
         },
     },
     classmethods: {
