@@ -216,7 +216,6 @@ def get_original_bases(cls, /):
 
 
 del sys, _f, _g, _C, _x                           # Not for export
-__all__ = list(n for n in globals() if n[:1] != '_')
 
 GenericAlias = type(type[int])
 # Generator-based coroutines from CPython 3.14 at 18ef0f0cb52.
@@ -324,3 +323,4 @@ def coroutine(func):
 
     return wrapped
 
+__all__ = list(n for n in globals() if n[:1] != '_')

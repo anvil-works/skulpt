@@ -7,6 +7,27 @@ class inspect:
     CO_COROUTINE = 0x80
 
 class CoroutineTests(unittest.TestCase):
+    def test_native_coroutine_delegate_identity_and_exports(self):
+        @types.coroutine
+        def pause(): yield 'pause'
+        async def native(): await pause()
+        @types.coroutine
+        def delegate(value): yield from value
+        c = native()
+        g = delegate(c)
+        self.assertEqual(next(g), 'pause')
+        self.assertIs(g.gi_yieldfrom, c)
+        g.close()
+        c = native()
+        wrapper = c.__await__()
+        g = delegate(wrapper)
+        self.assertEqual(next(g), 'pause')
+        self.assertIs(g.gi_yieldfrom, wrapper)
+        g.close()
+        namespace = {}
+        exec('from types import *', namespace)
+        self.assertIs(namespace['coroutine'], types.coroutine)
+
     def test_code_replace_validation_and_generator_identity(self):
         def gen():
             yield 1
