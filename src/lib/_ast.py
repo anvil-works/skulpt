@@ -21,7 +21,7 @@ class AST:
             if name not in kwargs and getattr(self._field_types.get(name), '__origin__', None) is list:
                 setattr(self, name, [])
             elif name not in kwargs and self._field_types.get(name) is expr_context:
-                setattr(self, name, Load())
+                setattr(self, name, _AST_SINGLETONS['Load'])
         for name, value in kwargs.items():
             setattr(self, name, value)
     def __repr__(self):
@@ -397,10 +397,17 @@ for _name, (_, _fields, _) in _AST_SCHEMA.items():
         _types[_field] = _dtype
     globals()[_name]._field_types = _types
 
+# CPython parser-produced operator/context nodes and default Load contexts share
+# singleton objects. Explicit operator constructors still allocate new objects.
+_AST_SINGLETONS = {name: globals()[name]() for name, (base, _, _) in _AST_SCHEMA.items()
+                   if base in ('expr_context', 'boolop', 'operator', 'unaryop', 'cmpop')}
+
 def _from_parser(value):
     if isinstance(value, list):
         return [_from_parser(item) for item in value]
     if isinstance(value, dict) and '_type' in value:
+        if value['_type'] in _AST_SINGLETONS:
+            return _AST_SINGLETONS[value['_type']]
         cls = globals()[value['_type']]
         return cls(**{name: _from_parser(item) for name, item in value.items() if name != '_type'})
     return value

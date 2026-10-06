@@ -808,7 +808,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     if (!dont_inherit) {flags |= inheritedCompilerFlags();}
     // Historical mandatory future features have no effect in Python 3.
-    // AST return/typing, top-level await, incomplete input and Barry syntax need their own
+    // AST optimization/type comments, top-level await, incomplete input and Barry syntax need their own
     // implementations, not ignored flags.
     const mandatoryMask = Sk.__future__.python3 ? 0x1be0010 : 0;
     if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x400 : 0))) {
@@ -816,14 +816,9 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     source = compilerSource(source, filename.$jsstr(), "compile");
     if (flags & 0x400) {
-        if (!["exec", "eval", "single"].includes(mode.v)) {
-            throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
+        if (mode.v === "func_type") {
+            throw new Sk.builtin.NotImplementedError("function-type AST grammar is not yet supported");
         }
-        return Sk.misceval.chain(Sk.importModule("ast", false, true), module =>
-            Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_parse_ast")),
-                [new Sk.builtin.str(source), filename, mode]));
-    }
-    if (flags & 0x400) {
         if (!["exec", "eval", "single"].includes(mode.v)) {
             throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
         }

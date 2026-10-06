@@ -655,4 +655,7 @@ sequence abbreviation rules. Fourteen complete upstream test_ast methods plus on
 modern parser/value regression pass in both runtimes (15 cases).
 
 Compilation of edited ASTs, statement unparsing, versioned grammars, optimized
-ASTs, type comments and constructor deprecation warnings follow separately.
+ASTs, the AST-only func_type grammar, type comments and constructor deprecation
+warnings follow separately. Unsupported func_type parsing raises an explicit
+NotImplementedError. Review corrected typed exception-handler conversion and
+shared parser operator/default-context identities.
