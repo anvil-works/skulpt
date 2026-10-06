@@ -711,7 +711,7 @@ Sk.exportSymbol("Sk.misceval.loadname", Sk.misceval.loadname);
 // LOAD_BUILD_CLASS consults builtins without global-name fallback.
 Sk.misceval.loadBuildClass = function (builtins) {
     const builder = Sk.misceval.lookupBuiltin("__build_class__", builtins);
-    if (builder === undefined) throw new Sk.builtin.NameError("__build_class__ not found");
+    if (builder === undefined) {throw new Sk.builtin.NameError("__build_class__ not found");}
     return builder;
 };
 Sk.exportSymbol("Sk.misceval.loadBuildClass", Sk.misceval.loadBuildClass);
@@ -1560,9 +1560,9 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
     } else {
         // Native stdlib modules supply a JS body without compiler-emitted
         // __module__ initialization; preserve their existing buildClass API.
-        if (globals.__name__ !== undefined) locals.__module__ = globals.__name__;
+        if (globals.__name__ !== undefined) {locals.__module__ = globals.__name__;}
         bodyResult = func(globals, locals, l_cell);
-        if (bodyResult === undefined) bodyResult = locals.__classcell__;
+        if (bodyResult === undefined) {bodyResult = locals.__classcell__;}
     }
     const classcell = bodyResult instanceof Sk.builtin.cell ? bodyResult : undefined;
 
