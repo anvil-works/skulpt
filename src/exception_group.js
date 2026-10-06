@@ -36,7 +36,7 @@ Sk.builtin.BaseExceptionGroup = Sk.abstr.buildNativeClass("BaseExceptionGroup", 
                 const instance = new cls();
                 Sk.builtin.BaseException.call(instance);
                 instance.$message = message;
-                instance.$exceptions = new Sk.builtin.tuple(items.slice());
+                instance.$exceptions = exceptions.ob$type === Sk.builtin.tuple ? exceptions : new Sk.builtin.tuple(items.slice());
                 instance.$exceptionsRepr = savedRepr;
                 instance.args = new Sk.builtin.tuple(args.slice());
                 return instance;
@@ -44,7 +44,7 @@ Sk.builtin.BaseExceptionGroup = Sk.abstr.buildNativeClass("BaseExceptionGroup", 
         },
         tp$str() {
             const count = this.$exceptions.v.length;
-            return new Sk.builtin.str(this.$message.$jsstr() + " (" + count + " sub-exception" + (count > 1 ? "s" : "") + ")");
+            return new Sk.builtin.str(new Sk.builtin.str(this.$message).$jsstr() + " (" + count + " sub-exception" + (count > 1 ? "s" : "") + ")");
         },
         $r() {
             const exceptions = this.args.v.length === 2 && this.args.v[1] instanceof Sk.builtin.list
