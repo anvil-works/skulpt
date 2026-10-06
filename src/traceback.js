@@ -53,12 +53,12 @@ Sk.builtin.traceback = Sk.abstr.buildNativeClass("traceback", {
         tb_next: {
             $get() { return this.$next; },
             $set(next) {
-                if (next === undefined) throw new Sk.builtin.TypeError("can't delete tb_next attribute");
+                if (next === undefined) {throw new Sk.builtin.TypeError("can't delete tb_next attribute");}
                 if (next !== Sk.builtin.none.none$ && !(next instanceof Sk.builtin.traceback)) {
                     throw new Sk.builtin.TypeError("expected traceback object, got '" + Sk.abstr.typeName(next) + "'");
                 }
                 for (let current = next; current instanceof Sk.builtin.traceback; current = current.$next) {
-                    if (current === this) throw new Sk.builtin.ValueError("traceback loop detected");
+                    if (current === this) {throw new Sk.builtin.ValueError("traceback loop detected");}
                 }
                 this.$next = next;
             },
@@ -66,13 +66,13 @@ Sk.builtin.traceback = Sk.abstr.buildNativeClass("traceback", {
         tb_frame: { $get() { return this.$frame; } },
         tb_lineno: {
             $get() {
-                if (this.$lineno < 0) throw new Sk.builtin.NotImplementedError("resolving traceback lines requires bytecode offsets");
+                if (this.$lineno < 0) {throw new Sk.builtin.NotImplementedError("resolving traceback lines requires bytecode offsets");}
                 return new Sk.builtin.int_(this.$lineno);
             },
         },
         tb_lasti: {
             $get() {
-                if (this.$lasti === undefined) throw new Sk.builtin.NotImplementedError("JavaScript code has no bytecode offsets");
+                if (this.$lasti === undefined) {throw new Sk.builtin.NotImplementedError("JavaScript code has no bytecode offsets");}
                 return new Sk.builtin.int_(this.$lasti);
             },
         },
@@ -92,9 +92,9 @@ Sk.builtin.addTraceback = function (error, state, lineno, colno, filename) {
     // RERAISE keeps the current traceback; caller frames prepend their call site.
     // Compiler cleanup can catch the same propagation more than once per frame.
     const frame = Sk.builtin.getFrame(state);
-    if (error.$tracebackFrame === frame) return;
+    if (error.$tracebackFrame === frame) {return;}
     error.$tracebackFrame = frame;
-    if (lineno === undefined) lineno = state.getLine();
+    if (lineno === undefined) {lineno = state.getLine();}
     error.$traceback = new Sk.builtin.traceback(error.$traceback || Sk.builtin.none.none$, frame, undefined, lineno);
     // Retain the existing JavaScript error rendering contract without sharing a
     // mutable array between an original exception group and derived subgroups.
