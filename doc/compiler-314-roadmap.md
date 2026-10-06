@@ -721,3 +721,10 @@ type comments/func_type and invalid-escape warning tests follow those features.
 The remaining template round-trip method is staged with template support:
 it requires the reviewed dev.8 parser metadata fixes, still awaiting release.
 It also passes locally with that parser (74 unparse methods in total).
+
+The Unicode-escape encoder retains argument-type validation but skips unused
+error-handler lookup, like CPython. A regression covers both supported and
+unknown error-handler names (three encoding cases total). Adjacent explicit
+surrogate characters still share the existing Skulpt UTF-16 string-storage
+limitation: they cannot be distinguished from one genuine non-BMP character.
+Full CPython Unicode string storage remains outside this AST-tooling increment.
