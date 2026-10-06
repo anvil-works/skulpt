@@ -492,3 +492,10 @@ cache, recursion, code-metadata and syntax tests pass in both runtimes. Full sui
 with this increment and reviewed unions: 3,683 Python 3, 465 Python 2 and 562
 execution tests passed before the final alias argument-metadata adjustment; the
 focused alias tests pass after it.
+
+Alias review fixes preserve the distinct type-alias restriction for comprehension
+assignment expressions and skip alias scopes when qualifying child lambdas.
+Constructed aliases use a native constant evaluator with exactly one C-int format
+argument, keyword rejection and CPython's constant STRING rendering. Compiled
+alias evaluators retain their defaulted positional-only `.format` parameter.
+Fourteen focused cases pass both runtimes, including the review regressions.
