@@ -525,3 +525,22 @@ normalize non-tuple results before each subsequent preparation hook, and honor
 list-subclass iteration in discovery and substitution. Twenty-two focused cases
 pass both runtimes. The full foundation suite before these protocol fixes passed
 3,705 Python 3, 465 Python 2 and 562 execution tests.
+
+### Generic functions and aliases (TypeVar increment)
+
+`stu-dev/compiler/type-parameters` follows CPython's type-parameter wrapper scope
+for generic functions and aliases. Decorators and ordinary argument defaults are
+evaluated outside it; parameter bindings enclose the actual function and its lazy
+annotations. Bounds, constraints and defaults get separate lazy evaluator scopes,
+with class visibility, successful-value caching and failed-evaluation retry.
+Functions expose mutable tuple-only `__type_params__`; generic aliases expose
+parameters and specialize through GenericAlias. Nonlocal binding of type
+parameters and forbidden expressions in annotation scopes are rejected.
+
+Twenty-seven complete CPython 3.14 `test_type_params.py` methods are preserved,
+with small run_code/check_syntax_error/subTest harness adapters. Three additional
+CPython-checked cases cover default/decorator ordering, evaluator metadata,
+recursive bounds and constructor/default-order validation. All 30 pass in both
+interpreters. Generic classes, ParamSpec, TypeVarTuple, ForwardRef and annotation
+formats above VALUE_WITH_FAKE_GLOBALS remain separate increments with explicit
+unsupported guards where their compiler paths are not implemented.
