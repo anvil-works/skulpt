@@ -110,7 +110,7 @@ function makeAsyncGeneratorAwaitable(name, throwOperation) {
                     throw new Sk.builtin.RuntimeError(method + "(): asynchronous generator is already running");
                 }
             },
-            $run(action) {
+            $run(action, closeState = true) {
                 const closing = throwOperation && this.$value === null;
                 return Sk.misceval.tryCatch(() => Sk.misceval.chain(action(), value => {
                     if (value === undefined) throw new Sk.builtin.StopAsyncIteration();
@@ -121,7 +121,7 @@ function makeAsyncGeneratorAwaitable(name, throwOperation) {
                     return value;
                 }), error => {
                     this.$agen.ag$running = false;
-                    this.$state = "closed";
+                    if (closeState) this.$state = "closed";
                     if (error instanceof Sk.builtin.StopAsyncIteration || error instanceof Sk.builtin.GeneratorExit) {
                         this.$agen.ag$closed = true;
                         if (closing) throw new Sk.builtin.StopIteration();
@@ -144,7 +144,7 @@ function makeAsyncGeneratorAwaitable(name, throwOperation) {
                     if (value !== Sk.builtin.none.none$) throw new Sk.builtin.RuntimeError("can't send non-None value to a just-started coroutine");
                 }
                 this.$state = "iter";
-                this.$agen.ag$running = true;
+                if (initial || !throwOperation) this.$agen.ag$running = true;
                 if (initial && throwOperation) {
                     if (this.$value === null) this.$agen.ag$closed = true;
                     const args = this.$value === null ? [new Sk.builtin.GeneratorExit()] : this.$value;
@@ -152,12 +152,14 @@ function makeAsyncGeneratorAwaitable(name, throwOperation) {
                     return this.$run(() => this.$agen.$gen.gi$throwArgs(args[0], args[1], args[2], false));
                 }
                 if (initial && value === Sk.builtin.none.none$) value = this.$value;
-                return this.$run(() => this.$agen.$gen.tp$iternext(true, value));
+                // async_gen_athrow_send keeps ITER after a continuation
+                // yield; ASend and aclose instead finish their operation.
+                return this.$run(() => this.$agen.$gen.tp$iternext(true, value), !throwOperation || this.$value === null);
             },
             $throw(args) {
                 this.$checkState();
+                if (this.$state === "init") this.$agen.ag$running = true;
                 this.$state = "iter";
-                this.$agen.ag$running = true;
                 return this.$run(() => this.$agen.$gen.gi$throwArgs(args[0], args[1], args[2]));
             },
         },

@@ -546,7 +546,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             this.visitArguments(s.args, s.lineno);
             this.SEQStmt(s.body);
             if (this.cur.coroutine && this.cur.generator && this.cur.returnsValue) {
-                throw new Sk.builtin.SyntaxError("'return' with value in async generator", this.filename, s.lineno);
+                throw new Sk.builtin.SyntaxError("'return' with value in async generator", this.filename, this.cur.returnValueLine);
             }
             this.exitBlock();
             break;
@@ -568,6 +568,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             if (s.value) {
                 this.visitExpr(s.value);
                 this.cur.returnsValue = true;
+                if (this.cur.returnValueLine === undefined) this.cur.returnValueLine = s.lineno;
             }
             break;
         case "Delete":
