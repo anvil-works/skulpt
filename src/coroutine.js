@@ -129,7 +129,7 @@ Sk.builtin.getAwaitable = function (value, context) {
 // Python/bytecodes.c: GET_AITER and GET_ANEXT.
 Sk.builtin.getAsyncIterator = function (value) {
     const method = Sk.abstr.lookupSpecial(value, new Sk.builtin.str("__aiter__"));
-    if (method === undefined) throw new Sk.builtin.TypeError("'async for' requires an object with __aiter__ method, got " + Sk.abstr.typeName(value));
+    if (method === undefined) {throw new Sk.builtin.TypeError("'async for' requires an object with __aiter__ method, got " + Sk.abstr.typeName(value));}
     return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(method), iterator => {
         if (iterator.ob$type.$typeLookup(new Sk.builtin.str("__anext__")) === undefined) {
             throw new Sk.builtin.TypeError("'async for' received an object from __aiter__ that does not implement __anext__: " + Sk.abstr.typeName(iterator));
@@ -139,7 +139,7 @@ Sk.builtin.getAsyncIterator = function (value) {
 };
 Sk.builtin.getAsyncNext = function (iterator) {
     const method = Sk.abstr.lookupSpecial(iterator, new Sk.builtin.str("__anext__"));
-    if (method === undefined) throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(iterator) + "' object is not an async iterator");
+    if (method === undefined) {throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(iterator) + "' object is not an async iterator");}
     return Sk.misceval.callsimOrSuspendArray(method);
 };
 Sk.exportSymbol("Sk.builtin.coroutine", Sk.builtin.coroutine);
