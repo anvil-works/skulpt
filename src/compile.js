@@ -159,7 +159,7 @@ Compiler.prototype.niceName = function (roughName) {
 // Hidden CPython compiler arguments retain their public code-object spelling.
 function compilerArgumentName(name) {
     const names = { $annotationFormat: "format", $aliasFormat: ".format", $typeFormat: ".format",
-        $typeDefaults: ".defaults", $typeKwdefaults: ".kwdefaults" };
+        $typeDefaults: ".defaults", $typeKwdefaults: ".kwdefaults", $typeParams: ".type_params" };
     return names[name] || Sk.unfixReserved(name);
 }
 
@@ -182,6 +182,7 @@ function mangleName (priv, ident) {
     if (typeof ident === "string") ident = new Sk.builtin.str(ident);
     if (typeof priv === "string") priv = new Sk.builtin.str(priv);
     var name = ident.v;
+    if (priv && priv.mangledNames && !priv.mangledNames.has(name)) return ident;
     var strpriv = null;
 
 
@@ -192,17 +193,10 @@ function mangleName (priv, ident) {
     if (name.charAt(name.length - 1) === "_" && name.charAt(name.length - 2) === "_") {
         return ident;
     }
-    // don't mangle classes that are all _ (obscure much?)
-    strpriv = priv.v;
-    strpriv.replace(/_/g, "");
-    if (strpriv === "") {
-        return ident;
-    }
-
-    strpriv = priv.v;
-    strpriv.replace(/^_*/, "");
-    strpriv = new Sk.builtin.str("_" + strpriv + name);
-    return strpriv;
+    // CPython _Py_Mangle strips leading underscores from the class name.
+    strpriv = priv.v.replace(/^_+/, "");
+    if (!strpriv) return ident;
+    return new Sk.builtin.str("_" + strpriv + name);
 }
 
 /**
@@ -2839,15 +2833,11 @@ Compiler.prototype.cgenexp = function (e) {
 };
 
 
-Compiler.prototype.cclass = function (s) {
-    var wrapped;
+Compiler.prototype.cclassbody = function (s, generic) {
     var entryBlock;
     var scopename;
     var bases;
-    var decos;
     Sk.asserts.assert(s._type === "ClassDef");
-
-    decos = this.vseqexpr(s.decorator_list);
 
     // codegen_class: load the builder and create the body function before
     // evaluating bases/keywords, which can mutate the builtin namespace.
@@ -2889,6 +2879,7 @@ Compiler.prototype.cclass = function (s) {
     if (this.u.ste.hasConditionalAnnotations) {
         out("$classcell.__conditional_annotations__=new Sk.builtin.set();");
     }
+    if (generic) this.nameop("__type_params__", "Store", this.nameop("$typeParams", "Load"));
     this.cbody(s.body, s.name);
     if (needsClassdict) {
         out("$loc.__classdictcell__=new Sk.builtin.cell($classcell,'__classdict__');");
@@ -2906,20 +2897,41 @@ Compiler.prototype.cclass = function (s) {
 
     out(scopename, ".co_fastcall=1;", scopename, ".co_varnames=[];");
     const body = this._gr("classbody", "new Sk.builtin.func(", scopename, ",$gbl,$cell", this.u.ste.hasFree ? ",$free" : "", ")");
+    let genericBase;
+    if (generic) {
+        out("$ret=Sk.builtin.callTypingFunction('_make_generic_base',[", this.nameop("$typeParams", "Load"), "]);");
+        this._checkSuspension(s);
+        genericBase = this._gr("genericbase", "$ret");
+    }
     bases = this.cunpackstarstoarray(s.bases, !Sk.__future__.python3);
+    if (generic) bases = this._gr("bases", bases, ".concat([", genericBase, "])");
     const keywordArgs = this.cunpackkwstoarray(s.keywords);
     out("$ret=Sk.misceval.callsimOrSuspendArray(", builder, ", [", body, ",new Sk.builtin.str(", JSON.stringify(s.name), ")].concat(", bases, "),", keywordArgs, ");");
     this._checkSuspension();
 
-    // apply decorators
+    return this._gr("class", "$ret");
+};
 
-    for (let decorator of decos.reverse()) {
-        out("$ret = Sk.misceval.callsimOrSuspendArray(", decorator, ", [$ret]);");
-        this._checkSuspension();
+Compiler.prototype.cclass = function (s) {
+    const decorators = this.vseqexpr(s.decorator_list);
+    let cls;
+    if (s.type_params.length) {
+        const key = s.typeParamScope;
+        const wrapper = this.buildcodeobj(key, "<generic parameters of " + s.name + ">", null, key.args, function () {
+            const params = this.ctypeparams(s);
+            this.nameop("$typeParams", "Store", params);
+            out("return ", this.cclassbody(s, true), ";");
+        });
+        out("$ret=Sk.misceval.callsimOrSuspendArray(", wrapper, ",[]);");
+        this._checkSuspension(s);
+        cls = this._gr("genericclass", "$ret");
+    } else cls = this.cclassbody(s, false);
+    for (const decorator of decorators.reverse()) {
+        out("$ret=Sk.misceval.callsimOrSuspendArray(", decorator, ",[", cls, "]);");
+        this._checkSuspension(s);
+        out(cls, "=$ret;");
     }
-
-    // store our new class under the right name
-    this.nameop(s.name, "Store", "$ret");
+    this.nameop(s.name, "Store", cls);
 };
 
 Compiler.prototype.ccontinue = function (s) {
@@ -3341,6 +3353,7 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     if (this.u && this.u.private_) {
         u.private_ = this.u.private_;
     }
+    if (key.privateClass) u.private_ = key.privateClass;
 
     this.stack.push(this.u);
     this.allUnits.push(u);

@@ -573,7 +573,13 @@ function $mroMerge(seqs) {
         }
 
         if (cands.length === 0) {
-            throw new Sk.builtin.TypeError("Inconsistent precedences in type hierarchy");
+            // typeobject.c: set_mro_error reports the distinct remaining heads.
+            const heads = Array.from(new Set(seqs.filter(seq => seq.length).map(seq => seq[0])));
+            throw new Sk.builtin.TypeError("Cannot create a consistent method resolution order (MRO) for bases " +
+                heads.map(type => {
+                    const name = Sk.abstr.lookupAttr(type, Sk.builtin.str.$name);
+                    return name === undefined ? Sk.misceval.objectRepr(type) : Sk.builtin.checkString(name) ? name.v : "?";
+                }).join(", "));
         }
 
         const next = cands[0];
@@ -693,6 +699,19 @@ function $allocateGetterSlot(dunder) {
 }
 
 Sk.builtin.type.prototype.tp$getsets = {
+    __type_params__: {
+        $get() {
+            const key = new Sk.builtin.str("__type_params__");
+            const value = this.$classDict && this.$classDict.quick$lookup(key);
+            return value === undefined ? new Sk.builtin.tuple([]) : value;
+        },
+        $set(value) {
+            const key = new Sk.builtin.str("__type_params__");
+            check_special_type_attr(this, value, key);
+            this.prototype.__type_params__ = value;
+            this.$classDict.dict$setItem(key, value);
+        },
+    },
     __base__: {
         $get() {
             return this.prototype.tp$base || Sk.builtin.none.none$;
