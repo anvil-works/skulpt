@@ -2122,11 +2122,10 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
         defaults = this.vseqexpr(args.defaults);
     }
 
-    const func_annotations = this.cannotations(args, n.returns);
-
     if (args && args.kw_defaults) {
         kw_defaults = args.kw_defaults.map(e => e ? this.vexpr(e) : "undefined");
     }
+    const func_annotations = this.cannotations(args, n.returns);
     if (args && args.vararg) {
         vararg = args.vararg;
     }
@@ -2385,19 +2384,17 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     const closure = this.closureArgs(hasFree);
     frees = closure.length ? "," + closure.join(",") : "";
 
-    let funcobj;
+    let funcobj = this._gr("funcobj", "new Sk.builtins['function'](", scopename, ",$gbl", frees, ")");
+    if (func_annotations) {
+        out(funcobj, ".func_annotations=", func_annotations, ";");
+    }
     if (decos.length > 0) {
-        out("$ret = new Sk.builtins['function'](", scopename, ",$gbl", frees, ");");
+        out("$ret=", funcobj, ";");
         for (let decorator of decos.reverse()) {
             out("$ret = Sk.misceval.callsimOrSuspendArray(", decorator, ",[$ret]);");
             this._checkSuspension();
         }
-        funcobj = this._gr("funcobj", "$ret");
-    } else {
-        funcobj = this._gr("funcobj", "new Sk.builtins['function'](", scopename, ",$gbl", frees, ")");
-    }
-    if (func_annotations) {
-        out(funcobj, ".func_annotations=", func_annotations, ";");
+        funcobj = this._gr("decorated", "$ret");
     }
     return funcobj;
 

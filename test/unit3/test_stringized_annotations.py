@@ -103,6 +103,50 @@ target()[index():index(), index()]: Missing
         for source in ['missing.attr: Missing', 'missing[0]: Missing']:
             with self.assertRaises(NameError): self._exec_future(source)
 
+    def test_decorators_see_annotations_without_changing_replacements(self):
+        scope = self._exec_future("""
+seen = []
+def decorate(f):
+    seen.append(f.__annotations__.copy())
+    def replacement(): pass
+    return replacement
+@decorate
+def f(x: Missing) -> Other: pass
+""")
+        self.assertEqual(scope['seen'], [{'x': 'Missing', 'return': 'Other'}])
+        self.assertEqual(scope['f'].__annotations__, {})
+        # Eager-mode ordering remains relevant until the deferred layer lands.
+        scope = {}
+        exec("""
+seen = []
+def mark(name):
+    seen.append(name)
+    return int
+def decorate(f):
+    assert f.__annotations__ == {'x': int}
+    seen.append('decorator')
+    return f
+@decorate
+def f(x: mark('annotation') = mark('positional'), *, y = mark('keyword')): pass
+""", scope)
+        self.assertEqual(scope['seen'], ['positional', 'keyword', 'annotation', 'decorator'])
+
+    def test_annotation_comprehension_walrus_enclosing_scope(self):
+        for source in [
+            'class C:\n x: [(y := i) for i in xs]',
+            'class C:\n def f(x: [(y := i) for i in xs]): pass',
+        ]:
+            with self.assertRaises(SyntaxError): self._exec_future(source)
+        scope = self._exec_future("""
+x: [(y := i) for i in xs]
+def f():
+    x: [(z := i) for i in xs]
+    return z
+""")
+        self.assertNotIn('y', scope)
+        with self.assertRaises(UnboundLocalError): scope['f']()
+        self.assertIn('z', scope['f'].__code__.co_varnames)
+
     def test_annotations(self):
         eq = self.assertAnnotationEqual
         eq('...')

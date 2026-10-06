@@ -964,6 +964,7 @@ SymbolTable.prototype.visitNamedExpr = function (e) {
         const name = e.target.id;
         const mangled = Sk.fixReserved(Sk.mangleName(this.curClass, name).v);
         for (const scope of [this.cur].concat(this.stack.slice().reverse())) {
+            if (scope.annotationScope) continue;
             const flags = scope.symFlags[mangled] || 0;
             if (scope.comprehension) {
                 if ((flags & DEF_COMP_ITER) && (flags & DEF_LOCAL)) {
