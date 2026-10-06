@@ -374,7 +374,7 @@ function tp$setattr(pyName, value, canSuspend) {
             throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '" + pyName.$jsstr() + "'");
         } else {
             delete proto[jsName];
-            if (this.$classDict !== undefined) this.$classDict.dict$delItem(pyName);
+            if (this.$classDict !== undefined) {this.$classDict.dict$delItem(pyName);}
             // delete the slot_func
             // TODO what about slot funcs that are dual slots...
             const slot_name = Sk.dunderToSkulpt[jsName];
@@ -389,7 +389,7 @@ function tp$setattr(pyName, value, canSuspend) {
         }
     } else {
         this.prototype[jsName] = value;
-        if (this.$classDict !== undefined) this.$classDict.dict$setItem(pyName, value);
+        if (this.$classDict !== undefined) {this.$classDict.dict$setItem(pyName, value);}
         if (jsName in Sk.dunderToSkulpt) {
             this.$allocateSlot(jsName, value);
         }
@@ -397,7 +397,7 @@ function tp$setattr(pyName, value, canSuspend) {
 }
 
 function fastLookup(pyName) {
-    if (this.$classDict !== undefined) return slowLookup.call(this, pyName);
+    if (this.$classDict !== undefined) {return slowLookup.call(this, pyName);}
     return this.prototype[pyName.$mangled];
 }
 
@@ -409,7 +409,7 @@ function slowLookup(pyName) {
         const dict = mro[i].$classDict;
         if (dict !== undefined) {
             const value = dict.quick$lookup(pyName);
-            if (value !== undefined) return value;
+            if (value !== undefined) {return value;}
         } else if (base_proto.hasOwnProperty(jsName)) {
             return base_proto[jsName];
         }
