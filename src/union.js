@@ -2,11 +2,8 @@
 Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
     constructor: function Union(args, hashable, unhashable) {
         this.$args = new Sk.builtin.tuple(args);
-        // Freezing the private builder set must not rehash its Python keys.
-        this.$hashable = new Sk.builtin.frozenset();
-        this.$hashable.v = hashable.v;
-        this.$hashEntries = Object.entries(hashable.v.buckets).flatMap(([hash, bucket]) =>
-            bucket.map(([arg]) => [arg, Number(hash)]));
+        this.$hashable = hashable;
+        this.$hashEntries = Array.from(hashable.values()).flat();
         this.$unhashable = unhashable;
     },
     slots: {
@@ -30,7 +27,7 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
                 return Sk.builtin.NotImplemented.NotImplemented$;
             }
             const equal = this.$hashEntries.length === other.$hashEntries.length &&
-                this.$hashEntries.every(([arg, hash]) => other.$hashable.v.get$bucket_item(arg, hash) !== undefined) &&
+                this.$hashEntries.every(([arg, hash]) => unionContainsHash(other.$hashable, arg, hash)) &&
                 this.$unhashable.length === other.$unhashable.length &&
                 this.$unhashable.every(arg => unionContains(other.$unhashable, arg)) &&
                 other.$unhashable.every(arg => unionContains(this.$unhashable, arg));
@@ -72,6 +69,13 @@ function unionContains(args, arg) {
     return args.some(value => value === arg || Sk.misceval.richCompareBool(value, arg, "Eq"));
 }
 
+function unionContainsHash(buckets, arg, hash) {
+    const bucket = buckets.get(hash);
+    // set_lookkey compares the stored member against the lookup argument.
+    return bucket !== undefined && bucket.some(([value]) =>
+        value === arg || Sk.misceval.richCompareBool(value, arg, "Eq"));
+}
+
 // _Py_union_type_or and unionbuilder_add_single_unchecked.
 Sk.builtin.typeUnion = function (left, right) {
     const unionable = value => Sk.builtin.checkNone(value) || Sk.builtin.checkClass(value) ||
@@ -83,7 +87,7 @@ Sk.builtin.typeUnion = function (left, right) {
 };
 
 Sk.builtin.makeUnion = function (values, checked) {
-    const args = [], hashable = new Sk.builtin.set(), unhashable = [];
+    const args = [], hashable = new Map(), unhashable = [];
     function add(arg) {
         if (Sk.builtin.checkNone(arg)) arg = Sk.builtin.none;
         if (arg instanceof Sk.builtin.UnionType) {
@@ -101,8 +105,14 @@ Sk.builtin.makeUnion = function (values, checked) {
         let canHash = true;
         try { Sk.abstr.objectHash(arg); } catch (_) { canHash = false; }
         if (canHash) {
-            if (hashable.sq$contains(arg)) return;
-            hashable.set$add(arg);
+            // PySet_Contains and PySet_Add each hash again after the probe.
+            if (unionContainsHash(hashable, arg, Sk.abstr.objectHash(arg))) return;
+            const hash = Sk.abstr.objectHash(arg);
+            if (!unionContainsHash(hashable, arg, hash)) {
+                const bucket = hashable.get(hash) || [];
+                bucket.push([arg, hash]);
+                hashable.set(hash, bucket);
+            }
         } else {
             if (unionContains(unhashable, arg)) return;
             unhashable.push(arg);

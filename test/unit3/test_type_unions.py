@@ -182,4 +182,23 @@ class UnionTests(unittest.TestCase):
         self.assertEqual(union, other)
         self.assertEqual(hash(union), hash(other))
 
+    def test_stored_member_comparison_direction(self):
+        calls = []
+        class Meta(type):
+            def __hash__(cls): return 123
+            def __eq__(cls, other):
+                calls.append((cls.__name__, other.__name__))
+                return cls.__name__ == 'A'
+        class A(metaclass=Meta): pass
+        class B(metaclass=Meta): pass
+        left, right = A | int, B | int
+        self.assertFalse(left == right)
+        self.assertEqual(calls, [('B', 'A')])
+        calls.clear()
+        self.assertTrue(right == left)
+        self.assertEqual(calls, [('A', 'B')])
+        calls.clear()
+        self.assertIs(A | B, A)
+        self.assertEqual(calls, [('A', 'B')])
+
 if __name__ == '__main__': unittest.main()
