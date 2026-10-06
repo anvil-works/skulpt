@@ -556,5 +556,37 @@ class TestSpecifics(unittest.TestCase):
         finally:
             sys.__dict__.pop('compiler_builtin_probe', None)
 
+    def test_globals_dict_subclass(self):
+        # gh-132386
+        class WeirdDict(dict):
+            pass
+
+        ns = {}
+        exec('def foo(): return a', WeirdDict(), ns)
+
+        self.assertRaises(NameError, ns['foo'])
+
+    # _PyEval_LoadGlobalStackRef's subclass path differs from LOAD_NAME.
+    def test_globals_subclass_function_lookup_hooks(self):
+        calls = []
+        class Namespace(dict):
+            def __getitem__(self, key):
+                calls.append(key)
+                if key == 'value':
+                    return 42
+                if key == 'error':
+                    raise ValueError('lookup failure')
+                return dict.__getitem__(self, key)
+        namespace = Namespace(value=1)
+        locals_map = {}
+        exec('result = value\ndef f(): return value\ndef g(): return len([])\ndef h(): return error', namespace, locals_map)
+        self.assertEqual(locals_map['result'], 1)
+        self.assertEqual(calls, [])
+        self.assertEqual(locals_map['f'](), 42)
+        self.assertEqual(locals_map['g'](), 0)
+        self.assertEqual(calls, ['value', 'len'])
+        with self.assertRaisesRegex(ValueError, 'lookup failure'):
+            locals_map['h']()
+
 if __name__ == "__main__":
     unittest.main()
