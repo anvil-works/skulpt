@@ -255,6 +255,28 @@ class SysExceptionInfoTests(unittest.TestCase):
 
 
 class TracebackRegression(unittest.TestCase):
+    def test_delegated_throw_chains_only_frames_that_resume(self):
+        outer_error = KeyError('outer')
+        def inner_catches():
+            try: yield
+            except TypeError as error: yield error.__context__
+        def inner_escapes():
+            try: raise OSError('inner')
+            except OSError: yield
+        def outer(inner):
+            try: raise outer_error
+            except KeyError: yield from inner()
+        it = outer(inner_catches)
+        next(it)
+        self.assertIsNone(it.throw(TypeError('injected')))
+        it.close()
+        it = outer(inner_escapes)
+        next(it)
+        try:
+            it.throw(TypeError('injected'))
+        except TypeError as error:
+            self.assertIs(error.__context__, outer_error)
+
     def test_throw_context_uses_local_handler_not_the_caller(self):
         def plain(): yield
         def protected():
