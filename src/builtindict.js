@@ -538,24 +538,31 @@ function executionNamespaces(globals, locals) {
 
 
 Sk.setupObjects = function (py3) {
+    // Reconfiguration may remove an already-absent builtin. Python name
+    // deletion is strict; these internal configuration removals are tolerant.
+    const removeBuiltin = name => {
+        if (Sk.builtins[name] !== undefined) {
+            delete Sk.builtins[name];
+        }
+    };
     if (py3) {
         Sk.builtins["filter"] = Sk.builtin.filter_;
         Sk.builtins["map"] = Sk.builtin.map_;
         Sk.builtins["zip"] = Sk.builtin.zip_;
         Sk.builtins["range"] = Sk.builtin.range_;
-        delete Sk.builtins["reduce"];
-        delete Sk.builtins["xrange"];
-        delete Sk.builtins["StandardError"];
-        delete Sk.builtins["unicode"];
-        delete Sk.builtins["basestring"];
-        delete Sk.builtins["long_$rw$"];
+        removeBuiltin("reduce");
+        removeBuiltin("xrange");
+        removeBuiltin("StandardError");
+        removeBuiltin("unicode");
+        removeBuiltin("basestring");
+        removeBuiltin("long_$rw$");
         Sk.builtin.int_.prototype.$r = function () {
             return new Sk.builtin.str(this.v.toString());
         };
         delete Sk.builtin.int_.prototype.tp$str;
         delete Sk.builtin.bool.prototype.tp$str;
-        delete Sk.builtins["raw_input"];
-        delete Sk.builtins["unichr"];
+        removeBuiltin("raw_input");
+        removeBuiltin("unichr");
         delete Sk.builtin.str.prototype.decode;
         Sk.builtins["bytes"] = Sk.builtin.bytes;
         Sk.builtins["ascii"] = new Sk.builtin.sk_method(
@@ -621,8 +628,8 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["raw_input"] = new Sk.builtin.func(Sk.builtin.raw_input);
         Sk.builtins["unichr"] = new Sk.builtin.func(Sk.builtin.unichr);
         Sk.builtin.str.prototype.decode = Sk.builtin.str.$py2decode;
-        delete Sk.builtins["bytes"];
-        delete Sk.builtins["ascii"];
+        removeBuiltin("bytes");
+        removeBuiltin("ascii");
     }
     Sk.builtins = Sk.misceval.namespaceToJs(Sk.builtins);
 };
