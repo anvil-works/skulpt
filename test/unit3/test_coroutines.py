@@ -60,6 +60,48 @@ def run_async__await__(coro):
 
 
 class CoroutineTest(unittest.TestCase):
+    def test_async_with_suppression_exception_state(self):
+        class Suppress:
+            async def __aenter__(self): pass
+            async def __aexit__(self, *args): return True
+        async def empty():
+            async with Suppress(): raise ValueError('suppressed')
+            with self.assertRaisesRegex(RuntimeError, 'No active exception'): raise
+        self.assertEqual(run_async(empty()), ([], None))
+        async def enclosing():
+            error = KeyError('outer')
+            try: raise error
+            except KeyError:
+                async with Suppress(): raise ValueError('suppressed')
+                try: raise
+                except KeyError as caught: self.assertIs(caught, error)
+        self.assertEqual(run_async(enclosing()), ([], None))
+
+    def test_async_with_truth_failure_context(self):
+        error = ValueError('body')
+        class BadTruth:
+            def __bool__(self): raise TypeError('truth')
+        class Manager:
+            async def __aenter__(self): pass
+            async def __aexit__(self, *args): return BadTruth()
+        async def f():
+            async with Manager(): raise error
+        with self.assertRaisesRegex(TypeError, 'truth') as cm: run_async(f())
+        self.assertIs(cm.exception.__context__, error)
+
+    def test_async_with_missing_exit_lookup_order(self):
+        seen = []
+        class Enter:
+            def __get__(self, obj, owner):
+                seen.append('enter lookup')
+                return lambda: None
+        class Manager:
+            __aenter__ = Enter()
+        async def f():
+            async with Manager(): pass
+        with self.assertRaisesRegex(TypeError, '__aexit__'): run_async(f())
+        self.assertEqual(seen, [])
+
     def test_async_iteration_protocol_and_exception_state(self):
         class Iterator:
             def __aiter__(self): return self
