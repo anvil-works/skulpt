@@ -60,6 +60,24 @@ class CodeTest(unittest.TestCase):
         self.assertEqual(namespace['f'](), 42)
         self.assertEqual(namespace['value'], '\u2028\u2029')
 
+    def test_code_execution_has_no_function_defaults(self):
+        def positional(a=42):
+            return a
+        def keyword(*, a=42):
+            return a
+        for function in [positional, keyword]:
+            self.assertRaises(TypeError, exec, function.__code__, {})
+            self.assertRaises(TypeError, eval, function.__code__, {})
+            self.assertEqual(function(), 42)
+
+    def test_explicit_future_flag_metadata(self):
+        code = compile('def f(): pass', '<flags>', 'exec', flags=0x20000)
+        self.assertEqual(code.co_flags, 0x20000)
+        namespace = {}
+        exec(code, namespace)
+        self.assertEqual(namespace['f'].__code__.co_flags, 0x20003)
+        self.assertEqual(compile('pass', '<flags>', 'exec', flags=0x10).co_flags, 0)
+
     def test_decorated_lines_and_method_flags(self):
         namespace = {}
         exec('def decorator(f): return f\n@decorator\n@decorator\ndef f(): pass\nclass C:\n def method(self): return __class__', namespace)

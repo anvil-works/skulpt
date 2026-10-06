@@ -1406,7 +1406,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         }
     }
     if (unit.ste.needsClassClosure) cellvars.add("__class__");
-    let flags = optimized ? 3 : 0; // CO_OPTIMIZED | CO_NEWLOCALS
+    let flags = (optimized ? 3 : 0) | (this.flags & 0x1fe0000); // CO_OPTIMIZED | CO_NEWLOCALS
     if (optimized) {
         if (unit.ste.isNested) flags |= 0x10;
         if (unit.ste.generator) flags |= 0x20;
@@ -2592,7 +2592,7 @@ Compiler.prototype.cgenexp = function (e) {
     // function generators, so we just do it outside (even just new'ing it
     // inline would be fine).
     const iterator = this._gr("geniter", "Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ")");
-    return this._gr("gener", "Sk.misceval.callsimArray(", gen, ",", iterator, ")");
+    return this._gr("gener", "Sk.misceval.callsimArray(", gen, ",[", iterator, "])");
 };
 
 
@@ -3204,8 +3204,9 @@ Compiler.prototype.cmod = function (mod) {
  * @param {string} mode one of 'exec', 'eval', or 'single'
  * @param {boolean=} canSuspend if the generated code supports suspension
  * @param {number=} optimize optimization level
+ * @param {number=} flags explicit Python compiler flags
  */
-Sk.compile = function (source, filename, mode, canSuspend, optimize) {
+Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
     if (!["exec", "eval", "single"].includes(mode)) {
         throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
     }
@@ -3222,7 +3223,7 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize) {
         const ast = mode === "eval" ? Sk.parseExpression(source, filename)
             : mode === "single" ? Sk.parseInteractive(source, filename) : Sk.parseModule(source, filename);
         const st = Sk.symboltable(ast, filename);
-        c = new Compiler(filename, st, 0, canSuspend, source, optimize);
+        c = new Compiler(filename, st, flags || 0, canSuspend, source, optimize);
         c.interactive = mode === "single";
         funcname = c.cmod(ast);
     } finally {
