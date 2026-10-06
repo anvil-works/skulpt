@@ -1,6 +1,6 @@
 # CPython 3.14 Parser/Python.asdl at 18ef0f0cb52; Python-2.0 license.
 # Public classes share ast's namespace, as in CPython's generated backend.
-from _ast_native import _parse_tree, _register_type, _compile_tree, _copy_tree
+from _ast_native import _parse_tree, _register_type, _compile_tree, _int_field, _list_size, _list_item
 PyCF_ONLY_AST = 0x400
 PyCF_TYPE_COMMENTS = 0x1000
 PyCF_ALLOW_TOP_LEVEL_AWAIT = 0x2000
@@ -405,6 +405,8 @@ _AST_SINGLETONS = {name: globals()[name]() for name, (base, _, _) in _AST_SCHEMA
 def _from_parser(value):
     if isinstance(value, list):
         return [_from_parser(item) for item in value]
+    if isinstance(value, dict) and 'py_value' in value:
+        return value['py_value']
     if isinstance(value, dict) and '_type' in value:
         if value['_type'] in _AST_SINGLETONS:
             return _AST_SINGLETONS[value['_type']]
@@ -419,17 +421,18 @@ def _parse_ast(source, filename, mode):
 
 # Python/Python-ast.c: conversion from public objects into ASDL nodes.
 def _constant_to_parser(value):
-    if value is None: return {'type': 'none'}
-    if value is ...: return {'type': 'ellipsis'}
+    if value is None: return {'type': 'none', 'py_value': value}
+    if value is ...: return {'type': 'ellipsis', 'py_value': value}
     kind = {int: 'int', float: 'float', complex: 'complex', bool: 'bool',
             str: 'str', bytes: 'bytes', tuple: 'tuple', frozenset: 'frozenset'}.get(type(value))
     if kind is None:
         raise TypeError(f'got an invalid type in Constant: {type(value).__name__}')
-    if kind == 'int': return {'type': kind, 'value': str(value)}
-    if kind == 'complex': return {'type': kind, 'real': value.real, 'imag': value.imag}
+    if kind == 'int': return {'type': kind, 'value': str(value), 'py_value': value}
+    if kind == 'complex': return {'type': kind, 'real': value.real, 'imag': value.imag, 'py_value': value}
+    original = value
     if kind == 'bytes': value = list(value)
     elif kind in ('tuple', 'frozenset'): value = [_constant_to_parser(item) for item in value]
-    return {'type': kind, 'value': value}
+    return {'type': kind, 'value': value, 'py_value': original}
 
 
 def _to_parser(node):
@@ -448,7 +451,15 @@ def _to_parser(node):
         if mods.endswith('*'):
             if not isinstance(value, list):
                 raise TypeError(f'{name} field "{field}" must be a list, not a {type(value).__name__}')
-            return [None if item is None and type_name in ('stmt', 'expr') else convert(item, type_name, mods[:-1], field) for item in value]
+            length = _list_size(value)
+            result = []
+            for index in range(length):
+                item = _list_item(value, index)
+                result.append(None if item is None and type_name in ('stmt', 'expr')
+                              else convert(item, type_name, mods[:-1], field))
+                if _list_size(value) != length:
+                    raise RuntimeError(f'{name} field "{field}" changed size during iteration')
+            return result
         if mods.endswith('?'):
             if value is None: return None
             return convert(value, type_name, mods[:-1], field)
@@ -457,10 +468,7 @@ def _to_parser(node):
             if not isinstance(value, str):
                 raise TypeError(f'AST identifier must be of type str')
             return value
-        if type_name == 'int':
-            if not isinstance(value, int): raise ValueError(f'invalid integer value: {value!r}')
-            if value < -2147483648 or value > 2147483647: raise OverflowError('Python int too large to convert to C int')
-            return int(value)
+        if type_name == 'int': return _int_field(value)
         if not isinstance(value, globals()[type_name]):
             raise TypeError(f'expected some sort of {type_name}, but got {value!r}')
         return _to_parser(value)
@@ -473,10 +481,12 @@ def _to_parser(node):
             raise ValueError(f"field '{field}' is required for {name}")
         result[field] = convert(value, type_name, mods, field)
     for attribute in attributes:
-        value = getattr(node, attribute, None)
-        if value is None and not attribute.startswith('end_') and not hasattr(node, attribute):
-            owner = name if base == 'AST' else base
-            raise TypeError(f'required field "{attribute}" missing from {owner}')
+        try: value = getattr(node, attribute)
+        except AttributeError:
+            if not attribute.startswith('end_'):
+                owner = name if base == 'AST' else base
+                raise TypeError(f'required field "{attribute}" missing from {owner}') from None
+            value = None
         # Optional end positions default to the corresponding start positions.
         if value is None and attribute.startswith('end_'):
             result[attribute] = result[attribute[4:]]
@@ -494,8 +504,9 @@ def _compile_ast(tree, filename, mode, flags, optimize):
     if not isinstance(tree, expected):
         raise TypeError(f'expected {expected.__name__} node, got {type(tree).__name__}')
     converted = _to_parser(tree)
-    if flags & PyCF_ONLY_AST: return _from_parser(_copy_tree(converted))
+    snapshot = _from_parser(converted)
+    if flags & PyCF_ONLY_AST: return snapshot
     from _ast_validation import _validate
-    _validate(tree)
+    _validate(snapshot)
     return _compile_tree(converted, filename, mode, flags, optimize)
 

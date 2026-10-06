@@ -406,4 +406,56 @@ class ASTCompilation(unittest.TestCase):
         self.assertEqual(eval(compile(tree, '<constant>', 'eval')), value)
         self.assertEqual(ast.dump(compile(tree, '<constant>', 'eval', ast.PyCF_ONLY_AST)), ast.dump(tree))
 
+    def test_conversion_uses_stored_values_and_keeps_constant_identity(self):
+        # Python/Python-ast.c reads each field once, uses list/int storage,
+        # and retains the original immutable Constant payload in co_consts.
+        class ChangingName(ast.Name):
+            def __init__(self, id):
+                self.id = id
+                self.reads = 0
+            @property
+            def ctx(self):
+                self.reads += 1
+                return ast.Load() if self.reads == 1 else ast.Store()
+        node = ChangingName(id='x')
+        node.reads = 0
+        tree = ast.fix_missing_locations(ast.Expression(node))
+        node.reads = 0
+        self.assertEqual(eval(compile(tree, '<snapshot>', 'eval'), {'x': 42}), 42)
+        self.assertEqual(node.reads, 1)
+
+        class Nodes(list):
+            def __iter__(self): raise AssertionError('list iteration hook')
+            def __len__(self): raise AssertionError('list length hook')
+            def __getitem__(self, index): raise AssertionError('list item hook')
+        compile(ast.Module(Nodes([ast.Pass(lineno=1, col_offset=0)]), []), '<list>', 'exec')
+
+        class Line(int):
+            def __int__(self): raise AssertionError('int conversion hook')
+            def __lt__(self, other): raise AssertionError('int comparison hook')
+            def __gt__(self, other): raise AssertionError('int comparison hook')
+        tree = ast.Expression(ast.Constant(1, lineno=Line(1), col_offset=0))
+        self.assertEqual(eval(compile(tree, '<int>', 'eval')), 1)
+        tree.body.lineno = 1 << 80
+        with self.assertRaises(OverflowError): compile(tree, '<overflow>', 'eval')
+
+        for value in ((1, 2), frozenset({1, 2})):
+            tree = ast.fix_missing_locations(ast.Expression(ast.Constant(value)))
+            copy = compile(tree, '<copy>', 'eval', ast.PyCF_ONLY_AST)
+            self.assertIsNot(copy, tree)
+            self.assertIs(copy.body.value, value)
+            result = eval(compile(tree, '<constant>', 'eval'))
+            self.assertEqual(result, value)
+            if isinstance(value, tuple): self.assertIs(result, value)
+
+        nodes = []
+        class MutatingPass(ast.Pass):
+            @property
+            def lineno(self):
+                nodes.append(ast.Pass(lineno=1, col_offset=0))
+                return 1
+        nodes.append(MutatingPass(col_offset=0))
+        with self.assertRaisesRegex(RuntimeError, 'Module field "body" changed size during iteration'):
+            compile(ast.Module(nodes, []), '<mutation>', 'exec')
+
 if __name__ == '__main__': unittest.main()

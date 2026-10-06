@@ -742,7 +742,9 @@ const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
     constructor: function code(filename, compiled, executable) {
         this.compiled = compiled;
         this.code = compiled && compiled.code;
-        this.$jsCode = executable || Sk.global["eval"](compiled.code);
+        this.$jsCode = executable || (compiled.literalObjects.length
+            ? Sk.global["eval"]("(function($astConstants){" + compiled.code + "return " + compiled.funcname + ";})")(compiled.literalObjects)
+            : Sk.global["eval"](compiled.code));
         this.$jsCode.$code = this;
         if (compiled) {
             for (const unit of this.$jsCode.$codeUnits) {unit.$metadata.filename = filename;}
