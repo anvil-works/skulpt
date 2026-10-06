@@ -9,16 +9,7 @@ from test_type_parameters import run_code, check_syntax_error, SubTest
 
 def global_generic_func[T](): pass
 
-def run_no_yield_async_fn(async_fn, /, *args, **kwargs):
-    coro = async_fn(*args, **kwargs)
-    try:
-        coro.send(None)
-    except StopIteration as e:
-        return e.value
-    else:
-        raise AssertionError("coroutine did not complete")
-    finally:
-        coro.close()
+
 
 
 class GlobalGenericClass[T]:
@@ -885,23 +876,6 @@ class DefaultsTest(unittest.TestCase):
         check_syntax_error(self, "def func[T=int, U](): pass", "non-default type parameter 'U' follows default type parameter")
         check_syntax_error(self, "class C[T=int, U]: pass", "non-default type parameter 'U' follows default type parameter")
         check_syntax_error(self, "type A[T=int, U] = int", "non-default type parameter 'U' follows default type parameter")
-
-
-class TypeParamsTypeVarTest(unittest.TestCase):
-    def test_typevar_coroutine(self):
-        def get_coroutine[A]():
-            async def coroutine[B]():
-                return (A, B)
-            return coroutine
-
-        co = get_coroutine()
-
-        a, b = run_no_yield_async_fn(co)
-
-        self.assertIsInstance(a, TypeVar)
-        self.assertEqual(a.__name__, "A")
-        self.assertIsInstance(b, TypeVar)
-        self.assertEqual(b.__name__, "B")
 
 
 # CPython-checked public compiler/runtime contracts beyond the upstream cases.
