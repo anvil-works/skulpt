@@ -218,12 +218,15 @@ Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
         let pending;
         const argumentsArray = args instanceof Sk.builtin.list ? Sk.misceval.arrayFromIterable(args) : args.v;
         for (const arg of argumentsArray) {
+            let unpacked;
             pending = Sk.misceval.chain(pending, () => {
                 if (Sk.builtin.checkClass(arg)) return arg;
                 if (arg instanceof Sk.builtin.tuple || arg instanceof Sk.builtin.list) {
                     return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(self, arg, parameters, items),
                         value => arg instanceof Sk.builtin.list ? new Sk.builtin.list(value.v) : value);
                 }
+                unpacked = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_is_unpacked_typevartuple__"));
+                unpacked = unpacked !== undefined && Sk.misceval.isTrue(unpacked);
                 const subst = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_subst__"));
                 if (subst !== undefined) {
                     const index = parameters.v.indexOf(arg);
@@ -241,8 +244,7 @@ Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
                 }
                 return Sk.abstr.objectGetItem(arg, new Sk.builtin.tuple(replacements), true);
             }, value => {
-                const unpacked = !Sk.builtin.checkClass(arg) && Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_is_unpacked_typevartuple__"));
-                if (unpacked !== undefined && Sk.misceval.isTrue(unpacked)) {
+                if (unpacked) {
                     if (!(value instanceof Sk.builtin.tuple)) throw new Sk.builtin.TypeError("expected __typing_subst__ to return a tuple");
                     substituted.push(...value.v);
                 } else substituted.push(value);
