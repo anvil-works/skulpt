@@ -6,7 +6,7 @@ Sk.builtin.BaseExceptionGroup = Sk.abstr.buildNativeClass("BaseExceptionGroup", 
     base: Sk.builtin.BaseException,
     slots: {
         tp$new(args) {
-            if (args.length !== 2) throw new Sk.builtin.TypeError("BaseExceptionGroup.__new__() takes exactly 2 arguments (" + args.length + " given)");
+            if (args.length !== 2) {throw new Sk.builtin.TypeError("BaseExceptionGroup.__new__() takes exactly 2 arguments (" + args.length + " given)");}
             const [message, exceptions] = args;
             if (!Sk.builtin.checkString(message)) {
                 throw new Sk.builtin.TypeError("BaseExceptionGroup.__new__() argument 1 must be str, not " + Sk.abstr.typeName(message));
@@ -17,13 +17,13 @@ Sk.builtin.BaseExceptionGroup = Sk.abstr.buildNativeClass("BaseExceptionGroup", 
             const savedRepr = exceptions instanceof Sk.builtin.list || exceptions instanceof Sk.builtin.tuple
                 ? null : Sk.misceval.objectRepr(exceptions);
             return Sk.misceval.chain(Sk.misceval.arrayFromIterable(exceptions, true), items => {
-                if (!items.length) throw new Sk.builtin.ValueError("second argument (exceptions) must be a non-empty sequence");
+                if (!items.length) {throw new Sk.builtin.ValueError("second argument (exceptions) must be a non-empty sequence");}
                 let nestedBaseExceptions = false;
                 items.forEach((exception, index) => {
                     if (!(exception instanceof Sk.builtin.BaseException)) {
                         throw new Sk.builtin.ValueError("Item " + index + " of second argument (exceptions) is not an exception");
                     }
-                    if (!exception.ob$type.$isSubType(Sk.builtin.Exception)) nestedBaseExceptions = true;
+                    if (!exception.ob$type.$isSubType(Sk.builtin.Exception)) {nestedBaseExceptions = true;}
                 });
                 let cls = this.ob$type;
                 if (cls === Sk.builtin.ExceptionGroup && nestedBaseExceptions) {
@@ -104,8 +104,8 @@ function exceptionGroupSplit(group, condition, constructRest) {
     const none = Sk.builtin.none.none$;
     function splitRecursive(exception) {
         return Sk.misceval.chain(match(exception), matched => {
-            if (matched) return [exception, none];
-            if (!(exception instanceof Sk.builtin.BaseExceptionGroup)) return [none, constructRest ? exception : none];
+            if (matched) {return [exception, none];}
+            if (!(exception instanceof Sk.builtin.BaseExceptionGroup)) {return [none, constructRest ? exception : none];}
             const matching = [], rest = [];
             let index = 0;
             function visitChildren() {
@@ -120,8 +120,8 @@ function exceptionGroupSplit(group, condition, constructRest) {
                     Sk.misceval.chain(constructRest ? exceptionGroupSubset(exception, rest) : none, rest => [matching, rest]));
             }
             function collect([matched, unmatched]) {
-                if (matched !== none) matching.push(matched);
-                if (unmatched !== none) rest.push(unmatched);
+                if (matched !== none) {matching.push(matched);}
+                if (unmatched !== none) {rest.push(unmatched);}
             }
             return visitChildren();
         });
@@ -130,26 +130,26 @@ function exceptionGroupSplit(group, condition, constructRest) {
 }
 
 function exceptionGroupSubset(original, exceptions) {
-    if (!exceptions.length) return Sk.builtin.none.none$;
+    if (!exceptions.length) {return Sk.builtin.none.none$;}
     return Sk.misceval.chain(Sk.abstr.gattr(original, new Sk.builtin.str("derive"), true),
-        derive => Sk.misceval.callsimOrSuspendArray(derive, [new Sk.builtin.list(exceptions)]), derived => {
-            if (!(derived instanceof Sk.builtin.BaseExceptionGroup)) {
-                throw new Sk.builtin.TypeError("derive must return an instance of BaseExceptionGroup");
-            }
-            derived.traceback = original.traceback;
-            derived.context = original.context;
-            derived.$cause = original.$cause;
-            // PyException_SetCause suppresses context even when the cause is None.
-            derived.$suppressContext = true;
-            const notes = Sk.misceval.tryCatch(() => Sk.abstr.gattr(original, new Sk.builtin.str("__notes__"), true), error => {
-                if (!(error instanceof Sk.builtin.AttributeError)) throw error;
-            });
-            return Sk.misceval.chain(notes, notes => {
-                if (Sk.builtin.checkSequence(notes) && !(notes instanceof Sk.builtin.dict)) {
-                    return Sk.misceval.chain(Sk.misceval.arrayFromIterable(notes, true), items =>
-                        Sk.abstr.sattr(derived, new Sk.builtin.str("__notes__"), new Sk.builtin.list(items), true), () => derived);
-                }
-                return derived;
-            });
-        });
+                             derive => Sk.misceval.callsimOrSuspendArray(derive, [new Sk.builtin.list(exceptions)]), derived => {
+                                 if (!(derived instanceof Sk.builtin.BaseExceptionGroup)) {
+                                     throw new Sk.builtin.TypeError("derive must return an instance of BaseExceptionGroup");
+                                 }
+                                 derived.traceback = original.traceback;
+                                 derived.context = original.context;
+                                 derived.$cause = original.$cause;
+                                 // PyException_SetCause suppresses context even when the cause is None.
+                                 derived.$suppressContext = true;
+                                 const notes = Sk.misceval.tryCatch(() => Sk.abstr.gattr(original, new Sk.builtin.str("__notes__"), true), error => {
+                                     if (!(error instanceof Sk.builtin.AttributeError)) {throw error;}
+                                 });
+                                 return Sk.misceval.chain(notes, notes => {
+                                     if (Sk.builtin.checkSequence(notes) && !(notes instanceof Sk.builtin.dict)) {
+                                         return Sk.misceval.chain(Sk.misceval.arrayFromIterable(notes, true), items =>
+                                             Sk.abstr.sattr(derived, new Sk.builtin.str("__notes__"), new Sk.builtin.list(items), true), () => derived);
+                                     }
+                                     return derived;
+                                 });
+                             });
 }
