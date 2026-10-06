@@ -469,6 +469,15 @@ class TypeParameterCompilerRegressions(unittest.TestCase):
         self.assertEqual(A[str].__args__, (str,))
         with self.assertRaises(TypeError): TypeAliasType('A', int, type_params=(T, U))
         with self.assertRaises(TypeError): TypeAliasType('A', int, type_params=(int,))
+        events = []
+        def default():
+            events.append('default')
+            return int
+        def lazy[T=default()](): pass
+        with self.assertRaises(TypeError): TypeAliasType('A', int, type_params=lazy.__type_params__ + (42,))
+        self.assertEqual(events, ['default'])
+        def failing[T=missing](): pass
+        with self.assertRaises(NameError): TypeAliasType('A', int, type_params=failing.__type_params__ + (42,))
         for source in [
             'def f[T=int, U](): pass',
             'type A[T=int, U] = int',
