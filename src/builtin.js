@@ -803,7 +803,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     source = compilerSource(source, filename.$jsstr(), "compile");
     mode = mode.$jsstr();
-    return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0)));
+    return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0), flags));
 };
 
 // Objects/unicodeobject.c: PyUnicode_FSDecoder, via PyOS_FSPath.
@@ -972,6 +972,8 @@ Sk.builtin.exec = function (code, globals, locals) {
                 throw new Sk.builtin.TypeError("code object passed to exec() may not contain free variables");
             }
             const func = new Sk.builtin.func(co.$jsCode, globals);
+            func.$defaults = null;
+            func.$kwdefs = [];
             func.$classLocals = locals;
             return Sk.misceval.callsimOrSuspendArray(func, []);
         },
