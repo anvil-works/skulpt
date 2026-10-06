@@ -3,6 +3,7 @@
 // Javascript. This is a bit hokey.
 
 Sk.builtins = {
+    "NotImplemented": Sk.builtin.NotImplemented.NotImplemented$,
     "round"     : null,
     "len"       : null,
     "min"       : null,
