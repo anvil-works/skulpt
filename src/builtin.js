@@ -765,7 +765,7 @@ const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
                 Sk.abstr.checkNoArgs("replace", args);
                 const [flags] = Sk.abstr.copyKeywordsToNamedArgs("replace", ["co_flags"], [], kwargs, [this.$metadata.co_flags]);
                 const newFlags = compileIntOption(flags, 0);
-                if (newFlags < 0) throw new Sk.builtin.ValueError("co_flags must be a positive integer");
+                if (newFlags < 0) {throw new Sk.builtin.ValueError("co_flags must be a positive integer");}
                 // CO_ITERABLE_COROUTINE changes await eligibility without changing
                 // the executable frame layout. Other replacements need lowering.
                 if ((newFlags ^ this.$jsCode.$metadata.flags) & ~0x100) {
