@@ -175,7 +175,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         __annotate__: {
             $get() { return this.func_annotate || Sk.builtin.none.none$; },
             $set(value) {
-                if (value === undefined) throw new Sk.builtin.TypeError("__annotate__ cannot be deleted");
+                if (value === undefined) {throw new Sk.builtin.TypeError("__annotate__ cannot be deleted");}
                 if (Sk.builtin.checkNone(value)) {
                     this.func_annotate = value;
                 } else if (Sk.builtin.checkCallable(value)) {
