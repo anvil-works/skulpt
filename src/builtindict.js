@@ -416,6 +416,18 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
             "min(iterable, *[, default=obj, key=func]) -> value\nmin(arg1, arg2, *args, *[, key=func]) -> value\n\nWith a single iterable argument, return its smallest item. The\ndefault keyword-only argument specifies an object to return if\nthe provided iterable is empty.\nWith two or more arguments, return the smallest argument.",
     },
 
+    aiter: {
+        $meth: Sk.builtin.aiter,
+        $flags: { OneArg: true },
+        $textsig: "($module, async_iterable, /)",
+        $doc: "Return an AsyncIterator for an AsyncIterable object.",
+    },
+    anext: {
+        $meth: Sk.builtin.anext,
+        $flags: { MinArgs: 1, MaxArgs: 2 },
+        $textsig: null,
+        $doc: "Return the next item from the async iterator, or default when exhausted.",
+    },
     next: {
         $name: "next",
         $meth: Sk.builtin.next_,
@@ -639,6 +651,8 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["raw_input"] = new Sk.builtin.func(Sk.builtin.raw_input);
         Sk.builtins["unichr"] = new Sk.builtin.func(Sk.builtin.unichr);
         Sk.builtin.str.prototype.decode = Sk.builtin.str.$py2decode;
+        removeBuiltin("aiter");
+        removeBuiltin("anext");
         removeBuiltin("bytes");
         removeBuiltin("ascii");
     }
