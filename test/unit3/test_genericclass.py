@@ -75,6 +75,46 @@ class TestMROEntry(unittest.TestCase):
         self.assertEqual(D.__orig_bases__, (A, c))
         self.assertEqual(D.__mro__, (D, A, dict, object))
 
+    def test_mro_entry_with_builtins_2(self):
+        tested = []
+        class C:
+            def __mro_entries__(self, bases):
+                tested.append(bases)
+                return (C,)
+        c = C()
+        self.assertEqual(tested, [])
+        class D(c, dict): ...
+        self.assertEqual(tested[-1], (c, dict))
+        self.assertEqual(D.__bases__, (C, dict))
+        self.assertEqual(D.__orig_bases__, (c, dict))
+        self.assertEqual(D.__mro__, (D, C, dict, object))
+
+    def test_mro_entry_errors(self):
+        class C_too_many:
+            def __mro_entries__(self, bases, something, other):
+                return ()
+        c = C_too_many()
+        with self.assertRaises(TypeError):
+            class D(c): ...
+        class C_too_few:
+            def __mro_entries__(self):
+                return ()
+        d = C_too_few()
+        with self.assertRaises(TypeError):
+            class E(d): ...
+
+    def test_mro_entry_errors_2(self):
+        class C_not_callable:
+            __mro_entries__ = "Surprise!"
+        c = C_not_callable()
+        with self.assertRaises(TypeError):
+            class D(c): ...
+        class C_not_tuple:
+            def __mro_entries__(self):
+                return object
+        c = C_not_tuple()
+        with self.assertRaises(TypeError):
+            class E(c): ...
 
     def test_mro_entry_metaclass(self):
         meta_args = []
@@ -98,6 +138,27 @@ class TestMROEntry(unittest.TestCase):
         self.assertEqual(D.__mro__, (D, A, object))
         self.assertEqual(D.__class__, Meta)
 
+    def test_mro_entry_type_call(self):
+        # Substitution should _not_ happen in direct type call
+        class C:
+            def __mro_entries__(self, bases):
+                return ()
+        c = C()
+        with self.assertRaisesRegex(TypeError,
+                                    "MRO entry resolution; "
+                                    "use types.new_class()"):
+            type('Bad', (c,), {})
+
+
+    # CPython codegen_class call argument expansion / GenericAlias MRO entry.
+    def test_starred_dynamic_bases(self):
+        alias = list[int]
+        class C(*(alias,)):
+            __orig_bases__ = ('body value',)
+        self.assertEqual(C.__bases__, (list,))
+        self.assertEqual(C.__orig_bases__, (alias,))
+        self.assertEqual(alias.__mro_entries__((alias,)), (list,))
+        self.assertRaises(TypeError, alias.__mro_entries__)
 
 class TestClassGetitem(unittest.TestCase):
     def test_generic_alias_base(self):
