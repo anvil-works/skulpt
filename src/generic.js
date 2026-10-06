@@ -69,9 +69,10 @@ Sk.exportSymbol("Sk.generic.getAttr", Sk.generic.getAttr);
  * @param {Sk.builtin.str} pyName
  * @param {Sk.builtin.object|undefined} value
  * @param {boolean=} canSuspend ? can this function suspend
+ * @param {Sk.builtin.dict=} dict explicit namespace for module bridges
  * @return {undefined}
  */
-Sk.generic.setAttr = function __setattr__(pyName, value, canSuspend) {
+Sk.generic.setAttr = function __setattr__(pyName, value, canSuspend, dict = this.$d) {
     const descr = this.ob$type.$typeLookup(pyName);
     // otherwise, look in the type for a descr
     if (descr !== undefined && descr !== null) {
@@ -82,7 +83,6 @@ Sk.generic.setAttr = function __setattr__(pyName, value, canSuspend) {
         }
     }
 
-    const dict = this.$d;
     if (dict !== undefined && dict !== null) {
         if (dict.dict$setItem) {
             if (value !== undefined) {

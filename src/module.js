@@ -15,8 +15,7 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
             if (descr !== undefined && descr.tp$descr_set !== undefined && descr.tp$descr_get !== undefined) {
                 return descr.tp$descr_get(this, this.ob$type, canSuspend);
             }
-            const jsMangled = pyName.$mangled;
-            const ret = this.$d[jsMangled];
+            const ret = Sk.misceval.namespaceDict(this.$d).mp$lookup(pyName);
             if (ret !== undefined) {
                 return ret;
             }
@@ -42,7 +41,9 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
                 return canSuspend ? res : Sk.misceval.retryOptionalSuspensionOrThrow(res);
             }
         },
-        tp$setattr: Sk.generic.setAttr,
+        tp$setattr(pyName, value, canSuspend) {
+            return Sk.generic.setAttr.call(this, pyName, value, canSuspend, Sk.misceval.namespaceDict(this.$d));
+        },
         tp$new: Sk.generic.new,
         tp$init(args, kwargs) {
             const [name, doc] = Sk.abstr.copyKeywordsToNamedArgs("module", ["name", "doc"], args, kwargs, [Sk.builtin.none.none$]);
