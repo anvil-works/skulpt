@@ -1438,7 +1438,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         kwonlyargcount: unit.kwonlyargcount,
         firstlineno: unit.firstlineno || 1,
         flags,
-        varnames: Array.from(varnames, Sk.unfixReserved),
+        varnames: Array.from(varnames, name => name === "$annotationFormat" ? "format" : Sk.unfixReserved(name)),
         cellvars: Array.from(cellvars, Sk.unfixReserved).sort(),
         freevars: freevars.map(Sk.unfixReserved).sort(),
     };
@@ -2386,7 +2386,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
 
     let funcobj = this._gr("funcobj", "new Sk.builtins['function'](", scopename, ",$gbl", frees, ")");
     if (func_annotations) {
-        out(funcobj, ".func_annotations=", func_annotations, ";");
+        out(funcobj, args.annotationScope ? ".func_annotate=" : ".func_annotations=", func_annotations, ";");
     }
     if (decos.length > 0) {
         out("$ret=", funcobj, ";");
@@ -2414,7 +2414,13 @@ Compiler.prototype.cargannotation = function (id, annotation, ann_dict) {
         const mangled = mangleName(this.u.private_, id).v;
         // var scope = this.u.ste.getScope(mangled);
         ann_dict.push(`'${mangled}'`);
-        ann_dict.push(this.cannotation(annotation));
+        if (!(this.flags & 0x1000000) && annotation._type === "Starred") {
+            out("$ret=Sk.abstr.sequenceUnpack(", this.vexpr(annotation.value), ",1,1,false);");
+            this._checkSuspension(annotation);
+            ann_dict.push(this._gr("variadicannotation", "$ret[0]"));
+        } else {
+            ann_dict.push(this.cannotation(annotation));
+        }
     }
 };
 
@@ -2431,10 +2437,19 @@ Compiler.prototype.cargannotations = function (args, ann_dict) {
 const return_str = new Sk.builtin.str("return");
 
 Compiler.prototype.cannotations = function (args, returns) {
+    if (args && args.annotationScope) {
+        const key = args.annotationScope;
+        return this.buildcodeobj(key, "__annotate__", null, key.args, function () {
+            const format = this.nameop("$annotationFormat", "Load");
+            out("if(Sk.misceval.richCompareBool(", format, ",new Sk.builtin.int_(2),'Gt'))throw new Sk.builtin.NotImplementedError();");
+            const values = this.cannotations({ ...args, annotationScope: undefined }, returns);
+            out("return Sk.abstr.keywordArrayToPyDict(", values, ");");
+        });
+    }
     const ann_dict = [];
     if (args) {
-        this.cargannotations(args.posonlyargs, ann_dict);
         this.cargannotations(args.args, ann_dict);
+        this.cargannotations(args.posonlyargs, ann_dict);
         if (args.vararg && args.vararg.annotation) {
             this.cargannotation(args.vararg.arg, args.vararg.annotation, ann_dict);
         }
@@ -2490,6 +2505,7 @@ Compiler.prototype.cDocstringOfCode = function(node) {
 
     case "Lambda":
     case "GeneratorExp":
+    case "Annotation":
         return "Sk.builtin.none.none$";
 
     default:
@@ -3061,6 +3077,12 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
         if (!named || scope !== Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT) {
             u.qualname = this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".") + name.v;
         }
+    }
+    if (key._type === "Annotation") {
+        const ownerName = key.owner.name;
+        const global = this.u.ste.getScope(fixReserved(mangleName(this.u.private_, ownerName).v)) === Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT;
+        u.qualname = (global || ["Module", "Expression", "Interactive"].includes(this.u.scopeType) ? "" :
+            this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".")) + ownerName + ".__annotate__";
     }
     u.firstlineno = key.decorator_list && key.decorator_list.length ? key.decorator_list[0].lineno : lineno;
     u.argcount = key.args ? key.args.posonlyargs.length + key.args.args.length : key._type === "GeneratorExp" ? 1 : 0;
