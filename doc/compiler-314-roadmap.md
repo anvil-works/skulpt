@@ -707,3 +707,17 @@ to the str.encode API (two cases). The full codecs module remains separate.
 Named Unicode source escapes load the parser's bundled name resolver on first
 use; ordinary parsing avoids initializing its 639 kB data table. The resolver
 is bundled so the same source contract works in Node and the browser.
+
+### CPython AST source generation
+
+ast.unparse uses CPython 3.14's complete Lib/_ast_unparse.py visitor unchanged.
+Its private precedence IntEnum is represented by integer instances with the
+same named values/next behavior; this requires no public enum implementation.
+The public lazy-import ast.unparse function is unchanged. Seventy-three complete
+upstream unparse, cosmetic and manually-created-AST methods pass in both
+runtimes, with upstream fixtures and full AST comparison helpers unchanged.
+Only subTest infrastructure is adapted. Whole-stdlib directory scans, parser
+type comments/func_type and invalid-escape warning tests follow those features.
+The remaining template round-trip method is staged with template support:
+it requires the reviewed dev.8 parser metadata fixes, still awaiting release.
+It also passes locally with that parser (74 unparse methods in total).
