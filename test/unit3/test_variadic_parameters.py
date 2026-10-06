@@ -319,4 +319,23 @@ class VariadicCompilerRegressions(unittest.TestCase):
         with self.assertRaises(TypeError): TypeVarTuple('Ts', int)
         with self.assertRaises(TypeError): ParamSpec('P', int)
 
+class VariadicProtocolOrder(unittest.TestCase):
+    def test_unpack_flag_precedes_substitution(self):
+        events = []
+        class Raising:
+            @property
+            def __typing_is_unpacked_typevartuple__(self):
+                raise ValueError('unpack flag')
+            def __typing_subst__(self, value):
+                events.append('subst')
+                return value
+        with self.assertRaises(ValueError): tuple[Raising()][int]
+        self.assertEqual(events, [])
+        class Mutating:
+            __typing_is_unpacked_typevartuple__ = False
+            def __typing_subst__(self, value):
+                self.__typing_is_unpacked_typevartuple__ = True
+                return (value,)
+        self.assertEqual(tuple[Mutating()][int].__args__, ((int,),))
+
 if __name__ == '__main__': unittest.main()
