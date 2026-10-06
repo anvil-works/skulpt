@@ -299,17 +299,13 @@ Sk.misceval.opSymbols = {
  * @param {string} op - `Eq`, `NotEq`, `Lt`, `LtE`, `Gt`, `GtE`, `Is`, `IsNot`, `In_`, `NotIn`
  * @param {boolean=} canSuspend
  * 
- * @returns {boolean}
- * 
- * @todo This implementation overrides the return value from a user defined dunder method since it returns a boolean
- * whereas Python will return the user defined return value.
+ * @returns {pyObject|Sk.misceval.Suspension}
  * 
  * @throws {Sk.builtin.TypeError}
  */
-Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
-    // v and w must be Python objects. will return Javascript true or false for internal use only
-    // if you want to return a value from richCompareBool to Python you must wrap as Sk.builtin.bool first
-    Sk.asserts.assert(v.sk$object && w.sk$object, "JS object passed to richCompareBool");
+Sk.misceval.richCompare = function (v, w, op, canSuspend) {
+    // PyObject_RichCompare preserves arbitrary Python results from rich slots.
+    Sk.asserts.assert(v.sk$object && w.sk$object, "JS object passed to richCompare");
     var ret,
         swapped_shortcut,
         shortcut;
@@ -346,26 +342,26 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
         if (v === Sk.builtin.none.none$) {
             switch (op) {
                 case "Lt":
-                    return true;
+                    return Sk.builtin.bool.true$;
                 case "LtE":
-                    return true;
+                    return Sk.builtin.bool.true$;
                 case "Gt":
-                    return false;
+                    return Sk.builtin.bool.false$;
                 case "GtE":
-                    return false;
+                    return Sk.builtin.bool.false$;
             }
         }
 
         if (w === Sk.builtin.none.none$) {
             switch (op) {
                 case "Lt":
-                    return false;
+                    return Sk.builtin.bool.false$;
                 case "LtE":
-                    return false;
+                    return Sk.builtin.bool.false$;
                 case "Gt":
-                    return true;
+                    return Sk.builtin.bool.true$;
                 case "GtE":
-                    return true;
+                    return Sk.builtin.bool.true$;
             }
         }
 
@@ -373,26 +369,26 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
         if (v_num_type !== -1 && w_seq_type !== -1) {
             switch (op) {
                 case "Lt":
-                    return true;
+                    return Sk.builtin.bool.true$;
                 case "LtE":
-                    return true;
+                    return Sk.builtin.bool.true$;
                 case "Gt":
-                    return false;
+                    return Sk.builtin.bool.false$;
                 case "GtE":
-                    return false;
+                    return Sk.builtin.bool.false$;
             }
         }
 
         if (v_seq_type !== -1 && w_num_type !== -1) {
             switch (op) {
                 case "Lt":
-                    return false;
+                    return Sk.builtin.bool.false$;
                 case "LtE":
-                    return false;
+                    return Sk.builtin.bool.false$;
                 case "Gt":
-                    return true;
+                    return Sk.builtin.bool.true$;
                 case "GtE":
-                    return true;
+                    return Sk.builtin.bool.true$;
             }
         }
 
@@ -401,13 +397,13 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
         if (v_seq_type !== -1 && w_seq_type !== -1) {
             switch (op) {
                 case "Lt":
-                    return v_seq_type < w_seq_type;
+                    return new Sk.builtin.bool(v_seq_type < w_seq_type);
                 case "LtE":
-                    return v_seq_type <= w_seq_type;
+                    return new Sk.builtin.bool(v_seq_type <= w_seq_type);
                 case "Gt":
-                    return v_seq_type > w_seq_type;
+                    return new Sk.builtin.bool(v_seq_type > w_seq_type);
                 case "GtE":
-                    return v_seq_type >= w_seq_type;
+                    return new Sk.builtin.bool(v_seq_type >= w_seq_type);
             }
         }
     }
@@ -415,19 +411,19 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
     // handle identity and membership comparisons
     // no longer called from compile code - left here for backwards compatibliity
     if (op === "Is") {
-        return v === w;
+        return new Sk.builtin.bool(v === w);
     }
 
     if (op === "IsNot") {
-        return v !== w;
+        return new Sk.builtin.bool(v !== w);
     }
 
     if (op === "In") {
-        return Sk.misceval.chain(Sk.abstr.sequenceContains(w, v, canSuspend), Sk.misceval.isTrue);
+        return Sk.misceval.chain(Sk.abstr.sequenceContains(w, v, canSuspend), x => new Sk.builtin.bool(Sk.misceval.isTrue(x)));
     }
     if (op === "NotIn") {
         return Sk.misceval.chain(Sk.abstr.sequenceContains(w, v, canSuspend), function (x) {
-            return !Sk.misceval.isTrue(x);
+            return new Sk.builtin.bool(!Sk.misceval.isTrue(x));
         });
     }
 
@@ -448,19 +444,17 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
     if (w_is_subclass) {
         swapped_shortcut = op2shortcut[Sk.misceval.swappedOp_[op]];
         if ((ret = w[swapped_shortcut](v)) !== Sk.builtin.NotImplemented.NotImplemented$) {
-            return Sk.misceval.isTrue(ret);
+            return typeof ret === "boolean" ? new Sk.builtin.bool(ret) : ret;
         }
     }
     if ((ret= v[shortcut](w)) !== Sk.builtin.NotImplemented.NotImplemented$) {
-        return Sk.misceval.isTrue(ret); 
-    // techincally this is not correct along with the compile code see #1252
-        // richcompare slots could return any pyObject ToDo - would require changing compile code
+        return typeof ret === "boolean" ? new Sk.builtin.bool(ret) : ret;
     }
 
     if (!w_is_subclass) {
         swapped_shortcut = op2shortcut[Sk.misceval.swappedOp_[op]];
         if ((ret = w[swapped_shortcut](v)) !== Sk.builtin.NotImplemented.NotImplemented$) {
-            return Sk.misceval.isTrue(ret);
+            return typeof ret === "boolean" ? new Sk.builtin.bool(ret) : ret;
         }
     }
 
@@ -472,17 +466,17 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
                 if (Sk.builtin.checkNumber(ret)) {
                     ret = Sk.builtin.asnum$(ret);
                     if (op === "Eq") {
-                        return ret === 0;
+                        return new Sk.builtin.bool(ret === 0);
                     } else if (op === "NotEq") {
-                        return ret !== 0;
+                        return new Sk.builtin.bool(ret !== 0);
                     } else if (op === "Lt") {
-                        return ret < 0;
+                        return new Sk.builtin.bool(ret < 0);
                     } else if (op === "Gt") {
-                        return ret > 0;
+                        return new Sk.builtin.bool(ret > 0);
                     } else if (op === "LtE") {
-                        return ret <= 0;
+                        return new Sk.builtin.bool(ret <= 0);
                     } else if (op === "GtE") {
-                        return ret >= 0;
+                        return new Sk.builtin.bool(ret >= 0);
                     }
                 }
 
@@ -501,17 +495,17 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
                 if (Sk.builtin.checkNumber(ret)) {
                     ret = Sk.builtin.asnum$(ret);
                     if (op === "Eq") {
-                        return ret === 0;
+                        return new Sk.builtin.bool(ret === 0);
                     } else if (op === "NotEq") {
-                        return ret !== 0;
+                        return new Sk.builtin.bool(ret !== 0);
                     } else if (op === "Lt") {
-                        return ret > 0;
+                        return new Sk.builtin.bool(ret > 0);
                     } else if (op === "Gt") {
-                        return ret < 0;
+                        return new Sk.builtin.bool(ret < 0);
                     } else if (op === "LtE") {
-                        return ret >= 0;
+                        return new Sk.builtin.bool(ret >= 0);
                     } else if (op === "GtE") {
-                        return ret <= 0;
+                        return new Sk.builtin.bool(ret <= 0);
                     }
                 }
 
@@ -529,38 +523,46 @@ Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
             // comparing None with None or True/False with True/False
 
             if (op === "Eq") {
-                return v.v === w.v;
+                return new Sk.builtin.bool(v.v === w.v);
             }
             if (op === "NotEq") {
-                return v.v !== w.v;
+                return new Sk.builtin.bool(v.v !== w.v);
             }
             if (op === "Gt") {
-                return v.v > w.v;
+                return new Sk.builtin.bool(v.v > w.v);
             }
             if (op === "GtE") {
-                return v.v >= w.v;
+                return new Sk.builtin.bool(v.v >= w.v);
             }
             if (op === "Lt") {
-                return v.v < w.v;
+                return new Sk.builtin.bool(v.v < w.v);
             }
             if (op === "LtE") {
-                return v.v <= w.v;
+                return new Sk.builtin.bool(v.v <= w.v);
             }
         }
     }
 
     // handle equality comparisons for any remaining objects
     if (op === "Eq") {
-        return v === w;
+        return new Sk.builtin.bool(v === w);
     }
     if (op === "NotEq") {
-        return v !== w;
+        return new Sk.builtin.bool(v !== w);
     }
 
     const vname = Sk.abstr.typeName(v);
     const wname = Sk.abstr.typeName(w);
     throw new Sk.builtin.TypeError("'" + Sk.misceval.opSymbols[op] + "' not supported between instances of '" + vname + "' and '" + wname + "'");
     //throw new Sk.builtin.ValueError("don't know how to compare '" + vname + "' and '" + wname + "'");
+};
+Sk.exportSymbol("Sk.misceval.richCompare", Sk.misceval.richCompare);
+
+// PyObject_RichCompareBool's identity shortcut is for internal Boolean callers.
+Sk.misceval.richCompareBool = function (v, w, op, canSuspend) {
+    if (v === w && op === "Eq") {return true;}
+    if (v === w && op === "NotEq") {return false;}
+    return Sk.misceval.chain(Sk.misceval.richCompare(v, w, op, canSuspend), Sk.misceval.isTrue);
 };
 Sk.exportSymbol("Sk.misceval.richCompareBool", Sk.misceval.richCompareBool);
 

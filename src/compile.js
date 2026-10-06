@@ -712,8 +712,8 @@ Compiler.prototype.cyieldfrom = function (e) {
 };
 
 
+// codegen.c: codegen_compare truth-tests intermediate links and preserves the result.
 Compiler.prototype.ccompare = function (e) {
-    var res;
     var rhs;
     var i;
     var fres;
@@ -721,24 +721,24 @@ Compiler.prototype.ccompare = function (e) {
     var n;
     var cur;
     Sk.asserts.assert(e.ops.length === e.comparators.length);
-    cur = this.vexpr(e.left);
+    cur = this._gr("compareleft", this.vexpr(e.left));
     n = e.ops.length;
     done = this.newBlock("done");
     fres = this._gr("compareres", "null");
 
     for (i = 0; i < n; ++i) {
-        rhs = this.vexpr(e.comparators[i]);
+        rhs = this._gr("compareright", this.vexpr(e.comparators[i]));
         const op = e.ops[i];
         if (op._type === "Is") {
-            out("$ret = ", cur, "===", rhs, ";");
+            out("$ret = Sk.builtin.bool(", cur, "===", rhs, ");");
         } else if (op._type === "IsNot") {
-            out("$ret = ", cur, "!==", rhs, ";");
+            out("$ret = Sk.builtin.bool(", cur, "!==", rhs, ");");
         } else{
-            out("$ret = Sk.misceval.richCompareBool(", cur, ",", rhs, ",'", op._type, "', true);");
+            out("$ret = Sk.misceval.richCompare(", cur, ",", rhs, ",'", op._type, "', true);");
             this._checkSuspension(e);
         }
-        out(fres, "=Sk.builtin.bool($ret);");
-        this._jumpfalse("$ret", done);
+        out(fres, "=$ret;");
+        if (i < n - 1) this._jumpfalse(fres, done);
         cur = rhs;
     }
     this._jump(done);

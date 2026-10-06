@@ -773,3 +773,15 @@ AttributeError raised by class lookup reaches the metaclass's __getattr__,
 while other errors propagate. Thirteen descriptor cases and twelve enum
 cases pass in both runtimes. The enum fixture retains only exercised
 class-style setup; selected upstream test bodies remain unchanged.
+
+### Python rich-comparison results
+
+Comparison expression emission follows codegen_compare: evaluate each operand
+once, truth-test intermediate links, and return the final Python result without
+Boolean coercion. PyObject_RichCompare and PyObject_RichCompareBool now have
+separate runtime entry points; internal Boolean callers retain the identity
+shortcut while expression/operator comparisons preserve arbitrary Python values.
+Existing native slots' JavaScript booleans become Python booleans at that boundary.
+Six complete CPython richcmp/grammar methods cover mixed Vector and Number
+results, operator aliases, Boolean errors and comparison-chain short circuiting.
+This is also a prerequisite for annotationlib's expression stringifier.
