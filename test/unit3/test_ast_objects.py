@@ -344,6 +344,12 @@ Module(
         self.assertEqual(tree.body[0].value.value, 123456789123456789123456789)
         self.assertEqual(tree.body[1].value.value, 2j)
         self.assertEqual(tree.body[2].value.value, b'hi')
+        for keyword in ('except', 'except*'):
+            parsed = ast.parse('try:\n pass\n' + keyword + ' ValueError:\n pass')
+            self.assertEqual(len(parsed.body[0].handlers), 1)
+            self.assertEqual(parsed.body[0].handlers[0].type.id, 'ValueError')
+        self.assertIs(ast.Name().ctx, ast.Name().ctx)
+        self.assertIs(ast.parse('a+b', mode='eval').body.op, ast.parse('c+d', mode='eval').body.op)
         tree = ast.parse('def f[T](x: T): pass')
         self.assertEqual(tree.body[0].type_params[0].name, 'T')
         self.assertIsInstance(tree.body[0].args.args[0].annotation, ast.Name)

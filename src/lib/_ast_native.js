@@ -17,7 +17,7 @@ var $builtinmodule = function () {
         if (value === null || value === undefined) {return Sk.builtin.none.none$;}
         if (Array.isArray(value)) {return new Sk.builtin.list(value.map(toPython));}
         if (typeof value === "object") {
-            if (value.type) {return constant(value);}
+            if (!value._type && typeof value.type === "string") {return constant(value);}
             const items = [];
             for (const [name, item] of Object.entries(value)) {
                 items.push(new Sk.builtin.str(name), toPython(item));
