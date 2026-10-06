@@ -293,6 +293,17 @@ Sk.importModuleInternal_ = function (name, dumpJS, modname, suppliedPyBody, rela
             setInitializing(true);
             if (co.funcname === "$compiledmod") {
                 module["$d"] = Sk.misceval.namespaceToJs(module["$d"]);
+                if (Sk.__future__.python3 && modname === "__main__") {
+                    // CPython's main namespace contains the already-loaded builtins module.
+                    const builtinName = new Sk.builtin.str("builtins");
+                    let builtins = Sk.sysmodules.mp$lookup(builtinName);
+                    if (builtins === undefined) {
+                        builtins = new Sk.builtin.module();
+                        builtins.$d = Sk.builtins;
+                        Sk.sysmodules.mp$ass_subscript(builtinName, builtins);
+                    }
+                    module.$d.__builtins__ = builtins;
+                }
             }
             // our module might suspend so we need to wrap it in a suspendable try catch
             // we can only setInitializing to false once the suspensions have completed
