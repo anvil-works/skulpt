@@ -1516,7 +1516,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         kwonlyargcount: unit.kwonlyargcount,
         firstlineno: unit.firstlineno || 1,
         flags,
-        varnames: Array.from(varnames, name => name === "$annotationFormat" ? "format" : Sk.unfixReserved(name)),
+        varnames: Array.from(varnames, name => name === "$annotationFormat" ? "format" : name === "$aliasFormat" ? ".format" : Sk.unfixReserved(name)),
         cellvars: Array.from(cellvars, Sk.unfixReserved).sort(),
         freevars: freevars.map(Sk.unfixReserved).sort(),
     };
@@ -2487,7 +2487,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // binding.
     //
     if (argnamesarr.length > 0) {
-        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(name => name === "$annotationFormat" ? "format" : name)), ";");
+        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(name => name === "$annotationFormat" ? "format" : name === "$aliasFormat" ? ".format" : name)), ";");
     } else {
         out(scopename, ".co_varnames=[];");
     }
@@ -2638,6 +2638,7 @@ Compiler.prototype.cDocstringOfCode = function(node) {
     case "Lambda":
     case "GeneratorExp":
     case "Annotation":
+    case "TypeAlias":
         return "Sk.builtin.none.none$";
 
     default:
@@ -2663,6 +2664,18 @@ Compiler.prototype.clambda = function (e) {
         out("return ", val, ";");
     });
     return func;
+};
+
+// codegen_typealias_body: make a closure, then construct the lazy alias.
+Compiler.prototype.ctypealias = function (s) {
+    const evaluate = this.buildcodeobj(s, s.name.id, null, s.args, function () {
+        const format = this.nameop("$aliasFormat", "Load");
+        out("if(Sk.misceval.richCompareBool(", format, ",new Sk.builtin.int_(2),'Gt'))throw new Sk.builtin.NotImplementedError();");
+        out("return ", this.vexpr(s.value), ";");
+    });
+    const alias = this._gr("typealias", "new Sk.builtin.TypeAliasType(new Sk.builtin.str(",
+        JSON.stringify(s.name.id), "),undefined,", evaluate, ",null)");
+    this.nameop(s.name.id, "Store", alias);
 };
 
 Compiler.prototype.cifexp = function (e) {
@@ -2929,6 +2942,8 @@ Compiler.prototype.vstmt = function (s) {
             break;
         case "AnnAssign":
             return this.cannassign(s);
+        case "TypeAlias":
+            return this.ctypealias(s);
         case "AugAssign":
             return this.caugassign(s);
         case "Print":
