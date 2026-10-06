@@ -914,11 +914,18 @@ class GenericClassRegressions(unittest.TestCase):
         self.assertIs(Box[str]().get(), T)
         self.assertEqual(Box[str]().__orig_class__, Box[str])
         alias = Box[str]
+        self.assertIs(Box[str], alias)
         self.assertEqual(alias.__dict__['__origin__'], Box)
         self.assertEqual(alias.__dict__['__args__'], (str,))
         self.assertEqual(alias.__module__, Box.__module__)
         alias.__args__ = (float,)
         self.assertEqual(alias.__args__, (float,))
+        self.assertIs(Box[str], alias)
+        self.assertEqual(Box[str].__args__, (float,))
+        partial = Box[T]
+        self.assertIs(partial[int], partial[int])
+        partial[int].__args__ = (bytes,)
+        self.assertEqual(partial[int].__args__, (bytes,))
         alias.custom = 3
         self.assertEqual(Box.custom, 3)
         with self.assertRaises(AttributeError): alias.__unpacked__
