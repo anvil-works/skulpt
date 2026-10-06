@@ -91,7 +91,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
 
 // Python/errors.c: _PyErr_SetObject's implicit context cycle handling.
 Sk.builtin.chainException = function (error, context) {
-    if (error === context) return;
+    if (error === context) {return;}
     let current = context;
     let slow = current;
     let updateSlow = false;
@@ -101,8 +101,8 @@ Sk.builtin.chainException = function (error, context) {
             break;
         }
         current = current.context;
-        if (current === slow) break;
-        if (updateSlow) slow = slow.context;
+        if (current === slow) {break;}
+        if (updateSlow) {slow = slow.context;}
         updateSlow = !updateSlow;
     }
     error.context = context;
