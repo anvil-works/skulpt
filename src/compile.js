@@ -3021,7 +3021,7 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     // Retain a real cell when a function/class/genexpr still captures it.
     const captured = (ste, name) => ste.children.some(child =>
         child.comprehension && child.comprehension !== "genexpr" ? captured(child, name)
-            : child.getScope(name) === Sk.SYMTAB_CONSTS.FREE);
+            : child.getScope(name) === Sk.SYMTAB_CONSTS.FREE || (child.symFlags[name] & Sk.SYMTAB_CONSTS.DEF_FREE_CLASS));
     u.inlinedLocals = new Set(Object.keys(u.ste.symFlags).filter(name =>
         u.ste.getScope(name) === Sk.SYMTAB_CONSTS.CELL && !captured(u.ste, name)));
     u.name = name;
