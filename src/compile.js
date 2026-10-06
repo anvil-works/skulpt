@@ -2972,7 +2972,7 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     // Python/compile.c: compiler_set_qualname. Explicit global declarations
     // reset named functions/classes to a module name; lambdas retain nesting.
     u.qualname = name.v;
-    if (this.u && this.u.ste.blockType !== Sk.SYMTAB_CONSTS.ModuleBlock) {
+    if (this.u && !["Module", "Expression", "Interactive"].includes(this.u.scopeType)) {
         const scope = this.u.ste.getScope(fixReserved(mangleName(this.u.private_, name).v));
         const named = key._type === "FunctionDef" || key._type === "AsyncFunctionDef" || key._type === "ClassDef";
         if (!named || scope !== Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT) {
