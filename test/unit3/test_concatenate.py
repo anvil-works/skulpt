@@ -72,5 +72,10 @@ class ConcatenateRegressions(unittest.TestCase):
                           lambda: Union[Concatenate, int]):
             with self.assertRaises(TypeError): operation()
         self.assertEqual((alias | int).__args__, (alias, int))
+        events = []
+        with self.assertRaisesRegex(TypeError, "Cannot subclass typing.Concatenate"):
+            class Invalid(alias):
+                events.append('body')
+        self.assertEqual(events, [])
 
 if __name__ == '__main__': unittest.main()
