@@ -84,5 +84,6 @@ require("./union_type.js");
 require("./builtindict.js");
 require("./constants.js");
 require("./exception_group.js");
+require("./traceback.js");
 
 /* jshint ignore:end */
