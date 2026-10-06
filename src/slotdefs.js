@@ -207,7 +207,7 @@ function slotFuncGetAttribute(pyName, canSuspend) {
     // slot_tp_getattr_hook: descriptor AttributeError also triggers __getattr__.
     const ret = Sk.misceval.tryCatch(
         () => native ? getattributeFn.d$wrapped.call(this, pyName, canSuspend)
-            : Sk.misceval.callsimOrSuspendArray(getattributeFn, [pyName]),
+        : Sk.misceval.callsimOrSuspendArray(getattributeFn, [pyName]),
         (e) => {
             if (e instanceof Sk.builtin.AttributeError) {
                 return undefined;
