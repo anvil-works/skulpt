@@ -1475,14 +1475,14 @@ Sk.misceval.moduleNamespace = function (namespace) {
         const entry = namespaceCache.get(namespace);
         entry.boundModule = true;
         for (const name of Object.keys(namespace)) {
-            if (name[0] === "$") continue;
+            if (name[0] === "$") {continue;}
             const key = new Sk.builtin.str(Sk.unfixReserved(name));
             Object.defineProperty(namespace, name, {
                 enumerable: true, configurable: true,
                 get() { return entry.dict.mp$lookup(key); },
                 set(value) {
                     if (value === undefined) {
-                        if (entry.dict.mp$lookup(key) !== undefined) entry.dict.dict$delItem(key);
+                        if (entry.dict.mp$lookup(key) !== undefined) {entry.dict.dict$delItem(key);}
                     } else {
                         entry.dict.dict$setItem(key, value);
                     }
