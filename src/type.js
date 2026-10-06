@@ -254,13 +254,13 @@ function tp$new(args, kwargs) {
 
     // typeobject.c: heap types retain their own dictionary. Annotation scopes
     // will capture this dictionary through __classdictcell__, not a body copy.
-    klass.$dict = new Sk.builtin.dict(dict.$items().flat());
+    klass.$classDict = Sk.builtin.dict.prototype.dict$copy.call(dict);
     for (const name of ["__classcell__", "__qualname__"]) {
-        klass.$dict.dict$delItem(new Sk.builtin.str(name));
+        klass.$classDict.dict$delItem(new Sk.builtin.str(name));
     }
     for (const [key, value] of Object.entries(klassProto)) {
         if (value && value.ob$type && !Sk.unfixReserved(key).includes("$")) {
-            klass.$dict.dict$setItem(new Sk.builtin.str(Sk.unfixReserved(key)), value);
+            klass.$classDict.dict$setItem(new Sk.builtin.str(Sk.unfixReserved(key)), value);
         }
     }
     if (originalBases.v.length) {klass.sk$tuple_bases = originalBases;}
@@ -371,11 +371,11 @@ function tp$setattr(pyName, value, canSuspend) {
 
     if (value === undefined) {
         const proto = this.prototype;
-        if (this.$dict !== undefined ? this.$dict.quick$lookup(pyName) === undefined : !proto.hasOwnProperty(jsName)) {
+        if (this.$classDict !== undefined ? this.$classDict.quick$lookup(pyName) === undefined : !proto.hasOwnProperty(jsName)) {
             throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '" + pyName.$jsstr() + "'");
         } else {
             delete proto[jsName];
-            if (this.$dict !== undefined) this.$dict.dict$delItem(pyName);
+            if (this.$classDict !== undefined) this.$classDict.dict$delItem(pyName);
             // delete the slot_func
             // TODO what about slot funcs that are dual slots...
             const slot_name = Sk.dunderToSkulpt[jsName];
@@ -390,7 +390,7 @@ function tp$setattr(pyName, value, canSuspend) {
         }
     } else {
         this.prototype[jsName] = value;
-        if (this.$dict !== undefined) this.$dict.dict$setItem(pyName, value);
+        if (this.$classDict !== undefined) this.$classDict.dict$setItem(pyName, value);
         if (jsName in Sk.dunderToSkulpt) {
             this.$allocateSlot(jsName, value);
         }
@@ -398,7 +398,7 @@ function tp$setattr(pyName, value, canSuspend) {
 }
 
 function fastLookup(pyName) {
-    if (this.$dict !== undefined) return slowLookup.call(this, pyName);
+    if (this.$classDict !== undefined) return slowLookup.call(this, pyName);
     return this.prototype[pyName.$mangled];
 }
 
@@ -407,7 +407,7 @@ function slowLookup(pyName) {
     const mro = this.prototype.tp$mro;
     for (let i = 0; i < mro.length; ++i) {
         const base_proto = mro[i].prototype;
-        const dict = mro[i].$dict;
+        const dict = mro[i].$classDict;
         if (dict !== undefined) {
             const value = dict.quick$lookup(pyName);
             if (value !== undefined) return value;
@@ -706,7 +706,7 @@ Sk.builtin.type.prototype.tp$getsets = {
     },
     __dict__: {
         $get() {
-            return new Sk.builtin.mappingproxy(this.$dict || this.prototype);
+            return new Sk.builtin.mappingproxy(this.$classDict || this.prototype);
         },
     },
     __doc__: {
@@ -726,7 +726,7 @@ Sk.builtin.type.prototype.tp$getsets = {
         $set(value) {
             check_special_type_attr(this, value, Sk.builtin.str.$doc);
             this.prototype.__doc__ = value;
-            this.$dict.dict$setItem(Sk.builtin.str.$doc, value);
+            this.$classDict.dict$setItem(Sk.builtin.str.$doc, value);
         },
     },
     __name__: {
@@ -770,7 +770,7 @@ Sk.builtin.type.prototype.tp$getsets = {
     __module__: {
         $get() {
             const typeproto = this.prototype;
-            const mod = this.$dict !== undefined ? this.$dict.quick$lookup(Sk.builtin.str.$module) : typeproto.__module__;
+            const mod = this.$classDict !== undefined ? this.$classDict.quick$lookup(Sk.builtin.str.$module) : typeproto.__module__;
             if (mod && !(mod.ob$type === Sk.builtin.getset_descriptor)) {
                 return mod;
             }
@@ -783,7 +783,7 @@ Sk.builtin.type.prototype.tp$getsets = {
             // they can set the module to whatever they like
             check_special_type_attr(this, value, Sk.builtin.str.$module);
             this.prototype.__module__ = value;
-            this.$dict.dict$setItem(Sk.builtin.str.$module, value);
+            this.$classDict.dict$setItem(Sk.builtin.str.$module, value);
         },
     },
 };
@@ -867,18 +867,17 @@ function init_subclass(type, kws) {
 }
 
 function set_names(type) {
-    const proto = type.prototype;
-    Object.keys(proto).forEach((key) => {
-        const set_func = Sk.abstr.lookupSpecial(proto[key], Sk.builtin.str.$setname);
+    // Snapshot the namespace, as typeobject.c does, retaining the original keys.
+    type.$classDict.$items().forEach(([key, value]) => {
+        const set_func = Sk.abstr.lookupSpecial(value, Sk.builtin.str.$setname);
         if (set_func !== undefined) {
-            const name = new Sk.builtin.str(Sk.unfixReserved(key));
             try {
-                Sk.misceval.callsimArray(set_func, [type, name]);
+                Sk.misceval.callsimArray(set_func, [type, key]);
             } catch (e) {
                 // CPython's type_new_set_names preserves the error and adds context as a note.
                 e.$addNote(new Sk.builtin.str(
-                    "Error calling __set_name__ on '" + Sk.abstr.typeName(proto[key]) + "' instance " +
-                    Sk.misceval.objectRepr(name) + " in '" + type.prototype.tp$name + "'"
+                    "Error calling __set_name__ on '" + Sk.abstr.typeName(value) + "' instance " +
+                    Sk.misceval.objectRepr(key) + " in '" + type.prototype.tp$name + "'"
                 ));
                 throw e;
             }
