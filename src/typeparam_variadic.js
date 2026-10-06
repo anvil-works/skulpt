@@ -25,6 +25,9 @@ Sk.builtin.ParamSpec = Sk.abstr.buildNativeClass("typing.ParamSpec", {
             return new Sk.builtin.ParamSpec(name, { bound, default: defaultValue, covariant, contravariant, inferVariance });
         },
         $r: Sk.builtin.TypeVar.prototype.$r,
+        tp$as_number: true,
+        nb$or(other) { return Sk.builtin.makeUnion([this, other], true); },
+        nb$reflected_or(other) { return Sk.builtin.makeUnion([other, this], true); },
     },
     getsets: {
         __name__: { $get() { return this.$name; } },
@@ -110,6 +113,9 @@ Sk.builtin.UnpackAlias = Sk.abstr.buildNativeClass("typing._UnpackGenericAlias",
     constructor: function UnpackAlias(value) { this.$value = value; },
     slots: {
         tp$new() { throw new Sk.builtin.TypeError("cannot create Unpack aliases directly"); },
+        tp$as_number: true,
+        nb$or(other) { return Sk.builtin.makeUnion([this, other], true); },
+        nb$reflected_or(other) { return Sk.builtin.makeUnion([other, this], true); },
         $r() { return new Sk.builtin.str("typing.Unpack[" + Sk.builtin.typingTypeRepr(this.$value) + "]"); },
         tp$hash() { return Sk.abstr.objectHash(this.$value); },
         tp$richcompare(other, op) {
@@ -138,13 +144,13 @@ Sk.builtin.UnpackAlias = Sk.abstr.buildNativeClass("typing._UnpackGenericAlias",
 Sk.builtin.UnpackType = Sk.abstr.buildNativeClass("typing._UnpackSpecialForm", {
     constructor: function UnpackType() {},
     slots: {
+        tp$new() { throw new Sk.builtin.TypeError("cannot create Unpack forms directly"); },
         $r() { return new Sk.builtin.str("typing.Unpack"); },
         tp$as_sequence_or_mapping: true,
         mp$subscript(value) {
-            if (value instanceof Sk.builtin.tuple) {
-                if (value.v.length !== 1) throw new Sk.builtin.TypeError("Unpack accepts only a single type.");
-                value = value.v[0];
-            }
+            if (value.ob$type === Sk.builtin.tuple) throw new Sk.builtin.TypeError("Unpack accepts only a single type.");
+            if (Sk.builtin.checkNone(value)) value = Sk.builtin.none;
+            if (Sk.builtin.checkString(value)) throw new Sk.builtin.NotImplementedError("string type arguments require ForwardRef support");
             return new Sk.builtin.UnpackAlias(value);
         },
     },
