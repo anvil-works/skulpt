@@ -1331,6 +1331,16 @@ Sk.misceval.cellOwner = function (closure, name) {
 };
 Sk.exportSymbol("Sk.misceval.cellOwner", Sk.misceval.cellOwner);
 
+// Preserve the shared cell dictionaries rather than copying their contents.
+// Functions and inlined comprehension scopes use the same closure linkage.
+Sk.misceval.makeClosure = function (closure, closure2) {
+    if (closure2 !== undefined && closure2 !== closure) {
+        Object.setPrototypeOf(closure, closure2);
+    }
+    return closure;
+};
+Sk.exportSymbol("Sk.misceval.makeClosure", Sk.misceval.makeClosure);
+
 /**
  * @function
  * @description

@@ -771,24 +771,28 @@ SymbolTable.prototype.visitExpr = function (e) {
             this.SEQExpr(e.values);
             break;
         case "DictComp":
-            this.visitExpr(e.key);
-            this.visitExpr(e.value);
-            this.visitComprehension(e.generators, 0);
+            this.visitComprehensionScope(e, "dictcomp", e.value, e.key);
             break;
         case "SetComp":
-            this.visitExpr(e.elt);
-            this.visitComprehension(e.generators, 0);
+            this.visitComprehensionScope(e, "setcomp", e.elt);
             break;
         case "ListComp":
-            this.newTmpname(e.lineno);
-            this.visitExpr(e.elt);
-            this.visitComprehension(e.generators, 0);
+            if (Sk.__future__.python3) {
+                this.visitComprehensionScope(e, "listcomp", e.elt);
+            } else {
+                this.newTmpname(e.lineno);
+                this.visitExpr(e.elt);
+                this.visitComprehension(e.generators, 0);
+            }
             break;
         case "GeneratorExp":
             this.visitGenexp(e);
             break;
         case "YieldFrom":
         case "Yield":
+            if (this.cur.comprehension) {
+                throw new Sk.builtin.SyntaxError("'yield' inside " + this.cur.comprehension, this.filename, e.lineno);
+            }
             if (e.value) {
                 this.visitExpr(e.value);
             }
@@ -900,16 +904,26 @@ SymbolTable.prototype.visitAlias = function (names, lineno) {
 };
 
 SymbolTable.prototype.visitGenexp = function (e) {
+    this.visitComprehensionScope(e, "genexpr", e.elt);
+};
+
+// CPython symtable_handle_comprehension evaluates only the outer iterable in
+// the enclosing scope. The rest belongs to a separate logical function block,
+// even when the compiler later inlines a list/set/dict comprehension.
+SymbolTable.prototype.visitComprehensionScope = function (e, name, value, key) {
     var outermost = e.generators[0];
-    // outermost is evaled in current scope
     this.visitExpr(outermost.iter);
-    this.enterBlock("genexpr", FunctionBlock, e, e.lineno);
-    this.cur.generator = true;
+    this.enterBlock(name, FunctionBlock, e, e.lineno);
+    this.cur.comprehension = name;
+    this.cur.generator = name === "genexpr";
     this.addDef(new Sk.builtin.str(".0"), DEF_PARAM, e.lineno);
     this.visitExpr(outermost.target);
     this.SEQExpr(outermost.ifs);
     this.visitComprehension(e.generators, 1);
-    this.visitExpr(e.elt);
+    if (key) {
+        this.visitExpr(key);
+    }
+    this.visitExpr(value);
     this.exitBlock();
 };
 
