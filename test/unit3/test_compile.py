@@ -431,5 +431,15 @@ class TestSpecifics(unittest.TestCase):
         self.assertEqual(events[0], ('package', ns, ns, None, 0))
         self.assertEqual(ns['package'], {'answer': 42})
 
+    # Python/ceval.c _PyEval_EnsureBuiltins inherits the caller frame's mapping.
+    def test_exec_eval_inherit_caller_builtins(self):
+        custom = {'value': 42, 'eval': eval, 'exec': exec}
+        ns = {'__builtins__': custom}
+        exec('def f(): return eval("value", {})\ndef g():\n d = {}\n exec("result = value", d)\n return d', ns)
+        self.assertEqual(ns['f'](), 42)
+        result = ns['g']()
+        self.assertEqual(result['result'], 42)
+        self.assertIs(result['__builtins__'], custom)
+
 if __name__ == "__main__":
     unittest.main()
