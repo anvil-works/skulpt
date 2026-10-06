@@ -17,7 +17,7 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
         },
         tp$hash() {
             if (this.$unhashable.length) {
-                for (const arg of this.$unhashable) Sk.abstr.objectHash(arg);
+                for (const arg of this.$unhashable) {Sk.abstr.objectHash(arg);}
                 throw new Sk.builtin.TypeError("union contains " + this.$unhashable.length + " unhashable elements");
             }
             return Sk.builtin.frozenset.$hashValues(this.$hashEntries.map(entry => entry[1]));
@@ -50,7 +50,7 @@ Sk.builtin.UnionType = Sk.abstr.buildNativeClass("typing.Union", {
         __args__: { $get() { return this.$args; } },
         __parameters__: { $get() {
             for (const arg of this.$args.v) {
-                if (Sk.builtin.checkClass(arg)) continue;
+                if (Sk.builtin.checkClass(arg)) {continue;}
                 const parameters = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__parameters__"));
                 if (parameters && Sk.misceval.isTrue(parameters)) {
                     throw new Sk.builtin.NotImplementedError("union type-parameter substitution is not yet supported");
@@ -89,7 +89,7 @@ Sk.builtin.typeUnion = function (left, right) {
 Sk.builtin.makeUnion = function (values, checked) {
     const args = [], hashable = new Map(), unhashable = [];
     function add(arg) {
-        if (Sk.builtin.checkNone(arg)) arg = Sk.builtin.none;
+        if (Sk.builtin.checkNone(arg)) {arg = Sk.builtin.none;}
         if (arg instanceof Sk.builtin.UnionType) {
             arg.$args.v.forEach(add);
             return;
@@ -106,7 +106,7 @@ Sk.builtin.makeUnion = function (values, checked) {
         try { Sk.abstr.objectHash(arg); } catch (_) { canHash = false; }
         if (canHash) {
             // PySet_Contains and PySet_Add each hash again after the probe.
-            if (unionContainsHash(hashable, arg, Sk.abstr.objectHash(arg))) return;
+            if (unionContainsHash(hashable, arg, Sk.abstr.objectHash(arg))) {return;}
             const hash = Sk.abstr.objectHash(arg);
             if (!unionContainsHash(hashable, arg, hash)) {
                 const bucket = hashable.get(hash) || [];
@@ -114,12 +114,12 @@ Sk.builtin.makeUnion = function (values, checked) {
                 hashable.set(hash, bucket);
             }
         } else {
-            if (unionContains(unhashable, arg)) return;
+            if (unionContains(unhashable, arg)) {return;}
             unhashable.push(arg);
         }
         args.push(arg);
     }
     values.forEach(add);
-    if (!args.length) throw new Sk.builtin.TypeError("Cannot take a Union of no types.");
+    if (!args.length) {throw new Sk.builtin.TypeError("Cannot take a Union of no types.");}
     return args.length === 1 ? args[0] : new Sk.builtin.UnionType(args, hashable, unhashable);
 };

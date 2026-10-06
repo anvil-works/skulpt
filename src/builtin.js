@@ -629,11 +629,11 @@ Sk.builtin.open = function open (filename, mode, bufsize) {
 
 
 Sk.builtin.isinstance = function isinstance(obj, type) {
-    if (Sk.__future__.python3 && type instanceof Sk.builtin.UnionType) type = type.$args;
-    if (obj.ob$type === type) return Sk.builtin.bool.true$;
+    if (Sk.__future__.python3 && type instanceof Sk.builtin.UnionType) {type = type.$args;}
+    if (obj.ob$type === type) {return Sk.builtin.bool.true$;}
     if (!(type instanceof Sk.builtin.tuple)) {
         const check = Sk.abstr.lookupSpecial(type, new Sk.builtin.str("__instancecheck__"));
-        if (check !== undefined) return new Sk.builtin.bool(Sk.misceval.isTrue(Sk.misceval.callsimArray(check, [obj])));
+        if (check !== undefined) {return new Sk.builtin.bool(Sk.misceval.isTrue(Sk.misceval.callsimArray(check, [obj])));}
     }
     if (!Sk.builtin.checkClass(type) && !(type instanceof Sk.builtin.tuple)) {
         throw new Sk.builtin.TypeError("isinstance() arg 2 must be a class, type, or tuple of classes and types");
@@ -1236,10 +1236,10 @@ Sk.builtin.quit = function quit(msg) {
 };
 
 Sk.builtin.issubclass = function issubclass(c1, c2) {
-    if (Sk.__future__.python3 && c2 instanceof Sk.builtin.UnionType) c2 = c2.$args;
+    if (Sk.__future__.python3 && c2 instanceof Sk.builtin.UnionType) {c2 = c2.$args;}
     if (!(c2 instanceof Sk.builtin.tuple)) {
         const check = Sk.abstr.lookupSpecial(c2, new Sk.builtin.str("__subclasscheck__"));
-        if (check !== undefined) return new Sk.builtin.bool(Sk.misceval.isTrue(Sk.misceval.callsimArray(check, [c1])));
+        if (check !== undefined) {return new Sk.builtin.bool(Sk.misceval.isTrue(Sk.misceval.callsimArray(check, [c1])));}
     }
     if (!Sk.builtin.checkClass(c1)) {
         throw new Sk.builtin.TypeError("issubclass() arg 1 must be a class");
