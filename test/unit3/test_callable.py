@@ -294,6 +294,15 @@ class CallableCompilerRegressions(unittest.TestCase):
         self.assertEqual(repr(Callable[[], None]), 'typing.Callable[[], NoneType]')
         self.assertEqual(repr(typing.Tuple[None]), 'typing.Tuple[NoneType]')
         self.assertEqual(repr(collections.abc.Callable[[], None]), 'collections.abc.Callable[[], None]')
+        self.assertEqual(repr(Callable[[len], len]), 'typing.Callable[[len], len]')
+        append = [].append
+        self.assertEqual(append.__qualname__, 'list.append')
+        self.assertEqual(repr(Callable[[append], append]), 'typing.Callable[[None.list.append], None.list.append]')
+        class Child(list): pass
+        self.assertEqual(Child().append.__qualname__, 'CallableCompilerRegressions.test_lazy_callable_alias_and_cached_mutable_metadata.<locals>.Child.append')
+        self.assertEqual(dict.fromkeys.__qualname__, 'dict.fromkeys')
+        with self.assertRaises(AttributeError):
+            len.__qualname__ = 'changed'
         type Signature[**P, T=int] = Callable[Concatenate[str, P], T]
         concrete = Signature.__value__[[float], bytes]
         self.assertEqual(concrete, Callable[[str, float], bytes])
