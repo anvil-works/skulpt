@@ -800,7 +800,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (optimize < -1 || optimize > 2) {
         throw new Sk.builtin.ValueError("compile(): invalid optimize value");
     }
-    if (!dont_inherit) flags |= inheritedCompilerFlags();
+    if (!dont_inherit) {flags |= inheritedCompilerFlags();}
     // Historical mandatory future features have no effect in Python 3.
     // AST return/typing, top-level await, incomplete input, Barry syntax and
     // stringized annotations need their own implementations, not ignored flags.

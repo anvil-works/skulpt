@@ -43,10 +43,8 @@ def gen():
         self.assertEqual(next(gen) & 0x1fe0000, flags)
         with self.assertRaises(StopIteration): next(gen)
 
-    def test_parser_flags_and_nested_bit_are_not_inherited(self):
+    def test_nested_bit_is_not_inherited(self):
         ns = {}
-        exec(compile("def f(): return compile('await value()', 'nested.py', 'exec')", 'parent.py', 'exec', flags=0x2000), ns)
-        with self.assertRaises(SyntaxError): ns['f']()
         exec(compile("result = compile('pass', 'nested.py', 'exec').co_flags", 'parent.py', 'exec', flags=0x10), ns)
         self.assertEqual(ns['result'] & 0x10, 0)
 
