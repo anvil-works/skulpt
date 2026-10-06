@@ -141,12 +141,12 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
     __build_class__: {
         $meth(args, kwargs) {
             // Python/bltinmodule.c: builtin___build_class__.
-            if (args.length < 2) throw new Sk.builtin.TypeError("__build_class__: not enough arguments");
+            if (args.length < 2) {throw new Sk.builtin.TypeError("__build_class__: not enough arguments");}
             const [body, name, ...bases] = args;
             if (!(body instanceof Sk.builtin.func) || !body.func_code.co_fastcall) {
                 throw new Sk.builtin.TypeError("__build_class__: func must be a function");
             }
-            if (!Sk.builtin.checkString(name)) throw new Sk.builtin.TypeError("__build_class__: name is not a string");
+            if (!Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("__build_class__: name is not a string");}
             return Sk.misceval.buildClass(body.func_globals, body, name.$jsstr(), bases, body.func_closure, kwargs);
         },
         $flags: { FastCall: true },
