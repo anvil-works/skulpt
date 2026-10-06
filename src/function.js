@@ -95,6 +95,19 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         __builtins__: {
             $get() { return this.func_builtins; },
         },
+        __globals__: {
+            $get() {
+                if (!this.func_globals) throw new Sk.builtin.AttributeError("function has no attribute '__globals__'");
+                return Sk.misceval.namespaceDict(this.func_globals);
+            },
+        },
+        __code__: {
+            $get() {
+                const code = this.func_code;
+                if (!code.$metadata) throw new Sk.builtin.AttributeError("function has no attribute '__code__'");
+                return code.$code || (code.$code = new Sk.builtin.code(code.$metadata.filename, null, code));
+            },
+        },
         __annotations__: {
             $get() {
                 if (this.func_annotations === null) {

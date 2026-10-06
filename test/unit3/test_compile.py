@@ -666,5 +666,18 @@ class TestSpecifics(unittest.TestCase):
         code = compile('def f(): raise ValueError("expected")\nf()', 'quo\'te"\nfile.py', 'exec')
         self.assertRaisesRegex(ValueError, 'expected', exec, code, {})
 
+    def test_mangling(self):
+        class A:
+            def f():
+                __mangled = 1
+                __not_mangled__ = 2
+                import __mangled_mod       # noqa: F401
+                import __package__.module  # noqa: F401
+
+        self.assertIn("_A__mangled", A.f.__code__.co_varnames)
+        self.assertIn("__not_mangled__", A.f.__code__.co_varnames)
+        self.assertIn("_A__mangled_mod", A.f.__code__.co_varnames)
+        self.assertIn("__package__", A.f.__code__.co_varnames)
+
 if __name__ == "__main__":
     unittest.main()

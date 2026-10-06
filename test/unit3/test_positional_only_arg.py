@@ -1,7 +1,7 @@
 """Selected verbatim CPython 3.14 PEP 570 execution tests.
 
 Source: Lib/test/test_positional_only_arg.py, commit 18ef0f0cb52.
-Methods below are unchanged. Syntax/harness, code-object introspection, pickle,
+Methods below are unchanged. Syntax/harness, pickle,
 and async tests are outside this execution subset; their assertions have not
 been weakened or silently removed from a selected method.
 """
@@ -9,6 +9,21 @@ import unittest
 
 
 class PositionalOnlyTestCase(unittest.TestCase):
+    def test_pos_only_definition(self):
+        def f(a, b, c, /, d, e=1, *, f, g=2):
+            pass
+
+        self.assertEqual(5, f.__code__.co_argcount)  # 3 posonly + 2 "standard args"
+        self.assertEqual(3, f.__code__.co_posonlyargcount)
+        self.assertEqual((1,), f.__defaults__)
+
+        def f(a, b, c=1, /, d=2, e=3, *, f, g=4):
+            pass
+
+        self.assertEqual(5, f.__code__.co_argcount)  # 3 posonly + 2 "standard args"
+        self.assertEqual(3, f.__code__.co_posonlyargcount)
+        self.assertEqual((1, 2, 3), f.__defaults__)
+
     def test_optional_positional_only_args(self):
         def f(a, b=10, /, c=100):
             return a + b + c
