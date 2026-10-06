@@ -1396,7 +1396,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
     const freevars = [];
     for (const name of Object.keys(unit.ste.symFlags)) {
         const scope = unit.ste.getScope(name);
-        if (scope === constants.CELL) cellvars.add(name);
+        if (scope === constants.CELL && !unit.inlinedLocals.has(name)) cellvars.add(name);
         if (scope === constants.FREE) freevars.push(name);
     }
     for (const comprehension of unit.comprehensions) {
@@ -2892,7 +2892,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     }
 
 
-    if (optype === OP_FAST) this.u.pythonLocals.add(mangled);
+    if (optype === OP_FAST || this.u.inlinedLocals.has(mangled)) this.u.pythonLocals.add(mangled);
 
     //print("mangled", mangled);
     // TODO TODO TODO todo; import * at global scope failing here
@@ -3017,6 +3017,13 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     var u = new CompilerUnit();
     u.ste = this.st.getStsForAst(key);
     u.pythonLocals = new Set(u.ste.blockType === Sk.SYMTAB_CONSTS.FunctionBlock ? u.ste.varnames : []);
+    // PEP709 eliminates cells needed only to cross an inlined comprehension.
+    // Retain a real cell when a function/class/genexpr still captures it.
+    const captured = (ste, name) => ste.children.some(child =>
+        child.comprehension && child.comprehension !== "genexpr" ? captured(child, name)
+            : child.getScope(name) === Sk.SYMTAB_CONSTS.FREE);
+    u.inlinedLocals = new Set(Object.keys(u.ste.symFlags).filter(name =>
+        u.ste.getScope(name) === Sk.SYMTAB_CONSTS.CELL && !captured(u.ste, name)));
     u.name = name;
     u.parent = this.u;
     u.scopeType = key._type;
