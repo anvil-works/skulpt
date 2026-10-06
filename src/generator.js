@@ -143,6 +143,12 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                 this.$qualname = v.toString();
             },
         },
+        gi_code: {
+            $get() { return this.gi$scope.$code || new Sk.builtin.code(this.gi$scope.$metadata.filename, null, this.gi$scope); },
+        },
+        gi_suspended: {
+            $get() { return new Sk.builtin.bool(this.gi$started && !this.gi$closed && !this.gi$running); },
+        },
         gi_running: {
             $get() {
                 return new Sk.builtin.bool(this.gi$running);
@@ -268,7 +274,11 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         },
         gi$startYieldFrom(iterable, awaitIterator) {
             if (iterable instanceof Sk.builtin.coroutine) {
-                throw new Sk.builtin.TypeError("cannot 'yield from' a coroutine object in a non-coroutine generator");
+                if (!(this.gi$scope.$metadata.flags & 0x100)) {
+                    throw new Sk.builtin.TypeError("cannot 'yield from' a coroutine object in a non-coroutine generator");
+                }
+                iterable = new Sk.builtin.coroutine_wrapper(iterable);
+                awaitIterator = true;
             }
             this.gi$yieldfrom = awaitIterator ? iterable : Sk.abstr.iter(iterable);
             this.gi$data.send = Sk.builtin.none.none$;

@@ -759,6 +759,28 @@ const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
             return new Sk.builtin.str("<code object " + this.$metadata.co_name.$jsstr() + ", file " + this.filename + ">");
         },
     },
+    methods: {
+        replace: {
+            $meth(args, kwargs) {
+                Sk.abstr.checkNoArgs("replace", args);
+                const [flags] = Sk.abstr.copyKeywordsToNamedArgs("replace", ["co_flags"], [], kwargs, [this.$metadata.co_flags]);
+                const newFlags = compileIntOption(flags, 0);
+                if (newFlags < 0) throw new Sk.builtin.ValueError("co_flags must be a positive integer");
+                // CO_ITERABLE_COROUTINE changes await eligibility without changing
+                // the executable frame layout. Other replacements need lowering.
+                if ((newFlags ^ this.$jsCode.$metadata.flags) & ~0x100) {
+                    throw new Sk.builtin.NotImplementedError("code.replace() currently supports changing CO_ITERABLE_COROUTINE only");
+                }
+                const original = this.$jsCode;
+                const executable = Object.assign(function (...values) { return original.apply(this, values); }, original);
+                executable.$metadata = Object.assign({}, original.$metadata, { flags: newFlags });
+                const code = new pyCode(this.co_filename, null, executable);
+                code.mode = this.mode;
+                return code;
+            },
+            $flags: { FastCall: true },
+        },
+    },
     getsets: {
         co_filename: {
             $get() { return this.co_filename; },
