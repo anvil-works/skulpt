@@ -747,3 +747,10 @@ cases follow match. GC/weakref/pickle integration remains separate. The parser
 metadata fixes at skulpt-parser 0d45c749 are reviewed and tested locally, but
 the dev.8 npm release and dependency pin await approval; this branch must not
 be submitted as release-ready before that pin is available.
+
+Template review fixes save interpolation values before nested specifications
+(including the existing f-string path), keep compiler-built string tuples separate
+from public constructor coalescing, and preserve CPython constructor validation
+order, empty keyword-dictionary rejection and qualified type diagnostics.
+The corresponding CPython-checked compiler/native regressions cover edited AST
+entries, iteration and concatenation as well as normal source compilation.

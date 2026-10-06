@@ -15,18 +15,19 @@ Sk.builtin.Interpolation = Sk.abstr.buildNativeClass("string.templatelib.Interpo
             const [value, expression, conversion, formatSpec] = Sk.abstr.copyKeywordsToNamedArgs(
                 "Interpolation", ["value", "expression", "conversion", "format_spec"], args, kwargs,
                 [Sk.builtin.str.$emptystr, Sk.builtin.none.none$, Sk.builtin.str.$emptystr]);
-            for (const [name, argument] of [["expression", expression], ["format_spec", formatSpec]]) {
-                if (!Sk.builtin.checkString(argument)) {
-                    throw new Sk.builtin.TypeError("Interpolation() argument '" + name + "' must be str, not " + Sk.abstr.typeName(argument));
-                }
+            if (!Sk.builtin.checkString(expression)) {
+                throw new Sk.builtin.TypeError("Interpolation() argument 'expression' must be str, not " + Sk.abstr.typeName(expression));
             }
             if (!Sk.builtin.checkNone(conversion)) {
                 if (!Sk.builtin.checkString(conversion)) {
-                    throw new Sk.builtin.TypeError("Interpolation() argument 'conversion' must be str, not " + Sk.abstr.typeName(conversion));
+                    throw new Sk.builtin.TypeError("Interpolation() argument 'conversion' must be str, not " + Sk.abstr.typeQualifiedName(conversion));
                 }
                 if (!["s", "a", "r"].includes(conversion.$jsstr())) {
                     throw new Sk.builtin.ValueError("Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'");
                 }
+            }
+            if (!Sk.builtin.checkString(formatSpec)) {
+                throw new Sk.builtin.TypeError("Interpolation() argument 'format_spec' must be str, not " + Sk.abstr.typeName(formatSpec));
             }
             return new Sk.builtin.Interpolation(value, expression, conversion, formatSpec);
         },
@@ -57,49 +58,51 @@ Sk.builtin.Interpolation = Sk.abstr.buildNativeClass("string.templatelib.Interpo
     flags: { sk$unacceptableBase: true },
 });
 
-Sk.builtin.Template = Sk.abstr.buildNativeClass("string.templatelib.Template", {
-    constructor: function Template(parts) {
-        const strings = [];
-        const interpolations = [];
-        let lastWasString = false;
-        for (const part of parts) {
-            if (Sk.builtin.checkString(part)) {
-                if (lastWasString) strings[strings.length - 1] = new Sk.builtin.str(strings[strings.length - 1].$jsstr() + part.$jsstr());
-                else strings.push(part);
-                lastWasString = true;
-            } else if (part instanceof Sk.builtin.Interpolation) {
-                if (!lastWasString) strings.push(Sk.builtin.str.$emptystr);
-                interpolations.push(part);
-                lastWasString = false;
-            } else {
-                throw new Sk.builtin.TypeError("Template.__new__ *args need to be of type 'str' or 'Interpolation', got " + Sk.abstr.typeName(part));
-            }
+function templateFromParts(parts) {
+    const strings = [];
+    const interpolations = [];
+    let lastWasString = false;
+    for (const part of parts) {
+        if (Sk.builtin.checkString(part)) {
+            if (lastWasString) strings[strings.length - 1] = new Sk.builtin.str(strings[strings.length - 1].$jsstr() + part.$jsstr());
+            else strings.push(part);
+            lastWasString = true;
+        } else if (part instanceof Sk.builtin.Interpolation) {
+            if (!lastWasString) strings.push(Sk.builtin.str.$emptystr);
+            interpolations.push(part);
+            lastWasString = false;
+        } else {
+            throw new Sk.builtin.TypeError("Template.__new__ *args need to be of type 'str' or 'Interpolation', got " + Sk.abstr.typeQualifiedName(part));
         }
-        if (!lastWasString) strings.push(Sk.builtin.str.$emptystr);
-        this.$strings = new Sk.builtin.tuple(strings);
-        this.$interpolations = new Sk.builtin.tuple(interpolations);
+    }
+    if (!lastWasString) strings.push(Sk.builtin.str.$emptystr);
+    return new Sk.builtin.Template(new Sk.builtin.tuple(strings), new Sk.builtin.tuple(interpolations));
+}
+
+Sk.builtin.Template = Sk.abstr.buildNativeClass("string.templatelib.Template", {
+    constructor: function Template(strings, interpolations) {
+        this.$strings = strings;
+        this.$interpolations = interpolations;
     },
     slots: {
         tp$doc: "Template object",
         tp$getattr: Sk.generic.getAttr,
         tp$new(args, kwargs) {
-            if (kwargs && kwargs.length) throw new Sk.builtin.TypeError("Template.__new__ only accepts *args arguments");
-            return new Sk.builtin.Template(args);
+            if (kwargs !== undefined) throw new Sk.builtin.TypeError("Template.__new__ only accepts *args arguments");
+            return templateFromParts(args);
         },
         tp$iter() { return new Sk.builtin.TemplateIter(this); },
         tp$as_sequence_or_mapping: true,
         sq$concat(other) {
             if (!(other instanceof Sk.builtin.Template)) {
-                throw new Sk.builtin.TypeError('can only concatenate string.templatelib.Template (not "' + Sk.abstr.typeName(other) + '") to string.templatelib.Template');
+                throw new Sk.builtin.TypeError('can only concatenate string.templatelib.Template (not "' + Sk.abstr.typeQualifiedName(other) + '") to string.templatelib.Template');
             }
-            const parts = [];
-            for (const template of [this, other]) {
-                template.$strings.v.forEach((string, index) => {
-                    parts.push(string);
-                    if (index < template.$interpolations.v.length) parts.push(template.$interpolations.v[index]);
-                });
-            }
-            return new Sk.builtin.Template(parts);
+            const left = this.$strings.v;
+            const right = other.$strings.v;
+            const joined = new Sk.builtin.str(left[left.length - 1].$jsstr() + right[0].$jsstr());
+            const strings = new Sk.builtin.tuple([...left.slice(0, -1), joined, ...right.slice(1)]);
+            const interpolations = new Sk.builtin.tuple([...this.$interpolations.v, ...other.$interpolations.v]);
+            return new Sk.builtin.Template(strings, interpolations);
         },
         $r() {
             return new Sk.builtin.str("Template(strings=" + Sk.misceval.objectRepr(this.$strings) +
@@ -134,17 +137,20 @@ Sk.builtin.Template = Sk.abstr.buildNativeClass("string.templatelib.Template", {
 Sk.builtin.TemplateIter = Sk.abstr.buildIteratorClass("string.templatelib.TemplateIter", {
     constructor: function TemplateIter(template) {
         this.$template = template;
-        this.$index = 0;
+        this.$stringsIndex = 0;
+        this.$interpolationsIndex = 0;
+        this.$fromStrings = true;
     },
     iternext() {
+        // templateiter_next alternates two independent tuple iterators.
         const template = this.$template;
-        const end = template.$strings.v.length + template.$interpolations.v.length;
-        while (this.$index < end) {
-            const index = this.$index++;
-            const value = index % 2 ? template.$interpolations.v[(index - 1) / 2] : template.$strings.v[index / 2];
-            if (index % 2 || value.$jsstr() !== "") return value;
+        if (this.$fromStrings) {
+            const value = template.$strings.v[this.$stringsIndex++];
+            this.$fromStrings = false;
+            if (value === undefined || value.$jsstr() !== "") return value;
         }
-        return undefined;
+        this.$fromStrings = true;
+        return template.$interpolations.v[this.$interpolationsIndex++];
     },
     flags: { sk$unacceptableBase: true },
 });
