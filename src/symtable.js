@@ -407,18 +407,22 @@ SymbolTable.prototype.visitParams = function (args, toplevel) {
 };
 
 // symtable_visit_annotation: variable annotations share one annotation block.
-// Local/nonsimple annotations and future annotations validate syntax only.
+// Function-local and future annotations validate syntax without outer captures.
 SymbolTable.prototype.visitAnnotation = function (annotation, statement) {
     const parent = this.cur;
-    const deferred = Sk.__future__.python3 && !(this.flags & 0x1000000) &&
-        statement && statement.simple && [ClassBlock, ModuleBlock].includes(parent.blockType);
-    if (deferred) {
+    const namespace = [ClassBlock, ModuleBlock].includes(parent.blockType);
+    if (statement && namespace) {
         statement.conditionalAnnotation = parent.blockType === ModuleBlock || parent.inConditionalBlock;
         if (statement.conditionalAnnotation) parent.hasConditionalAnnotations = true;
-        const annotations = parent.deferredVariableAnnotations || (parent.deferredVariableAnnotations = []);
-        statement.conditionalAnnotationIndex = statement.conditionalAnnotation ? (parent.nextAnnotationIndex || 0) : -1;
-        if (statement.conditionalAnnotation) parent.nextAnnotationIndex = statement.conditionalAnnotationIndex + 1;
-        annotations.push({ statement, index: statement.conditionalAnnotationIndex });
+    }
+    const deferred = Sk.__future__.python3 && !(this.flags & 0x1000000) && statement && namespace;
+    if (deferred) {
+        if (statement.simple) {
+            const annotations = parent.deferredVariableAnnotations || (parent.deferredVariableAnnotations = []);
+            statement.conditionalAnnotationIndex = statement.conditionalAnnotation ? (parent.nextAnnotationIndex || 0) : -1;
+            if (statement.conditionalAnnotation) parent.nextAnnotationIndex = statement.conditionalAnnotationIndex + 1;
+            annotations.push({ statement, index: statement.conditionalAnnotationIndex });
+        }
         if (!parent.variableAnnotationScope) {
             const key = { _type: "Annotation", variableAnnotations: true,
                 lineno: parent.ast.lineno || (parent.ast.body[0] && parent.ast.body[0].lineno) || 1,
@@ -438,7 +442,7 @@ SymbolTable.prototype.visitAnnotation = function (annotation, statement) {
             this.stack.push(parent);
             this.cur = this.getStsForAst(parent.variableAnnotationScope);
         }
-        if (statement.conditionalAnnotation) this.addDef("__conditional_annotations__", USE, annotation.lineno);
+        if (parent.hasConditionalAnnotations) this.addDef("__conditional_annotations__", USE, annotation.lineno);
         this.visitExpr(annotation);
         this.exitBlock();
         return;
@@ -651,6 +655,9 @@ SymbolTable.prototype.visitStmt = function (s) {
             this.visitExpr(s.value);
             break;
         case "AnnAssign":
+            if (!Sk.__future__.python3) {
+                throw new Sk.builtin.SyntaxError("Annotated assignment is not supported in Python 2", this.filename, s.lineno);
+            }
             if (s.target._type == "Name") {
                 e_name = s.target;
                 name = Sk.mangleName(this.curClass, e_name.id).v;

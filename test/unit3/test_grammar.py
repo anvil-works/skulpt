@@ -372,12 +372,11 @@ class GrammarTests(unittest.TestCase):
         # self.assertEqual(CC.__annotations__['xx'], 'ANNOT')
 
     def test_var_annot_module_semantics(self):
-        with self.assertRaises(AttributeError):
-            print(test.__annotations__)
+        self.assertEqual(test.__annotations__, {})
         self.assertEqual(ann_module.__annotations__,
-                     {1: 2, 'x': int, 'y': str, }) # @TODO 'f': typing.Tuple[int, int]})
+                     {'x': int, 'y': str, }) # @TODO 'f': typing.Tuple[int, int]})
         self.assertEqual(ann_module.M.__annotations__,
-                              {'123': 123, 'o': type})
+                              {'o': type})
         self.assertEqual(ann_module2.__annotations__, {})
 
     def test_var_annot_in_module(self):
@@ -391,14 +390,15 @@ class GrammarTests(unittest.TestCase):
         with self.assertRaises(NameError):
             D_bad_ann(5)
 
+    # CPython 3.14 method; Format.VALUE is represented by its numeric value 1.
     def test_var_annot_simple_exec(self):
-        gns = {}; lns= {}
+        gns = {}; lns = {}
         exec("'docstring'\n"
-             "__annotations__[1] = 2\n"
              "x: int = 5\n", gns, lns)
-        self.assertEqual(lns["__annotations__"], {1: 2, 'x': int})
-        with self.assertRaises(KeyError):
-            gns['__annotations__']
+        self.assertNotIn('__annotate__', gns)
+
+        gns.update(lns)  # __annotate__ looks at globals
+        self.assertEqual(lns["__annotate__"](1), {'x': int})
 
     # @TODO skulpt doesn't allow locals to be anything other than a dict
     # def test_var_annot_custom_maps(self):
