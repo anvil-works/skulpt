@@ -156,12 +156,12 @@ Compiler.prototype.niceName = function (roughName) {
     return this.gensym(roughName.replace(/[^a-zA-Z0-9_$]/g, "_"));
 };
 
-// Hidden CPython compiler arguments retain their public code-object spelling.
-function compilerArgumentName(name) {
+// Hidden compiler bindings retain their public CPython code-object spelling.
+Sk.compilerName = function (name) {
     const names = { $annotationFormat: "format", $aliasFormat: ".format", $typeFormat: ".format",
         $typeDefaults: ".defaults", $typeKwdefaults: ".kwdefaults", $typeParams: ".type_params" };
     return names[name] || Sk.unfixReserved(name);
-}
+};
 
 var reservedWords_ = Sk.builtin.str.reservedWords_; // defined in str.js
 
@@ -1460,7 +1460,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         kwonlyargcount: unit.kwonlyargcount,
         firstlineno: unit.firstlineno || 1,
         flags,
-        varnames: Array.from(varnames, compilerArgumentName),
+        varnames: Array.from(varnames, Sk.compilerName),
         cellvars: Array.from(cellvars, Sk.unfixReserved).sort(),
         freevars: freevars.map(Sk.unfixReserved).sort(),
     };
@@ -2455,7 +2455,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // binding.
     //
     if (argnamesarr.length > 0) {
-        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(compilerArgumentName)), ";");
+        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(Sk.compilerName)), ";");
     } else {
         out(scopename, ".co_varnames=[];");
     }

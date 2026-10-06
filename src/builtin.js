@@ -751,7 +751,7 @@ const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
         this.$metadata = {};
         for (const field of ["name", "qualname"]) {this.$metadata["co_" + field] = new Sk.builtin.str(metadata[field]);}
         for (const field of ["argcount", "posonlyargcount", "kwonlyargcount", "firstlineno", "flags"]) {this.$metadata["co_" + field] = new Sk.builtin.int_(metadata[field]);}
-        for (const field of ["varnames", "cellvars", "freevars"]) {this.$metadata["co_" + field] = new Sk.builtin.tuple(metadata[field].map(name => new Sk.builtin.str(name)));}
+        for (const field of ["varnames", "cellvars", "freevars"]) {this.$metadata["co_" + field] = new Sk.builtin.tuple(metadata[field].map(name => new Sk.builtin.str(Sk.compilerName(name))));}
         this.$metadata.co_nlocals = new Sk.builtin.int_(metadata.varnames.length);
         this.filename = filename.$jsstr();
         this.co_filename = filename;
