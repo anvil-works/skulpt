@@ -471,3 +471,24 @@ library, ForwardRef, substitution and serialization remain separate work.
 The type-union review added a metaclass regression: freezing, hashing and comparing
 unions retain the builder's original entry hashes, and parameter inspection skips
 bare classes as `_Py_make_parameters` does. Nine focused cases pass both runtimes.
+
+
+### Lazy type aliases (PEP 695, nongeneric increment)
+
+`stu-dev/compiler/type-aliases` follows `codegen_typealias_body` and the
+TypeAliasBlock traversal: a real annotation-scope closure evaluates the value,
+and a native `typing.TypeAliasType` caches its first successful result. Failures
+do not poison that cache; `evaluate_value` retains direct live evaluation.
+Class aliases capture the class dictionary cell and lexical closures through the
+existing annotation lookup machinery. Recursive references remain unevaluated
+until access. The lazy closure has CPython's `.format` argument/default and
+ordinary/nested code flags; restricted expressions report type-alias diagnostics.
+
+The compiler-adjacent typing module exposes TypeAliasType and native get_args /
+get_origin. Generic type parameters, unpacking, serialization and annotationlib
+formats still require their corresponding increments; nonempty type_params are
+explicitly guarded. Ten unchanged CPython methods and three CPython-checked scope,
+cache, recursion, code-metadata and syntax tests pass in both runtimes. Full suite
+with this increment and reviewed unions: 3,683 Python 3, 465 Python 2 and 562
+execution tests passed before the final alias argument-metadata adjustment; the
+focused alias tests pass after it.

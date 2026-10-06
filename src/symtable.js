@@ -647,6 +647,28 @@ SymbolTable.prototype.visitStmt = function (s) {
                 this.cur.returnsValue = true;
             }
             break;
+        case "TypeAlias": {
+            if (!Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
+            if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
+            this.visitExpr(s.name);
+            s.args = { posonlyargs: [{ _type: "arg", arg: "$aliasFormat", annotation: null }], args: [],
+                defaults: [{ _type: "Constant", value: { type: "int", value: 1 } }], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null };
+            const classScope = this.cur.blockType === ClassBlock ? this.cur : null;
+            this.enterBlock(s.name.id, FunctionBlock, s, s.lineno);
+            this.cur.annotationScope = true;
+            this.cur.annotationKind = "type alias";
+            this.cur.isMethod = false;
+            if (classScope) {
+                this.cur.classScope = classScope;
+                this.cur.hasFree = true;
+                classScope.needsClassdict = true;
+                this.addDef("__classdict__", USE, s.lineno);
+            }
+            this.visitArguments(s.args, s.lineno);
+            this.visitExpr(s.value);
+            this.exitBlock();
+            break;
+        }
         case "Delete":
             this.SEQExpr(s.targets);
             break;
@@ -842,7 +864,7 @@ SymbolTable.prototype.visitExpr = function (e) {
     Sk.asserts.assert(e !== undefined, "visitExpr called with undefined");
     if (this.cur.annotationScope && ["Yield", "YieldFrom", "Await", "NamedExpr"].includes(e._type)) {
         const name = { Yield: "yield expression", YieldFrom: "yield expression", Await: "await expression", NamedExpr: "named expression" }[e._type];
-        throw new Sk.builtin.SyntaxError(name + " cannot be used within an annotation", this.filename, e.lineno);
+        throw new Sk.builtin.SyntaxError(name + " cannot be used within " + (this.cur.annotationKind === "type alias" ? "a type alias" : "an annotation"), this.filename, e.lineno);
     }
     // console.log("  e: ", e._type);
     switch (e._type) {
