@@ -842,7 +842,7 @@ function compilerSource(source, filename, caller) {
     const labels = { "cp932": "shift-jis", "cp949": "euc-kr" };
     let decoder;
     try {
-        decoder = new TextDecoder(labels[codec] || codec, { fatal: true });
+        decoder = new TextDecoder(labels[codec] || codec, { fatal: true, ignoreBOM: true });
     } catch (err) {
         throw new Sk.builtin.SyntaxError("unknown encoding: " + encoding, filename);
     }
@@ -900,7 +900,14 @@ Sk.builtin.exec = function (code, globals, locals) {
 
 Sk.builtin.eval = function (source, globals, locals) {
     if (!(source instanceof pyCode)) {
-        // eval strips leading spaces/tabs, not arbitrary Unicode whitespace.
+        // builtin_eval_impl strips leading byte whitespace before tokenization,
+        // allowing a UTF-8 BOM immediately after those spaces/tabs.
+        if (Sk.builtin.checkBytes(source)) {
+            let start = 0;
+            while (source.v[start] === 32 || source.v[start] === 9) start++;
+            source = new Sk.builtin.bytes(source.v.subarray(start));
+        }
+        // Unicode eval sources also strip only ASCII spaces/tabs.
         const text = compilerSource(source, "<string>", "eval").replace(/^[ \t]+/, "");
         source = new pyCode("<string>", Sk.compile(text, "<string>", "eval", true));
     }
