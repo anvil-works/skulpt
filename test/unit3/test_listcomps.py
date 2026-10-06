@@ -1,0 +1,607 @@
+# CPython 3.14 Lib/test/test_listcomps.py, commit 18ef0f0cb52.
+# Method bodies/assertions unchanged. Harness adaptations: no subTest; collect
+# only requested output names in functions until locals() is implemented;
+# supply __name__ for Skulpt class construction in exec namespaces.
+# Frame/code inspection, locals(), walrus and classdict cases follow separately.
+import unittest
+import textwrap
+
+class ListComprehensionTest(unittest.TestCase):
+    def _check_in_scopes(self, code, outputs=None, ns=None, scopes=None, raises=(),
+                         exec_func=exec):
+        code = textwrap.dedent(code)
+        scopes = scopes or ["module", "class", "function"]
+        for scope in scopes:
+            if True:  # Skulpt unittest has no subTest context.
+                if scope == "class":
+                    newcode = textwrap.dedent("""
+                        class _C:
+                            {code}
+                    """).format(code=textwrap.indent(code, "    "))
+                    def get_output(moddict, name):
+                        return getattr(moddict["_C"], name)
+                elif scope == "function":
+                    newcode = textwrap.dedent("""
+                        def _f():
+                            {code}
+                            return {outputs}
+                        _out = _f()
+                    """).format(code=textwrap.indent(code, "    "),
+                                outputs="{" + ", ".join(repr(k) + ": " + k for k in (outputs or {})) + "}")
+                    def get_output(moddict, name):
+                        return moddict["_out"][name]
+                else:
+                    newcode = code
+                    def get_output(moddict, name):
+                        return moddict[name]
+                newns = ns.copy() if ns else {}
+                newns["__name__"] = "__main__"
+                try:
+                    exec_func(newcode, newns)
+                except raises as e:
+                    # We care about e.g. NameError vs UnboundLocalError
+                    self.assertIs(type(e), raises)
+                else:
+                    for k, v in (outputs or {}).items():
+                        self.assertEqual(get_output(newns, k), v, k)
+
+
+    def test_lambdas_with_iteration_var_as_default(self):
+        code = """
+            items = [(lambda i=i: i) for i in range(5)]
+            y = [x() for x in items]
+        """
+        outputs = {"y": [0, 1, 2, 3, 4]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_lambdas_with_free_var(self):
+        code = """
+            items = [(lambda: i) for i in range(5)]
+            y = [x() for x in items]
+        """
+        outputs = {"y": [4, 4, 4, 4, 4]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_class_scope_free_var_with_class_cell(self):
+        class C:
+            def method(self):
+                super()
+                return __class__
+            items = [(lambda: i) for i in range(5)]
+            y = [x() for x in items]
+
+        self.assertEqual(C.y, [4, 4, 4, 4, 4])
+        self.assertIs(C().method(), C)
+
+
+    def test_references_super(self):
+        code = """
+            res = [super for x in [1]]
+        """
+        self._check_in_scopes(code, outputs={"res": [super]})
+
+
+    def test_references___class__(self):
+        code = """
+            res = [__class__ for x in [1]]
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_references___class___nested(self):
+        code = """
+            res = [(lambda: __class__)() for _ in [1]]
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_references___class___nested_used(self):
+        class _C:
+            res = [lambda: __class__ for _ in [1]]
+        self.assertIs(_C.res[0](), _C)
+
+
+    def test_references___class___defined(self):
+        code = """
+            __class__ = 2
+            res = [__class__ for x in [1]]
+        """
+        self._check_in_scopes(
+                code, outputs={"res": [2]}, scopes=["module", "function"])
+        self._check_in_scopes(code, raises=NameError, scopes=["class"])
+
+
+    def test_references___class___defined_nested(self):
+        code = """
+            __class__ = 2
+            res = [(lambda: __class__)() for x in [1]]
+        """
+        self._check_in_scopes(
+                code, outputs={"res": [2]}, scopes=["module", "function"])
+        self._check_in_scopes(code, raises=NameError, scopes=["class"])
+
+
+    def test_references___classdict__(self):
+        code = """
+            class i: [__classdict__ for x in y]
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_references___conditional_annotations__(self):
+        code = """
+            class i: [__conditional_annotations__ for x in y]
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_references___conditional_annotations___nested(self):
+        code = """
+            class i: [lambda: __conditional_annotations__ for x in y]
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_references___class___enclosing(self):
+        code = """
+            __class__ = 2
+            class C:
+                res = [__class__ for x in [1]]
+            res = C.res
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_super_and_class_cell_in_sibling_comps(self):
+        code = """
+            [super for _ in [1]]
+            [__class__ for _ in [1]]
+        """
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_inner_cell_shadows_outer(self):
+        code = """
+            items = [(lambda: i) for i in range(5)]
+            i = 20
+            y = [x() for x in items]
+        """
+        outputs = {"y": [4, 4, 4, 4, 4], "i": 20}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_inner_cell_shadows_outer_no_store(self):
+        code = """
+            def f(x):
+                return [lambda: x for x in range(x)], x
+            fns, x = f(2)
+            y = [fn() for fn in fns]
+        """
+        outputs = {"y": [1, 1], "x": 2}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_closure_can_jump_over_comp_scope(self):
+        code = """
+            items = [(lambda: y) for i in range(5)]
+            y = 2
+            z = [x() for x in items]
+        """
+        outputs = {"z": [2, 2, 2, 2, 2]}
+        self._check_in_scopes(code, outputs, scopes=["module", "function"])
+
+
+    def test_cell_inner_free_outer(self):
+        code = """
+            def f():
+                return [lambda: x for x in (x, [1])[1]]
+            x = ...
+            y = [fn() for fn in f()]
+        """
+        outputs = {"y": [1]}
+        self._check_in_scopes(code, outputs, scopes=["module", "function"])
+
+
+    def test_free_inner_cell_outer(self):
+        code = """
+            g = 2
+            def f():
+                return g
+            y = [g for x in [1]]
+        """
+        outputs = {"y": [2]}
+        self._check_in_scopes(code, outputs, scopes=["module", "function"])
+        self._check_in_scopes(code, scopes=["class"], raises=NameError)
+
+
+    def test_inner_cell_shadows_outer_redefined(self):
+        code = """
+            y = 10
+            items = [(lambda: y) for y in range(5)]
+            x = y
+            y = 20
+            out = [z() for z in items]
+        """
+        outputs = {"x": 10, "out": [4, 4, 4, 4, 4]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_shadows_outer_cell(self):
+        code = """
+            def inner():
+                return g
+            [g for g in range(5)]
+            x = inner()
+        """
+        outputs = {"x": -1}
+        self._check_in_scopes(code, outputs, ns={"g": -1})
+
+
+    def test_explicit_global(self):
+        code = """
+            global g
+            x = g
+            g = 2
+            items = [g for g in [1]]
+            y = g
+        """
+        outputs = {"x": 1, "y": 2, "items": [1]}
+        self._check_in_scopes(code, outputs, ns={"g": 1})
+
+
+    def test_explicit_global_2(self):
+        code = """
+            global g
+            x = g
+            g = 2
+            items = [g for x in [1]]
+            y = g
+        """
+        outputs = {"x": 1, "y": 2, "items": [2]}
+        self._check_in_scopes(code, outputs, ns={"g": 1})
+
+
+    def test_explicit_global_3(self):
+        code = """
+            global g
+            fns = [lambda: g for g in [2]]
+            items = [fn() for fn in fns]
+        """
+        outputs = {"items": [2]}
+        self._check_in_scopes(code, outputs, ns={"g": 1})
+
+
+    def test_free_var_in_comp_child(self):
+        code = """
+            lst = range(3)
+            funcs = [lambda: x for x in lst]
+            inc = [x + 1 for x in lst]
+            [x for x in inc]
+            x = funcs[0]()
+        """
+        outputs = {"x": 2}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_shadow_with_free_and_local(self):
+        code = """
+            lst = range(3)
+            x = -1
+            funcs = [lambda: x for x in lst]
+            items = [x + 1 for x in lst]
+        """
+        outputs = {"x": -1}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_shadow_comp_iterable_name(self):
+        code = """
+            x = [1]
+            y = [x for x in x]
+        """
+        outputs = {"x": [1]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_nested_free(self):
+        code = """
+            x = 1
+            def g():
+                [x for x in range(3)]
+                return x
+            g()
+        """
+        outputs = {"x": 1}
+        self._check_in_scopes(code, outputs, scopes=["module", "function"])
+
+
+    def test_nested(self):
+        code = """
+            l = [2, 3]
+            y = [[x ** 2 for x in range(x)] for x in l]
+        """
+        outputs = {"y": [[0, 1], [0, 1, 4]]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_nested_2(self):
+        code = """
+            l = [1, 2, 3]
+            x = 3
+            y = [x for [x ** x for x in range(x)][x - 1] in l]
+        """
+        outputs = {"y": [3, 3, 3]}
+        self._check_in_scopes(code, outputs, scopes=["module", "function"])
+        self._check_in_scopes(code, scopes=["class"], raises=NameError)
+
+
+    def test_nested_3(self):
+        code = """
+            l = [(1, 2), (3, 4), (5, 6)]
+            y = [x for (x, [x ** x for x in range(x)][x - 1]) in l]
+        """
+        outputs = {"y": [1, 3, 5]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_nested_4(self):
+        code = """
+            items = [([lambda: x for x in range(2)], lambda: x) for x in range(3)]
+            out = [([fn() for fn in fns], fn()) for fns, fn in items]
+        """
+        outputs = {"out": [([1, 1], 2), ([1, 1], 2), ([1, 1], 2)]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_nameerror(self):
+        code = """
+            [x for x in [1]]
+            x
+        """
+
+        self._check_in_scopes(code, raises=NameError)
+
+
+    def test_dunder_name(self):
+        code = """
+            y = [__x for __x in [1]]
+        """
+        outputs = {"y": [1]}
+        self._check_in_scopes(code, outputs)
+
+
+    def test_unbound_local_after_comprehension(self):
+        def f():
+            if False:
+                x = 0
+            [x for x in [1]]
+            return x
+
+        with self.assertRaises(UnboundLocalError):
+            f()
+
+
+    def test_unbound_local_inside_comprehension(self):
+        def f():
+            l = [None]
+            return [1 for (l[0], l) in [[1, 2]]]
+
+        with self.assertRaises(UnboundLocalError):
+            f()
+
+
+    def test_global_outside_cellvar_inside_plus_freevar(self):
+        code = """
+            a = 1
+            def f():
+                func, = [(lambda: b) for b in [a]]
+                return b, func()
+            x = f()
+        """
+        self._check_in_scopes(
+            code, {"x": (2, 1)}, ns={"b": 2}, scopes=["function", "module"])
+        # inside a class, the `a = 1` assignment is not visible
+        self._check_in_scopes(code, raises=NameError, scopes=["class"])
+
+
+    def test_cell_in_nested_comprehension(self):
+        code = """
+            a = 1
+            def f():
+                (func, inner_b), = [[lambda: b for b in c] + [b] for c in [[a]]]
+                return b, inner_b, func()
+            x = f()
+        """
+        self._check_in_scopes(
+            code, {"x": (2, 2, 1)}, ns={"b": 2}, scopes=["function", "module"])
+        # inside a class, the `a = 1` assignment is not visible
+        self._check_in_scopes(code, raises=NameError, scopes=["class"])
+
+
+    def test_name_error_in_class_scope(self):
+        code = """
+            y = 1
+            [x + y for x in range(2)]
+        """
+        self._check_in_scopes(code, raises=NameError, scopes=["class"])
+
+
+    def test_global_in_class_scope(self):
+        code = """
+            y = 2
+            vals = [(x, y) for x in range(2)]
+        """
+        outputs = {"vals": [(0, 1), (1, 1)]}
+        self._check_in_scopes(code, outputs, ns={"y": 1}, scopes=["class"])
+
+
+    def test_in_class_scope_inside_function_1(self):
+        code = """
+            class C:
+                y = 2
+                vals = [(x, y) for x in range(2)]
+            vals = C.vals
+        """
+        outputs = {"vals": [(0, 1), (1, 1)]}
+        self._check_in_scopes(code, outputs, ns={"y": 1}, scopes=["function"])
+
+
+    def test_in_class_scope_inside_function_2(self):
+        code = """
+            y = 1
+            class C:
+                y = 2
+                vals = [(x, y) for x in range(2)]
+            vals = C.vals
+        """
+        outputs = {"vals": [(0, 1), (1, 1)]}
+        self._check_in_scopes(code, outputs, scopes=["function"])
+
+
+    def test_nested_has_free_var(self):
+        code = """
+            items = [a for a in [1] if [a for _ in [0]]]
+        """
+        outputs = {"items": [1]}
+        self._check_in_scopes(code, outputs, scopes=["class"])
+
+
+    def test_nested_free_var_not_bound_in_outer_comp(self):
+        code = """
+            z = 1
+            items = [a for a in [1] if [x for x in [1] if z]]
+        """
+        self._check_in_scopes(code, {"items": [1]}, scopes=["module", "function"])
+        self._check_in_scopes(code, {"items": []}, ns={"z": 0}, scopes=["class"])
+
+
+    def test_nested_free_var_in_iter(self):
+        code = """
+            items = [_C for _C in [1] for [0, 1][[x for x in [1] if _C][0]] in [2]]
+        """
+        self._check_in_scopes(code, {"items": [1]})
+
+
+    def test_nested_free_var_in_expr(self):
+        code = """
+            items = [(_C, [x for x in [1] if _C]) for _C in [0, 1]]
+        """
+        self._check_in_scopes(code, {"items": [(0, []), (1, [1])]})
+
+
+    def test_nested_listcomp_in_lambda(self):
+        code = """
+            f = [(z, lambda y: [(x, y, z) for x in [3]]) for z in [1]]
+            (z, func), = f
+            out = func(2)
+        """
+        self._check_in_scopes(code, {"z": 1, "out": [(3, 2, 1)]})
+
+
+    def test_lambda_in_iter(self):
+        code = """
+            (func, c), = [(a, b) for b in [1] for a in [lambda : a]]
+            d = func()
+            assert d is func
+            # must use "a" in this scope
+            e = a if False else None
+        """
+        self._check_in_scopes(code, {"c": 1, "e": None})
+
+
+    def test_assign_to_comp_iter_var_in_outer_function(self):
+        code = """
+            a = [1 for a in [0]]
+        """
+        self._check_in_scopes(code, {"a": [1]}, scopes=["function"])
+
+
+    def test_comp_in_try_except(self):
+        template = """
+            value = ["ab"]
+            result = snapshot = None
+            try:
+                result = [{func}(value) for value in value]
+            except ValueError:
+                snapshot = value
+                raise
+        """
+        # No exception.
+        code = template.format(func='len')
+        self._check_in_scopes(code, {"value": ["ab"], "result": [2], "snapshot": None})
+        # Handles exception.
+        code = template.format(func='int')
+        self._check_in_scopes(code, {"value": ["ab"], "result": None, "snapshot": ["ab"]},
+                              raises=ValueError)
+
+
+    def test_comp_in_try_finally(self):
+        template = """
+            value = ["ab"]
+            result = snapshot = None
+            try:
+                result = [{func}(value) for value in value]
+            finally:
+                snapshot = value
+        """
+        # No exception.
+        code = template.format(func='len')
+        self._check_in_scopes(code, {"value": ["ab"], "result": [2], "snapshot": ["ab"]})
+        # Handles exception.
+        code = template.format(func='int')
+        self._check_in_scopes(code, {"value": ["ab"], "result": None, "snapshot": ["ab"]},
+                              raises=ValueError)
+
+
+    def test_exception_in_post_comp_call(self):
+        code = """
+            value = [1, None]
+            try:
+                [v for v in value].sort()
+            except TypeError:
+                pass
+        """
+        self._check_in_scopes(code, {"value": [1, None]})
+
+
+    def _recursive_replace(self, maybe_code):
+        if not isinstance(maybe_code, types.CodeType):
+            return maybe_code
+        return maybe_code.replace(co_consts=tuple(
+            self._recursive_replace(c) for c in maybe_code.co_consts
+        ))
+
+
+    def _replacing_exec(self, code_string, ns):
+        co = compile(code_string, "<string>", "exec")
+        co = self._recursive_replace(co)
+        exec(co, ns)
+
+
+    def test_only_calls_dunder_iter_once(self):
+
+        class Iterator:
+
+            def __init__(self):
+                self.val = 0
+
+            def __next__(self):
+                if self.val == 2:
+                    raise StopIteration
+                self.val += 1
+                return self.val
+
+            # No __iter__ method
+
+        class C:
+
+            def __iter__(self):
+                return Iterator()
+
+        self.assertEqual([1, 2], [i for i in C()])
+
+
+if __name__ == "__main__":
+    unittest.main()
