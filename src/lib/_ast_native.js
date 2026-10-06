@@ -11,6 +11,8 @@ var $builtinmodule = function () {
             case "bool": return new Sk.builtin.bool(value.value);
             case "none": return Sk.builtin.none.none$;
             case "ellipsis": return Sk.builtin.Ellipsis;
+            case "tuple": return new Sk.builtin.tuple(value.value.map(constant));
+            case "frozenset": return new Sk.builtin.frozenset(value.value.map(constant));
         }
     }
     function toPython(value) {
@@ -27,6 +29,20 @@ var $builtinmodule = function () {
         return Sk.ffi.remapToPy(value);
     }
     return {
+        _copy_tree: new Sk.builtin.func(function(tree) {
+            Sk.abstr.checkArgsLen("_copy_tree", arguments, 1, 1);
+            return toPython(Sk.ffi.remapToJs(tree));
+        }),
+        _register_type: new Sk.builtin.func(function(type) {
+            Sk.abstr.checkArgsLen("_register_type", arguments, 1, 1);
+            Sk.builtin.astType = type;
+            return Sk.builtin.none.none$;
+        }),
+        _compile_tree: new Sk.builtin.func(function(tree, filename, mode, flags, optimize) {
+            Sk.abstr.checkArgsLen("_compile_tree", arguments, 5, 5);
+            const compiled = Sk.compile(Sk.ffi.remapToJs(tree), filename.v, mode.v, true, optimize.v, flags.v);
+            return new Sk.builtin.code(filename, compiled);
+        }),
         _parse_tree: new Sk.builtin.func(function(source, filename, mode) {
             Sk.abstr.checkArgsLen("_parse_tree", arguments, 3, 3);
             const text = source.$jsstr(), name = filename.$jsstr();
