@@ -929,7 +929,6 @@ SymbolTable.prototype.visitExpr = function (e) {
         case "Constant":
             break;
         case "TemplateStr":
-        case "TemplateStr":
             if (!(this.flags & 0x1000000)) throw new Sk.builtin.SyntaxError("TemplateStr is not supported by the Skulpt compiler", this.filename, e.lineno);
         case "JoinedStr":
             for (let s of e.values) {
