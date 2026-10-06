@@ -103,7 +103,7 @@ function getAwaitableIterator(value) {
         if (value.$gen.gi$yieldfrom) {throw new Sk.builtin.RuntimeError("coroutine is being awaited already");}
         return new Sk.builtin.coroutine_wrapper(value);
     }
-    if (value instanceof Sk.builtin.generator && value.gi$scope && value.gi$scope.$metadata.flags & 0x100) return value;
+    if (value instanceof Sk.builtin.generator && value.gi$scope && value.gi$scope.$metadata.flags & 0x100) {return value;}
     const method = Sk.abstr.lookupSpecial(value, new Sk.builtin.str("__await__"));
     if (method === undefined) {throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(value) + "' object can't be awaited");}
     return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(method), iterator => {
