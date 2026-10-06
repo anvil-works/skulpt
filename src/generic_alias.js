@@ -20,7 +20,12 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         tp$new(args, kwargs) {
             Sk.abstr.checkNoKwargs("GenericAlias", kwargs);
             Sk.abstr.checkArgsLen("GenericAlias", args, 2, 2);
-            return new Sk.builtin.GenericAlias(args[0], args[1]);
+            if (this.constructor === Sk.builtin.GenericAlias) {
+                return new Sk.builtin.GenericAlias(args[0], args[1]);
+            }
+            const alias = new this.constructor();
+            Sk.builtin.GenericAlias.call(alias, args[0], args[1]);
+            return alias;
         },
         tp$getattr(pyName, canSuspend) {
             if (Sk.builtin.checkString(pyName)) {
@@ -140,16 +145,16 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
             if (item === Sk.builtin.Ellipsis) {
                 return "...";
             }
-            if (Sk.abstr.lookupSpecial(item, this.str$orig)) {
-                if (Sk.abstr.lookupSpecial(item, this.str$args)) {
+            if (Sk.abstr.lookupAttr(item, this.str$orig)) {
+                if (Sk.abstr.lookupAttr(item, this.str$args)) {
                     return Sk.misceval.objectRepr(item);
                 }
             }
-            const qualname = Sk.abstr.lookupSpecial(item, Sk.builtin.str.$qualname);
+            const qualname = Sk.abstr.lookupAttr(item, Sk.builtin.str.$qualname);
             if (qualname === undefined) {
                 return Sk.misceval.objectRepr(item);
             }
-            const mod = Sk.abstr.lookupSpecial(item, Sk.builtin.str.$module);
+            const mod = Sk.abstr.lookupAttr(item, Sk.builtin.str.$module);
             if (mod === undefined || Sk.builtin.checkNone(mod)) {
                 return Sk.misceval.objectRepr(item);
             } else if (mod.toString() === "builtins") {

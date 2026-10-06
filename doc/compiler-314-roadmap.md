@@ -610,3 +610,21 @@ with only assertion/subTest harness helpers adapted, plus a CPython-checked nati
 lookup/Unicode diagnostic regression (32 focused cases). inspect.isabstract-dependent
 methods remain deferred. This layer supplies the foundation for Callable and
 compiler-produced generator/coroutine/async iterator ABC protocols.
+
+### Compiler-produced protocol ABCs
+
+`stu-dev/compiler/abc-protocols` turns collections into a package without changing
+its existing native module implementation, and adds the compiler-related protocol
+classes from CPython `_collections_abc.py`: Callable, Iterable/Iterator/Generator,
+Awaitable/Coroutine and AsyncIterable/AsyncIterator/AsyncGenerator. Abstract mixin
+methods and structural subclass checks are preserved. Compiler-produced native
+types register with the corresponding ABCs. GenericAlias allocation now retains
+subclasses, enabling the CPython collections.abc Callable alias implementation.
+Direct type() factories select the most derived metaclass, so dynamically created
+ABC subclasses receive their abstract-method set. Native alias representations
+read class attributes normally; ParamSpec conversion preserves tuple parameter
+expressions instead of validating them as individual type arguments.
+
+Seven complete upstream test_collections methods and their validation helpers
+are unchanged, plus a CPython-checked alias/subclass substitution regression.
+Awaitable's upstream GC-dependent cleanup test remains deferred.
