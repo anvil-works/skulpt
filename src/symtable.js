@@ -608,7 +608,9 @@ SymbolTable.prototype.visitStmt = function (s) {
             }
             this.SEQExpr(s.values);
             break;
+        case "AsyncFor":
         case "For":
+            if (s._type === "AsyncFor" && !this.cur.coroutine) throw new Sk.builtin.SyntaxError("'async for' outside async function", this.filename, s.lineno);
             this.visitExpr(s.target);
             this.visitExpr(s.iter);
             this.SEQStmt(s.body);
@@ -721,7 +723,9 @@ SymbolTable.prototype.visitStmt = function (s) {
         case "Debugger":
             // nothing
             break;
+        case "AsyncWith":
         case "With":
+            if (s._type === "AsyncWith" && !this.cur.coroutine) throw new Sk.builtin.SyntaxError("'async with' outside async function", this.filename, s.lineno);
             VISIT_SEQ(this.visit_withitem.bind(this), s.items);
             VISIT_SEQ(this.visitStmt.bind(this), s.body);
             break;

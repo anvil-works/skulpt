@@ -681,21 +681,24 @@ Compiler.prototype.cyield = function(e) {
     return this._gr("yield", "$ret");
 };
 
-Compiler.prototype.cyieldfrom = function (e, awaitable) {
+// Python/codegen.c: codegen_await shares the SEND loop with yield-from.
+Compiler.prototype.cawait = function (e, value, context) {
+    const awaited = value === undefined ? this.vexpr(e.value) : value;
+    out("$gen.gi$awaited=", awaited, ";$ret=Sk.builtin.getAwaitable(", awaited, ",", JSON.stringify(context || null), ");");
+    this._checkSuspension(e);
+    const iterator = this._gr("awaititer", "$ret");
+    out("if(!($gen.gi$awaited instanceof Sk.builtin.coroutine)){$gen.gi$awaited=", iterator, ";}");
+    return this.cyieldfrom(e, iterator);
+};
+
+Compiler.prototype.cyieldfrom = function (e, awaitIterator) {
     if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
         throw new Sk.builtin.SyntaxError("'yield' outside function", this.filename, e.lineno);
     }
     var afterIter = this.newBlock("after iter");
     var afterBlock = this.newBlock("after yield from");
-    // get the iterator we are yielding from and store it
-    var iterable = this.vexpr(e.value);
-    if (awaitable) {
-        out("$gen.gi$awaited=", iterable, ";$ret=Sk.builtin.getAwaitable(", iterable, ");");
-        this._checkSuspension(e);
-        iterable = this._gr("awaititer", "$ret");
-        out("if(!($gen.gi$awaited instanceof Sk.builtin.coroutine)){$gen.gi$awaited=", iterable, ";}");
-    }
-    out("$gen.gi$startYieldFrom(", iterable, ",", !!awaitable, ");");
+    const iterable = awaitIterator === undefined ? this.vexpr(e.value) : awaitIterator;
+    out("$gen.gi$startYieldFrom(", iterable, ",", awaitIterator !== undefined, ");");
     this._jump(afterIter);
     this.setBlock(afterIter);
     out("$ret = $gen.gi$stepYieldFrom();");
@@ -993,7 +996,7 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
         case "YieldFrom":
             return this.cyieldfrom(e);
         case "Await":
-            return this.cyieldfrom(e, true);
+            return this.cawait(e);
         case "Compare":
             return this.ccompare(e);
         case "Call":
@@ -1602,6 +1605,9 @@ Compiler.prototype.cwhile = function (s) {
 };
 
 Compiler.prototype.cfor = function (s) {
+    const asynchronous = s._type === "AsyncFor";
+    const pendingError = asynchronous ? this._gr("forerr", "$err") : null;
+    const exhausted = asynchronous ? this.newBlock("async for exhausted") : null;
     var target;
     var nexti;
     var iter;
@@ -1615,20 +1621,32 @@ Compiler.prototype.cfor = function (s) {
 
     // get the iterator
     toiter = this.vexpr(s.iter);
-    iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
+    if (asynchronous) {
+        out("$ret=Sk.builtin.getAsyncIterator(", toiter, ");");
+        this._checkSuspension(s);
+        iter = this._gr("aiter", "$ret");
+    } else {
+        iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
+    }
     this.u.tempsToSave.push(iter); // Save it across suspensions
 
     this._jump(start);
 
     this.setBlock(start);
 
-    // load targets
-    out ("$ret = Sk.abstr.iternext(", iter,(this.u.canSuspend?", true":", false"),");");
-
-    this._checkSuspension(s);
-
-    nexti = this._gr("next", "$ret");
-    this._jumpundef(nexti, cleanup); // todo; this should be handled by StopIteration
+    // CPython codegen_async_for catches exhaustion only around __anext__/await.
+    if (asynchronous) {
+        this.setupExcept(exhausted);
+        out("$ret=Sk.builtin.getAsyncNext(", iter, ");");
+        this._checkSuspension(s);
+        nexti = this.cawait(s, "$ret", "__anext__");
+        this.endExcept();
+    } else {
+        out("$ret=Sk.abstr.iternext(", iter, this.u.canSuspend ? ",true" : ",false", ");");
+        this._checkSuspension(s);
+        nexti = this._gr("next", "$ret");
+        this._jumpundef(nexti, cleanup);
+    }
     target = this.vexpr(s.target, nexti);
 
     if ((Sk.debugging || Sk.killableFor) && this.u.canSuspend) {
@@ -1652,6 +1670,11 @@ Compiler.prototype.cfor = function (s) {
     // jump to top of loop
     this._jump(start);
 
+    if (asynchronous) {
+        this.setBlock(exhausted);
+        out("if(!($err instanceof Sk.builtin.StopAsyncIteration)){throw $err;}$err=", pendingError, ";");
+        this._jump(cleanup);
+    }
     this.setBlock(cleanup);
     this.popContinueBlock();
     this.popBreakBlock();
@@ -1711,8 +1734,8 @@ Compiler.prototype.craise = function (s) {
 
         out("if (", exc, " instanceof Sk.builtin.BaseException) {throw ",exc,";} else {throw new Sk.builtin.TypeError('exceptions must derive from BaseException');};");
     } else {
-        // re-raise
-        out("throw $err;");
+        // Python/ceval.c: do_raise rejects a bare raise with no active exception.
+        out("if($err===undefined){throw new Sk.builtin.RuntimeError('No active exception to reraise');}throw $err;");
     }
 };
 
@@ -1870,6 +1893,9 @@ Compiler.prototype.ctry = function (s) {
 };
 
 Compiler.prototype.cwith = function (s, itemIdx) {
+    const asynchronous = s._type === "AsyncWith";
+    const enterName = asynchronous ? "__aenter__" : "__enter__";
+    const exitName = asynchronous ? "__aexit__" : "__exit__";
     var mgr, exit, value, exception;
     var exceptionHandler = this.newBlock("withexh"), tidyUp = this.newBlock("withtidyup");
     var carryOn = this.newBlock("withcarryon");
@@ -1882,20 +1908,24 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     mgr = this._gr("mgr", this.vexpr(s.items[itemIdx].context_expr));
 
     // exit = mgr.__exit__
-    exit = this._gr("exit", "Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$exit);");
+    exit = this._gr("exit", "Sk.abstr.lookupSpecial(",mgr,",new Sk.builtin.str(", JSON.stringify(exitName), "));" );
     this.u.tempsToSave.push(exit);
 
     // value = mgr.__enter__()
-    out("$ret = Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$enter);");
+    out("$ret = Sk.abstr.lookupSpecial(",mgr,",new Sk.builtin.str(", JSON.stringify(enterName), "));");
 
-    // check we actually have a context manager and throw nicely
-    out("if ($ret === undefined) {throw new Sk.builtin.AttributeError('__enter__');} ");
-    out(`else if (${exit} === undefined) {throw new Sk.builtin.AttributeError('__exit__');}`);
+    if (asynchronous) {
+        out("if(", exit, "===undefined){throw new Sk.builtin.TypeError(", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+", JSON.stringify("' object does not support the asynchronous context manager protocol (missed __aexit__ method)"), ");}");
+        out("if($ret===undefined){throw new Sk.builtin.TypeError(", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+", JSON.stringify("' object does not support the asynchronous context manager protocol (missed __aenter__ method)"), ");}");
+    } else {
+        out("if ($ret === undefined) {throw new Sk.builtin.AttributeError('__enter__');} ");
+        out(`else if (${exit} === undefined) {throw new Sk.builtin.AttributeError('__exit__');}`);
+    }
 
     // lookupspecial can't suspend
     out("$ret = Sk.misceval.callsimOrSuspendArray($ret);");
     this._checkSuspension(s);
-    value = this._gr("value", "$ret");
+    value = asynchronous ? this.cawait(s, "$ret", "__aenter__") : this._gr("value", "$ret");
 
     // try:
     this.pushFinallyBlock(tidyUp);
@@ -1923,12 +1953,22 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     // except:
     this.setBlock(exceptionHandler);
 
+    const bodyError = asynchronous ? this._gr("witherr", "$err") : null;
+    const exitFailure = asynchronous ? this.newBlock("async with exit failure") : null;
+    if (asynchronous) this.setupExcept(exitFailure);
+
     //   if not exit(*sys.exc_info()):
     //     raise
     out("$ret = Sk.misceval.applyOrSuspend(",exit,",undefined,Sk.builtin.getExcInfo($err),undefined,[]);");
     this._checkSuspension(s);
-    this._jumptrue("$ret", carryOn);
+    const exitResult = asynchronous ? this.cawait(s, "$ret", "__aexit__") : "$ret";
+    if (asynchronous) this.endExcept();
+    this._jumptrue(exitResult, carryOn);
     out("throw $err;");
+    if (asynchronous) {
+        this.setBlock(exitFailure);
+        out("Sk.builtin.chainException($err,", bodyError, ");throw $err;");
+    }
 
     // finally: (kinda. NB that this is a "finally" that doesn't run in the
     //           exception case!)
@@ -1938,6 +1978,7 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     //   exit(None, None, None)
     out("$ret = Sk.misceval.callsimOrSuspendArray(",exit,",[Sk.builtin.none.none$,Sk.builtin.none.none$,Sk.builtin.none.none$]);");
     this._checkSuspension(s);
+    if (asynchronous) this.cawait(s, "$ret", "__aexit__");
     // Ignore $ret.
 
     this.outputFinallyCascade(thisFinallyBlock);
@@ -2776,6 +2817,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
         case "Print":
             this.cprint(s);
             break;
+        case "AsyncFor":
         case "For":
             return this.cfor(s);
         case "While":
@@ -2787,6 +2829,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
             return this.craise(s);
         case "Try":
             return this.ctry(s);
+        case "AsyncWith":
         case "With":
             return this.cwith(s, 0);
         case "Assert":
