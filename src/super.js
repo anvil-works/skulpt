@@ -48,6 +48,9 @@ Sk.builtin.super_ = Sk.abstr.buildNativeClass("super", {
                 if (cls === undefined) {
                     throw new Sk.builtin.RuntimeError("super(): empty __class__ cell");
                 }
+                if (!Sk.builtin.checkClass(cls)) {
+                    throw new Sk.builtin.RuntimeError("super(): __class__ is not a type (" + Sk.abstr.typeName(cls) + ")");
+                }
                 args = [cls, firstArg];
             }
             Sk.abstr.checkArgsLen("super", args, 1, 2);
