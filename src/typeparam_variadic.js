@@ -16,12 +16,12 @@ Sk.builtin.ParamSpec = Sk.abstr.buildNativeClass("typing.ParamSpec", {
     slots: {
         tp$new(args, kwargs) {
             const [name, bound = Sk.builtin.none.none$, defaultValue = Sk.builtin.NoDefault,
-                co = Sk.builtin.bool.false$, contra = Sk.builtin.bool.false$, infer = Sk.builtin.bool.false$] =
+                   co = Sk.builtin.bool.false$, contra = Sk.builtin.bool.false$, infer = Sk.builtin.bool.false$] =
                 Sk.abstr.copyKeywordsToNamedArgs("ParamSpec", ["name", "bound", "default", "covariant", "contravariant", "infer_variance"], args, kwargs);
-            if (args.length > 1 || !Sk.builtin.checkString(name)) throw new Sk.builtin.TypeError("ParamSpec() requires a string name and keyword-only options");
+            if (args.length > 1 || !Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("ParamSpec() requires a string name and keyword-only options");}
             const covariant = Sk.misceval.isTrue(co), contravariant = Sk.misceval.isTrue(contra), inferVariance = Sk.misceval.isTrue(infer);
-            if (covariant && contravariant) throw new Sk.builtin.ValueError("Bivariant types are not supported.");
-            if (inferVariance && (covariant || contravariant)) throw new Sk.builtin.ValueError("Variance cannot be specified with infer_variance.");
+            if (covariant && contravariant) {throw new Sk.builtin.ValueError("Bivariant types are not supported.");}
+            if (inferVariance && (covariant || contravariant)) {throw new Sk.builtin.ValueError("Variance cannot be specified with infer_variance.");}
             return new Sk.builtin.ParamSpec(name, { bound, default: defaultValue, covariant, contravariant, inferVariance });
         },
         $r: Sk.builtin.TypeVar.prototype.$r,
@@ -66,7 +66,7 @@ function paramSpecArgumentClass(name, suffix) {
             },
             tp$hash: Sk.builtin.none.none$,
             tp$richcompare(other, op) {
-                if (other.ob$type !== this.ob$type || !["Eq", "NotEq"].includes(op)) return Sk.builtin.NotImplemented.NotImplemented$;
+                if (other.ob$type !== this.ob$type || !["Eq", "NotEq"].includes(op)) {return Sk.builtin.NotImplemented.NotImplemented$;}
                 return Sk.misceval.richCompareBool(this.$origin, other.$origin, op);
             },
         },
@@ -87,7 +87,7 @@ Sk.builtin.TypeVarTuple = Sk.abstr.buildNativeClass("typing.TypeVarTuple", {
     slots: {
         tp$new(args, kwargs) {
             const [name, defaultValue = Sk.builtin.NoDefault] = Sk.abstr.copyKeywordsToNamedArgs("TypeVarTuple", ["name", "default"], args, kwargs);
-            if (args.length > 1 || !Sk.builtin.checkString(name)) throw new Sk.builtin.TypeError("TypeVarTuple() requires a string name and keyword-only default");
+            if (args.length > 1 || !Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("TypeVarTuple() requires a string name and keyword-only default");}
             return new Sk.builtin.TypeVarTuple(name, defaultValue);
         },
         $r() { return this.$name; },
@@ -119,12 +119,12 @@ Sk.builtin.UnpackAlias = Sk.abstr.buildNativeClass("typing._UnpackGenericAlias",
         $r() { return new Sk.builtin.str("typing.Unpack[" + Sk.builtin.typingTypeRepr(this.$value) + "]"); },
         tp$hash() { return Sk.abstr.objectHash(this.$value); },
         tp$richcompare(other, op) {
-            if (!(other instanceof Sk.builtin.UnpackAlias) || !["Eq", "NotEq"].includes(op)) return Sk.builtin.NotImplemented.NotImplemented$;
+            if (!(other instanceof Sk.builtin.UnpackAlias) || !["Eq", "NotEq"].includes(op)) {return Sk.builtin.NotImplemented.NotImplemented$;}
             return Sk.misceval.richCompareBool(this.$value, other.$value, op);
         },
         tp$as_sequence_or_mapping: true,
         mp$subscript(item) {
-            if (this.$value instanceof Sk.builtin.TypeVarTuple) return item;
+            if (this.$value instanceof Sk.builtin.TypeVarTuple) {return item;}
             return Sk.misceval.chain(Sk.abstr.objectGetItem(this.$value, item, true), value => new Sk.builtin.UnpackAlias(value));
         },
     },
@@ -134,8 +134,8 @@ Sk.builtin.UnpackAlias = Sk.abstr.buildNativeClass("typing._UnpackGenericAlias",
         __parameters__: { $get() { return Sk.builtin.makeTypeParameters(new Sk.builtin.tuple([this.$value])); } },
         __typing_is_unpacked_typevartuple__: { $get() { return new Sk.builtin.bool(this.$value instanceof Sk.builtin.TypeVarTuple); } },
         __typing_unpacked_tuple_args__: { $get() {
-            if (!(this.$value instanceof Sk.builtin.GenericAlias)) return Sk.builtin.none.none$;
-            if (this.$value.$origin !== Sk.builtin.tuple) throw new Sk.builtin.TypeError("Unpack[...] must be used with a tuple type");
+            if (!(this.$value instanceof Sk.builtin.GenericAlias)) {return Sk.builtin.none.none$;}
+            if (this.$value.$origin !== Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Unpack[...] must be used with a tuple type");}
             return this.$value.$args;
         } },
     },
@@ -148,9 +148,9 @@ Sk.builtin.UnpackType = Sk.abstr.buildNativeClass("typing._UnpackSpecialForm", {
         $r() { return new Sk.builtin.str("typing.Unpack"); },
         tp$as_sequence_or_mapping: true,
         mp$subscript(value) {
-            if (value.ob$type === Sk.builtin.tuple) throw new Sk.builtin.TypeError("Unpack accepts only a single type.");
-            if (Sk.builtin.checkNone(value)) value = Sk.builtin.none;
-            if (Sk.builtin.checkString(value)) throw new Sk.builtin.NotImplementedError("string type arguments require ForwardRef support");
+            if (value.ob$type === Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Unpack accepts only a single type.");}
+            if (Sk.builtin.checkNone(value)) {value = Sk.builtin.none;}
+            if (Sk.builtin.checkString(value)) {throw new Sk.builtin.NotImplementedError("string type arguments require ForwardRef support");}
             return new Sk.builtin.UnpackAlias(value);
         },
     },
