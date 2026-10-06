@@ -12,6 +12,8 @@ def get_args(tp):
     return _legacy.get_args(tp)
 
 def get_origin(tp):
+    if tp is Generic:
+        return Generic
     if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias, ParamSpecArgs, ParamSpecKwargs)):
         return tp.__origin__
     return _legacy.get_origin(tp)
@@ -58,6 +60,10 @@ def _type_check(arg, message):
         return type(None)
     if isinstance(arg, str):
         return ForwardRef(arg)
+    if isinstance(arg, _GenericAlias) and arg.__origin__ in (Generic,):
+        raise TypeError(f"{arg} is not valid as type argument")
+    if arg is Unpack or arg in (Generic,):
+        raise TypeError(f"Plain {arg} is not valid as type argument")
     if type(arg) is tuple:
         raise TypeError(message + " Got " + repr(arg) + ".")
     return arg
