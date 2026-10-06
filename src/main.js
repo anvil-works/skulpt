@@ -84,6 +84,7 @@ require("./union.js");
 require("./type_alias.js");
 require("./typevar.js");
 require("./typeparam_variadic.js");
+require("./template.js");
 require("./builtindict.js");
 require("./constants.js");
 require("./exception_group.js");

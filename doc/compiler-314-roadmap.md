@@ -728,3 +728,22 @@ unknown error-handler names (three encoding cases total). Adjacent explicit
 surrogate characters still share the existing Skulpt UTF-16 string-storage
 limitation: they cannot be distinguished from one genuine non-BMP character.
 Full CPython Unicode string storage remains outside this AST-tooling increment.
+
+### Template-string compilation (release pending)
+
+TemplateStr emission follows codegen_template_str: evaluate interpolation values
+and format specifications in order, preserving expression/conversion metadata
+without applying conversion/formatting to the value. Edited ASTs preserve their
+interpolation str field, including None, as CPython's compiler does. Native Template and
+Interpolation follow Objects/templateobject.c and interpolationobject.c, with
+readonly tuples/fields, concatenation, iteration, reduction and generic aliases.
+string is now a package and its existing module implementation is unchanged;
+string.templatelib uses CPython's implementation. Boolean formatting with a
+nonempty format spec and str concatenation errors also follow CPython.
+
+Twenty-eight selected CPython template/interpolation/conversion/unparse cases
+and compiler regressions pass locally in both runtimes. Pattern-based template
+cases follow match. GC/weakref/pickle integration remains separate. The parser
+metadata fixes at skulpt-parser 0d45c749 are reviewed and tested locally, but
+the dev.8 npm release and dependency pin await approval; this branch must not
+be submitted as release-ready before that pin is available.
