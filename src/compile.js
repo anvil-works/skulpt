@@ -2010,22 +2010,37 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     var mgr, exit, value, exception;
     var exceptionHandler = this.newBlock("withexh"), tidyUp = this.newBlock("withtidyup");
     var carryOn = this.newBlock("withcarryon");
-    var protocolError = Sk.__future__.python3 ? "TypeError" : "AttributeError";
 
+    const enterName = "__enter__";
+    const exitName = "__exit__";
+    // codegen_with load exit before enter. LOAD_SPECIAL
+    // reports a missing protocol method before attempting either call.
+    function checkMethod(method, name) {
+        const protocol = "context manager";
+        const other = "asynchronous context manager";
+        const otherEnter = "__aenter__";
+        const otherExit = "__aexit__";
+        const suggestion = "async with";
+        out("if(", method, "===undefined){var $contextError=", JSON.stringify("'"), "+Sk.abstr.typeName(", mgr, ")+",
+            JSON.stringify("' object does not support the " + protocol + " protocol (missed " + name + " method)"), ";");
+        out("var $otherEnter=", mgr, ".ob$type.$typeLookup(new Sk.builtin.str(", JSON.stringify(otherEnter), "));",
+            "var $otherExit=", mgr, ".ob$type.$typeLookup(new Sk.builtin.str(", JSON.stringify(otherExit), "));");
+        out("if($otherEnter!==undefined&&$otherEnter.tp$descr_get!==undefined&&",
+            "$otherExit!==undefined&&$otherExit.tp$descr_get!==undefined){$contextError+=",
+            JSON.stringify(" but it supports the " + other + " protocol. Did you mean to use '" + suggestion + "'?"), ";}");
+        out("throw new Sk.builtin.TypeError($contextError);}");
+    }
     mgr = this._gr("mgr", this.vexpr(s.items[itemIdx].context_expr));
-
-    // exit = mgr.__exit__
-    exit = this._gr("exit", "Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$exit);");
-    // Check __exit__ first, as in current CPython, before looking up __enter__.
-    out("if (", exit, " === undefined) {throw new Sk.builtin.", protocolError, "(\"'\" + Sk.abstr.typeName(",
-        mgr, ") + \"' object does not support the context manager protocol (missed __exit__ method)\");}");
+    exit = this._gr("exit", "Sk.abstr.lookupSpecial(", mgr, ",new Sk.builtin.str(", JSON.stringify(exitName), "));");
     this.u.tempsToSave.push(exit);
-
-    // value = mgr.__enter__()
-    out("$ret = Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$enter);");
-
-    out("if ($ret === undefined) {throw new Sk.builtin.", protocolError, "(\"'\" + Sk.abstr.typeName(",
-        mgr, ") + \"' object does not support the context manager protocol (missed __enter__ method)\");}");
+    if (Sk.__future__.python3) {checkMethod(exit, exitName);}
+    out("$ret = Sk.abstr.lookupSpecial(", mgr, ",new Sk.builtin.str(", JSON.stringify(enterName), "));");
+    if (Sk.__future__.python3) {
+        checkMethod("$ret", enterName);
+    } else {
+        out("if ($ret === undefined) {throw new Sk.builtin.AttributeError('__enter__');} ");
+        out(`else if (${exit} === undefined) {throw new Sk.builtin.AttributeError('__exit__');}`);
+    }
 
     // Special-method lookup is synchronous; calling __enter__ may suspend.
     out("$ret = Sk.misceval.callsimOrSuspendArray($ret);");
