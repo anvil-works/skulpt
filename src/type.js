@@ -701,6 +701,14 @@ function $allocateGetterSlot(dunder) {
     });
 }
 
+// Objects/typeobject.c: type_abstractmethods reads the local type dictionary.
+Sk.builtin.type.$getAbstractMethods = function () {
+    const name = new Sk.builtin.str("__abstractmethods__");
+    const value = this.$classDict && this.$classDict.quick$lookup(name);
+    if (value === undefined) { throw new Sk.builtin.AttributeError("__abstractmethods__"); }
+    return value;
+};
+
 Sk.builtin.type.prototype.tp$getsets = {
     __type_params__: {
         $get() {
@@ -739,12 +747,7 @@ Sk.builtin.type.prototype.tp$getsets = {
         },
     },
     __abstractmethods__: {
-        $get() {
-            const name = new Sk.builtin.str("__abstractmethods__");
-            const value = this.$classDict && this.$classDict.quick$lookup(name);
-            if (value === undefined) { throw new Sk.builtin.AttributeError("__abstractmethods__"); }
-            return value;
-        },
+        $get: Sk.builtin.type.$getAbstractMethods,
         $set(value) {
             if (!this.sk$klass) { throw new Sk.builtin.TypeError("cannot set __abstractmethods__ on an immutable type"); }
             const name = new Sk.builtin.str("__abstractmethods__");
