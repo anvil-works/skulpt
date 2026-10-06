@@ -1367,7 +1367,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
     var output = (localsToSave.length > 0 ? ("var " + localsToSave.join(",") + ";") : "") +
                  "var $wakeFromSuspension = function() {" +
                     "var susp = "+unit.scopename+".$wakingSuspension; "+unit.scopename+".$wakingSuspension = undefined;" +
-                    "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $builtins=susp.$builtins; $exc=susp.$exc; $err=susp.$err; $postfinally=susp.$postfinally;" +
+                    "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $builtins=susp.$builtins; $exc=susp.$exc; $err=susp.$err; $handled=susp.$handled; $postfinally=susp.$postfinally;" +
                     "$currLineNo=susp.$lineno; $currColNo=susp.$colno; Sk.lastYield=Date.now();" +
                     (hasCell ? "$cell=susp.$cell;" : "");
 
@@ -1376,7 +1376,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
         output += t + "=susp.$tmps." + t + ";";
     }
 
-    output +=  "try { $ret=susp.child.resume(); } catch(err) { $localsScope=0; if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
+    output +=  "try { $ret=susp.child.resume(); } catch(err) { $localsScope=0; if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } if(!err.context){Sk.builtin.chainException(err,Sk.misceval.getException());} err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
                 "};";
     // Initial entry uses the function object; generator frames resume with the generator.
     output += "var $self = this;";
@@ -1386,7 +1386,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
                 "var susp = new Sk.misceval.Suspension(); susp.child=$child;" +
                 "susp.resume=function(){" + unit.scopename + ".$wakingSuspension=susp; return " +
                 unit.scopename + ".call(" + (unit.ste.generator ? "$gen" : "$self") + "); };" +
-                "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$builtins=$builtins;susp.$exc=$exc;susp.$err=$err;susp.$postfinally=$postfinally;" +
+                "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$builtins=$builtins;susp.$exc=$exc;susp.$err=$err;susp.$handled=$handled;susp.$postfinally=$postfinally;" +
                 "susp.$filename=$filename;susp.$lineno=$lineno;susp.$colno=$colno;" +
                 "susp.optional=susp.child.optional;" +
                 (hasCell ? "susp.$cell=$cell;" : "");
@@ -1575,7 +1575,7 @@ Compiler.prototype.outputFrame = function (unit) {
     if (unit.ste.blockType === constants.ClassBlock) {
         code += "$loc=Sk.misceval.namespaceToJs($loc);";
     }
-    code += "Sk.misceval.currentFrame={getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
+    code += "Sk.misceval.currentFrame={getException:function(){return $handled===undefined?($prevFrame?$prevFrame.getException():undefined):$handled;},getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
     for (const scope of unit.comprehensions) {
         code += "case " + scope.id + ":return " + snapshot(scopeBindings(scope)) + ";";
     }
@@ -1786,13 +1786,13 @@ Compiler.prototype.craise = function (s) {
             out("if (", cause, " !== Sk.builtin.none.none$ && !($ret instanceof Sk.builtin.BaseException)) {");
             out(    "throw new Sk.builtin.TypeError('exception causes must derive from BaseException');");
             out("}");
-            out(exc, ".$cause = $ret;");
+            out(exc, ".$cause = $ret;", exc, ".$suppressContext=true;");
         }
 
-        out("throw ", exc, ";");
+        out("Sk.builtin.chainException(", exc, ",Sk.misceval.getException());throw ", exc, ";");
     } else {
-        // re-raise
-        out("throw $err;");
+        // Python/ceval.c: do_raise rejects a bare raise with no active exception.
+        out("var $active=Sk.misceval.getException();if($active===undefined){throw new Sk.builtin.RuntimeError('No active exception to reraise');}throw $active;");
     }
 };
 
@@ -1826,7 +1826,7 @@ Compiler.prototype.outputFinallyCascade = function () {
         "}");
 };
 
-Compiler.prototype.ctry = function (s) {
+Compiler.prototype.ctry = function (s, cleanup) {
     var check;
     var next;
     var handlertype;
@@ -1839,7 +1839,10 @@ Compiler.prototype.ctry = function (s) {
 
     var finalBody, finalExceptionHandler, finalExceptionToReRaise;
 
-    if (s.finalbody.length) {
+    const hasFinally = s.finalbody.length || cleanup;
+    const previousHandled = this._gr("prevhandled", "$handled");
+    this.u.tempsToSave.push(previousHandled);
+    if (hasFinally) {
         finalBody = this.newBlock("finalbody");
         finalExceptionHandler = this.newBlock("finalexh");
         finalExceptionToReRaise = this._gr("finally_reraise", "undefined");
@@ -1870,6 +1873,7 @@ Compiler.prototype.ctry = function (s) {
     for (i = 0; i < n; ++i) {
         this.setBlock(handlers[i]);
         handler = s.handlers[i];
+        if (i === 0) out("$handled=$err;");
         if (!handler.type && i < n - 1) {
             throw new Sk.builtin.SyntaxError("default 'except:' must be last", this.filename, handler.lineno);
         }
@@ -1892,7 +1896,15 @@ Compiler.prototype.ctry = function (s) {
             this.vexpr(handler.target, "$err");
         }
 
-        this.vseqstmt(handler.body);
+        // codegen_try_except: every exit pops the handled exception and,
+        // in Python 3, clears the exception target (including explicit del).
+        this.ctry({body: handler.body, handlers: [], orelse: [], finalbody: []}, () => {
+            if (Sk.__future__.python3 && handler.name) {
+                this.nameop(handler.name, "Store", "Sk.builtin.none.none$");
+                this.nameop(handler.name, "Del");
+            }
+            out("$handled=", previousHandled, ";");
+        });
 
         this._jump(end);
     }
@@ -1907,7 +1919,7 @@ Compiler.prototype.ctry = function (s) {
 
     this.setBlock(end);
     // End of the try/catch/else segment
-    if (s.finalbody.length) {
+    if (hasFinally) {
         this.endFinally();
 
         this._jump(finalBody);
@@ -1915,21 +1927,26 @@ Compiler.prototype.ctry = function (s) {
         this.setBlock(finalExceptionHandler);
         // Exception handling also goes to the finally body,
         // stashing the original exception to re-raise
-        out(finalExceptionToReRaise,"=$err;");
+        out(finalExceptionToReRaise,"=$err;$postfinally=undefined;");
+        if (!cleanup) out("$handled=$err;");
         this._jump(finalBody);
 
         this.setBlock(finalBody);
-        // Nested cleanup must not consume this cleanup's pending transfer.
-        // Abrupt completion skips restoration and therefore replaces it.
-        const pendingAction = this._gr("pending_before_cleanup", "$postfinally");
-        this.u.tempsToSave.push(pendingAction);
-        out("$postfinally=undefined;");
-        this.vseqstmt(s.finalbody);
+        if (cleanup) {
+            cleanup();
+        } else {
+            const pendingControl = this._gr("finallycontrol", "$postfinally");
+            this.u.tempsToSave.push(pendingControl);
+            out("$postfinally=undefined;");
+            this.ctry({body: s.finalbody, handlers: [], orelse: [], finalbody: []}, () => {
+                out("$handled=", previousHandled, ";");
+            });
+            out("$postfinally=", pendingControl, ";");
+        }
         // If finalbody executes normally, AND we have an exception
         // to re-raise, we raise it.
         out("if(",finalExceptionToReRaise,"!==undefined) { throw ",finalExceptionToReRaise,";}");
 
-        out("$postfinally=", pendingAction, ";");
         this.outputFinallyCascade();
         // Else, we continue from here.
     }
@@ -1961,6 +1978,11 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     this._checkSuspension(s);
     value = this._gr("value", "$ret");
 
+    // Preserve the enclosing handled exception, like PUSH_EXC_INFO/POP_EXCEPT.
+    const previousError = this._gr("withprev", "$err");
+    const previousHandled = this._gr("withhandled", "$handled");
+    this.u.tempsToSave.push(previousError, previousHandled);
+
     // try:
     // One handler has separate entries for exceptional and nonexceptional exit.
     this.setupFinally(tidyUp, exceptionHandler);
@@ -1988,12 +2010,26 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     this.setBlock(exceptionHandler);
     // Exception dispatch already removed this manager's runtime handler.
 
+    out("$handled=$err;");
+    const bodyError = this._gr("witherr", "$err");
+    this.u.tempsToSave.push(bodyError);
+    const exitFailure = this.newBlock("with exit failure");
+    const exitReraise = this.newBlock("with reraise");
+    this.setupExcept(exitFailure);
+
     //   if not exit(*sys.exc_info()):
     //     raise
     out("$ret = Sk.misceval.applyOrSuspend(",exit,",undefined,Sk.builtin.getExcInfo($err),undefined,[]);");
     this._checkSuspension(s);
-    this._jumptrue("$ret", carryOn);
-    out("throw $err;");
+    const exitResult = "$ret";
+    const suppress = this._gr("withsuppress", "Sk.misceval.isTrue(", exitResult, ")");
+    this.endExcept();
+    this._jumptrue(suppress, carryOn);
+    this._jump(exitReraise);
+    this.setBlock(exitFailure);
+    out("$handled=", previousHandled, ";throw $err;");
+    this.setBlock(exitReraise);
+    out("$handled=", previousHandled, ";throw ", bodyError, ";");
 
     // finally: (kinda. NB that this is a "finally" that doesn't run in the
     //           exception case!)
@@ -2014,6 +2050,7 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     this._jump(carryOn);
 
     this.setBlock(carryOn);
+    out("$err=", previousError, ";$handled=", previousHandled, ";");
 };
 
 Compiler.prototype.cassert = function (s) {
@@ -2264,7 +2301,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
         cellNames.map((name) => name + ":undefined").join(",") +
         "},$gbl=this && this.func_globals,$builtins=this && this.func_builtins" +
         (hasFree ? ",$free=this && this.func_closure" : "") +
-        ",$err=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
+        ",$err=undefined,$handled=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
     if (Sk.execLimit !== null) {
         this.u.varDeclsCode += "if (typeof Sk.execStart === 'undefined') {Sk.execStart = Date.now()}";
     }
@@ -2351,7 +2388,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     this.u.switchCode = "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }/* frame end */});";
+    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } if(!err.context){Sk.builtin.chainException(err,Sk.misceval.getException());} err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }/* frame end */});";
 
     //
     // jump back to the handler so it can do the main actual work of the
@@ -2711,7 +2748,7 @@ Compiler.prototype.cclass = function (s) {
         this.u.prefixCode += "var $classClosure={__class__:undefined,__classdict__:undefined};";
     }
     this.u.switchCode += "return (function $" + s.name + "$_closure($cell){";
-    this.u.switchCode += "var $blk=" + entryBlock + ",$exc=[],$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
+    this.u.switchCode += "var $blk=" + entryBlock + ",$exc=[],$err=undefined,$handled=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
 
     if (Sk.execLimit !== null) {
         this.u.switchCode += "if (typeof Sk.execStart === 'undefined') {Sk.execStart = Date.now()}";
@@ -2723,7 +2760,7 @@ Compiler.prototype.cclass = function (s) {
     this.u.switchCode += "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
+    this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } if(!err.context){Sk.builtin.chainException(err,Sk.misceval.getException());} err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
     this.u.suffixCode += "/* frame end */}).call(null, $cell);});";
 
     this.u.private_ = s.name;
@@ -3301,7 +3338,7 @@ Compiler.prototype.cmod = function (mod) {
     this.u.prefixCode = "var " + modf + "=(function($forcegbl, $forceloc){";
     this.u.varDeclsCode =
         "var $gbl = $forcegbl || {}, $builtins, $blk=" + entryBlock +
-        ",$exc=[],$loc=$forceloc || $gbl,$cell={},$err=undefined;" +
+        ",$exc=[],$loc=$forceloc || $gbl,$cell={},$err=undefined,$handled=undefined;" +
         "var $ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
 
     if (Sk.execLimit !== null) {
@@ -3331,7 +3368,7 @@ Compiler.prototype.cmod = function (mod) {
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
     this.u.suffixCode = "}";
-    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } /* frame end */});";
+    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } if(!err.context){Sk.builtin.chainException(err,Sk.misceval.getException());} err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } /* frame end */});";
 
     // Note - this change may need to be adjusted for all the other instances of
     // switchCode and suffixCode in this file.  Not knowing how to test those
