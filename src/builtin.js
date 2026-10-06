@@ -777,6 +777,13 @@ const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
     },
 });
 
+// Python/ceval.c: PyEval_MergeCompilerFlags inherits only future bits,
+// never parser flags such as top-level await or the CO_NESTED bit.
+function inheritedCompilerFlags() {
+    const frame = Sk.misceval.currentFrame;
+    return frame ? frame.getCompilerFlags() : 0;
+}
+
 Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, optimize) {
     filename = compileFilename(filename);
     Sk.builtin.pyCheckType("mode", "str", Sk.builtin.checkString(mode));
@@ -784,9 +791,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     // before selecting the grammar and invoking the compiler.
     flags = compileIntOption(flags, 0);
     optimize = compileIntOption(optimize, -1);
-    if (dont_inherit !== undefined) {
-        Sk.misceval.isTrue(dont_inherit);
-    }
+    dont_inherit = dont_inherit !== undefined && Sk.misceval.isTrue(dont_inherit);
     const futureMask = 0x1fe0000;
     const compileMask = 0xf600;
     if (flags & ~(futureMask | compileMask | 0x10)) {
@@ -795,6 +800,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (optimize < -1 || optimize > 2) {
         throw new Sk.builtin.ValueError("compile(): invalid optimize value");
     }
+    if (!dont_inherit) flags |= inheritedCompilerFlags();
     // Historical mandatory future features have no effect in Python 3.
     // AST return/typing, top-level await, incomplete input, Barry syntax and
     // stringized annotations need their own implementations, not ignored flags.
@@ -957,7 +963,7 @@ Sk.builtin.exec = function (code, globals, locals, closure) {
         }
     } else {
         if (hasClosure) {throw new Sk.builtin.TypeError("closure can only be used when source is a code object");}
-        code = Sk.compile(compilerSource(code, filename, "exec"), filename, "exec", true);
+        code = Sk.compile(compilerSource(code, filename, "exec"), filename, "exec", true, 0, inheritedCompilerFlags());
     }
     Sk.asserts.assert(
         globals === undefined || globals.constructor === Object,
@@ -1008,7 +1014,7 @@ Sk.builtin.eval = function (source, globals, locals) {
         // Unicode eval sources also strip only ASCII spaces/tabs.
         let text = compilerSource(source, "<string>", "eval");
         if (!bytesSource) {text = text.replace(/^[ \t]+/, "");}
-        source = new pyCode(new Sk.builtin.str("<string>"), Sk.compile(text, "<string>", "eval", true));
+        source = new pyCode(new Sk.builtin.str("<string>"), Sk.compile(text, "<string>", "eval", true, 0, inheritedCompilerFlags()));
     }
     return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" || source.mode === "function" ? result : Sk.builtin.none.none$);
 };
