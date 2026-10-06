@@ -27,6 +27,7 @@ function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation, opt
     this.stack = [];
 
     this.result = [];
+    this.literalObjects = [];
 
     // this.gensymcount = 0;
 
@@ -921,6 +922,11 @@ function getJsLiteralForString(s) {
 }
 
 Compiler.prototype.cconstant = function (value) {
+    if (value.$pyValue !== undefined) {
+        let index = this.literalObjects.indexOf(value.$pyValue);
+        if (index === -1) {index = this.literalObjects.push(value.$pyValue) - 1;}
+        return this.makeConstant("$astConstants[", index, "]");
+    }
     const number = n => Object.is(n, -0) ? "-0" : String(n);
     switch (value.type) {
         case "int":
@@ -3621,6 +3627,7 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
         code    : ret,
         filename: filename,
         mode: mode,
+        literalObjects: c.literalObjects,
     };
 };
 
