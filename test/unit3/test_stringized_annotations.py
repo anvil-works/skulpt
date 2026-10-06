@@ -108,7 +108,7 @@ def f(x: Missing) -> Other: pass
 """)
         self.assertEqual(scope['seen'], [{'x': 'Missing', 'return': 'Other'}])
         self.assertEqual(scope['f'].__annotations__, {})
-        # Eager-mode ordering remains relevant until the deferred layer lands.
+        # Access inside the decorator forces evaluation in deferred mode too.
         scope = {}
         exec("""
 seen = []
