@@ -946,6 +946,29 @@ class GenericClassRegressions(unittest.TestCase):
         with self.assertRaises(TypeError): del Box.__type_params__
         self.assertEqual(int.__type_params__, ())
 
+    def test_class_body_closure_metadata_and_cells(self):
+        import builtins
+        original = builtins.__build_class__
+        bodies = []
+        def capture(func, *args, **kwargs):
+            bodies.append(func)
+            return original(func, *args, **kwargs)
+        builtins.__build_class__ = capture
+        try:
+            class C[T]:
+                def get(self): return T
+        finally:
+            builtins.__build_class__ = original
+        body, = bodies
+        self.assertEqual(body.__code__.co_freevars, ('.type_params', 'T'))
+        params, param = (cell.cell_contents for cell in body.__closure__)
+        self.assertEqual(params, C.__type_params__)
+        self.assertIs(param, C.__type_params__[0])
+        # Exposed names must not change the internal closure binding ABI.
+        rebound = types.FunctionType(body.__code__, body.__globals__, closure=body.__closure__)
+        rebound_class = original(rebound, 'Rebound')
+        self.assertIs(rebound_class().get(), param)
+
     def test_variadic_specialization_and_cached_compiler_base(self):
         import typing
         class C[T, *Ts, **P]: pass
