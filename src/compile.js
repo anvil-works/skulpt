@@ -577,9 +577,13 @@ Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, val
     }
 
     if (genIndex >= generators.length) {
+        // CPython codegen_sync_comprehension_generator evaluates a dictionary
+        // key before its value (PEP 572), including their side effects.
+        if (type === "dict") {
+            lkey = this._gr("key", this.vexpr(key));
+        }
         lvalue = this.vexpr(value);
         if (type === "dict") {
-            lkey = this.vexpr(key);
             out(tmpname, ".mp$ass_subscript(", lkey, ",", lvalue, ");");
         } else if (type === "list") {
             out(tmpname, ".v.push(", lvalue, ");"); // todo;
