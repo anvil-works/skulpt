@@ -1762,5 +1762,14 @@ class DynamicClassTests(unittest.TestCase):
         self.assertEqual(typ.__bases__, (int, object))
         self.assertEqual(type(typ.__bases__), TupleSubclass)
 
+    # type_new_get_bases uses tuple storage, not subclass __len__ hooks.
+    def test_tuple_subclass_bases_ignore_length_hook(self):
+        class Bases(tuple):
+            def __len__(self):
+                raise ValueError('unexpected length hook')
+        bases = Bases((object,))
+        cls = type('C', bases, {})
+        self.assertIs(cls.__bases__, bases)
+
 if __name__ == '__main__':
     unittest.main()

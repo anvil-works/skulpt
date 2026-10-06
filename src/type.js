@@ -250,7 +250,7 @@ function tp$new(args, kwargs) {
         classcell.$closure.__class__ = klass;
     }
 
-    if (originalBases.sq$length()) klass.sk$tuple_bases = originalBases;
+    if (originalBases.v.length) klass.sk$tuple_bases = originalBases;
     set_names(klass);
     init_subclass(klass, kwargs);
 
