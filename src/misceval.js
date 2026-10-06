@@ -1374,7 +1374,9 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
         };
         entry[role] = new Proxy({}, {
             get(target, name) {
-                if (typeof name !== "string") {
+                // Generated Python identifiers are reserved-name mangled; these
+                // unmangled properties belong to the JS execution machinery.
+                if (typeof name !== "string" || name === "constructor" || name[0] === "$") {
                     return Reflect.get(target, name);
                 }
                 const value = read(name);
@@ -1390,13 +1392,18 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
                 return true;
             },
             deleteProperty(target, name) {
-                if (read(name) !== undefined) {
-                    const key = new Sk.builtin.str(Sk.unfixReserved(name));
+                const key = new Sk.builtin.str(Sk.unfixReserved(name));
+                try {
                     if (globals) {
                         Sk.builtin.dict.prototype.mp$ass_subscript.call(dict, key, undefined);
                     } else {
                         Sk.abstr.objectSetItem(dict, key, undefined);
                     }
+                } catch (err) {
+                    if (err instanceof Sk.builtin.KeyError) {
+                        throw new Sk.builtin.NameError("name '" + key.$jsstr() + "' is not defined");
+                    }
+                    throw err;
                 }
                 return true;
             },

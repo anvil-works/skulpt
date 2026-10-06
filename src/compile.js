@@ -2859,7 +2859,8 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
             switch (ctx) {
                 case "Load":
                     // can't be || for loc.x = 0 or null
-                    return this._gr("loadname", mangled, "!==undefined?", mangled, ":Sk.misceval.loadname('", mangledNoPre, "',$gbl);");
+                    const local = this._gr("loadlocal", mangled);
+                    return this._gr("loadname", local, "!==undefined?", local, ":Sk.misceval.loadname('", mangledNoPre, "',$gbl);");
                 case "Store":
                     out(mangled, "=", dataToStore, ";");
                     break;

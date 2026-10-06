@@ -477,5 +477,30 @@ class TestEvalNamespaces(unittest.TestCase):
         self.assertEqual(eval(compile("1, 2", "probe", "eval")), (1, 2))
 
 
+class TestExecutionMappingHooks(unittest.TestCase):
+    # CPython-checked regressions for the shared JavaScript namespace bridge.
+    def test_only_python_names_reach_mapping(self):
+        names = []
+        class M:
+            def __getitem__(self, name):
+                names.append(name)
+                return 12
+        self.assertEqual(eval("value", {}, M()), 12)
+        self.assertEqual(names, ["value"])
+
+    def test_delete_calls_mapping_directly(self):
+        events = []
+        class M:
+            def __getitem__(self, name):
+                events.append(("get", name))
+                raise KeyError(name)
+            def __delitem__(self, name):
+                events.append(("del", name))
+        exec("del value", {}, M())
+        self.assertEqual(events, [("del", "value")])
+        with self.assertRaises(NameError):
+            exec("del value", {})
+
+
 if __name__ == "__main__":
     unittest.main()
