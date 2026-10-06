@@ -663,6 +663,14 @@ Sk.misceval.print_ = function (x) {
 };
 Sk.exportSymbol("Sk.misceval.print_", Sk.misceval.print_);
 
+// Python/errors.c: handled exception state belongs to the executing frame.
+// A generator with no local handler inherits the caller on each resume.
+Sk.misceval.getException = function () {
+    const frame = Sk.misceval.currentFrame;
+    return frame ? frame.getException() : undefined;
+};
+Sk.exportSymbol("Sk.misceval.getException", Sk.misceval.getException);
+
 /**
  * @function
  * @description 

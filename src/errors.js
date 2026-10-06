@@ -115,6 +115,25 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
     },
 });
 
+// Python/errors.c: _PyErr_SetObject's implicit context cycle handling.
+Sk.builtin.chainException = function (error, context) {
+    if (!(context instanceof BaseException) || error === context) {return;}
+    let current = context;
+    let slow = current;
+    let updateSlow = false;
+    while (current.$context instanceof BaseException) {
+        if (current.$context === error) {
+            current.$context = null;
+            break;
+        }
+        current = current.$context;
+        if (current === slow) {break;}
+        if (updateSlow) {slow = slow.$context;}
+        updateSlow = !updateSlow;
+    }
+    error.$context = context;
+};
+
 function checkDeleting(v, name, message) {
     if (v === undefined) {
         throw new Sk.builtin.TypeError(message === undefined ? `${name} may not be deleted` : message);
