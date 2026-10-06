@@ -811,10 +811,26 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     // AST return/typing, top-level await, incomplete input and Barry syntax need their own
     // implementations, not ignored flags.
     const mandatoryMask = Sk.__future__.python3 ? 0x1be0010 : 0;
-    if (flags & ~mandatoryMask) {
+    if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x400 : 0))) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
     source = compilerSource(source, filename.$jsstr(), "compile");
+    if (flags & 0x400) {
+        if (!["exec", "eval", "single"].includes(mode.v)) {
+            throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
+        }
+        return Sk.misceval.chain(Sk.importModule("ast", false, true), module =>
+            Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_parse_ast")),
+                [new Sk.builtin.str(source), filename, mode]));
+    }
+    if (flags & 0x400) {
+        if (!["exec", "eval", "single"].includes(mode.v)) {
+            throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
+        }
+        return Sk.misceval.chain(Sk.importModule("ast", false, true), module =>
+            Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_parse_ast")),
+                [new Sk.builtin.str(source), filename, mode]));
+    }
     mode = mode.$jsstr();
     return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0), flags));
 };
