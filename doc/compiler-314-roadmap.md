@@ -695,3 +695,15 @@ in both runtimes. Test bodies are
 unchanged; docstring decorators and assertion/support infrastructure are adapted.
 Slots, traceback formatting and weakref/GC cases remain deferred. ExitStack,
 stream redirection and filesystem context helpers are outside this increment.
+
+### Runtime prerequisites for CPython's AST unparser
+
+The real CPython unparse/AST-comparison paths require strict zip and Unicode
+quoting. zip(strict=True) follows Python/bltinmodule.c's exhaustion checks and
+preserves iteration exception identity. Five unchanged upstream zip methods
+pass in CPython and Skulpt. str.encode accepts unicode_escape, with control,
+BMP, non-BMP and backslash cases from CPython's UnicodeEscapeTest adapted only
+to the str.encode API (two cases). The full codecs module remains separate.
+Named Unicode source escapes load the parser's bundled name resolver on first
+use; ordinary parsing avoids initializing its 639 kB data table. The resolver
+is bundled so the same source contract works in Node and the browser.
