@@ -66,35 +66,9 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         },
         throw: {
             $meth(type, value, tb) {
-                const throwArgs = [type];
-                if (value !== undefined) { throwArgs.push(value); }
-                if (tb !== undefined) { throwArgs.push(tb); }
-                if (tb !== undefined && tb !== Sk.builtin.none.none$) {
-                    throw new Sk.builtin.NotImplementedError("generator.throw() with a traceback is not supported");
-                }
-                let exception;
-                if (type instanceof Sk.builtin.BaseException) {
-                    if (value !== undefined && value !== Sk.builtin.none.none$) {
-                        throw new Sk.builtin.TypeError("instance exception may not have a separate value");
-                    }
-                    exception = type;
-                } else if (type === Sk.builtin.BaseException || type.prototype instanceof Sk.builtin.BaseException) {
-                    const args = value === undefined || value === Sk.builtin.none.none$ ? [] :
-                        value instanceof Sk.builtin.tuple ? value.v : [value];
-                    exception = value instanceof type ? value : Sk.misceval.callsimOrSuspendArray(type, args);
-                } else {
-                    throw new Sk.builtin.TypeError("exceptions must be classes or instances deriving from BaseException");
-                }
-                return Sk.misceval.chain(exception, (error) => {
-                    if (!(error instanceof Sk.builtin.BaseException)) {
-                        throw new Sk.builtin.TypeError("exception constructor must return a BaseException instance");
-                    }
-                    return Sk.misceval.chain(this.gi$run(() => this.gi$throw(error, throwArgs), true), (ret) => {
-                        if (ret === undefined) {
-                            throw new Sk.builtin.StopIteration(this.gi$ret);
-                        }
-                        return ret;
-                    });
+                return Sk.misceval.chain(this.gi$throwArgs(type, value, tb), ret => {
+                    if (ret === undefined) throw new Sk.builtin.StopIteration(this.gi$ret);
+                    return ret;
                 });
             },
             $flags: { MinArgs: 1, MaxArgs: 3 },
@@ -164,6 +138,33 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         },
     },
     proto: {
+        gi$throwArgs(type, value, tb, closeOnExit) {
+            const throwArgs = [type];
+            if (value !== undefined) { throwArgs.push(value); }
+            if (tb !== undefined) { throwArgs.push(tb); }
+            if (tb !== undefined && tb !== Sk.builtin.none.none$) {
+                throw new Sk.builtin.NotImplementedError("generator.throw() with a traceback is not supported");
+            }
+            let exception;
+            if (type instanceof Sk.builtin.BaseException) {
+                if (value !== undefined && value !== Sk.builtin.none.none$) {
+                    throw new Sk.builtin.TypeError("instance exception may not have a separate value");
+                }
+                exception = type;
+            } else if (type === Sk.builtin.BaseException || type.prototype instanceof Sk.builtin.BaseException) {
+                const args = value === undefined || value === Sk.builtin.none.none$ ? [] :
+                    value instanceof Sk.builtin.tuple ? value.v : [value];
+                exception = value instanceof type ? value : Sk.misceval.callsimOrSuspendArray(type, args);
+            } else {
+                throw new Sk.builtin.TypeError("exceptions must be classes or instances deriving from BaseException");
+            }
+            return Sk.misceval.chain(exception, (error) => {
+                if (!(error instanceof Sk.builtin.BaseException)) {
+                    throw new Sk.builtin.TypeError("exception constructor must return a BaseException instance");
+                }
+                return this.gi$run(() => this.gi$throw(error, throwArgs, closeOnExit), true);
+            });
+        },
         gi$run(action, canSuspend) {
             if (this.gi$running) {
                 throw new Sk.builtin.ValueError(this.gi$kind + " already executing");
@@ -197,20 +198,21 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                     this.gi$closed = true;
                     this.curr$susp = null;
                     this.gi$yieldfrom = null;
-                    if (error instanceof Sk.builtin.StopIteration) {
+                    if (error instanceof Sk.builtin.StopIteration || this.gi$kind === "async generator" && error instanceof Sk.builtin.StopAsyncIteration) {
                         if (!Sk.__future__.python3) {
                             this.gi$ret = error.$value;
                             return undefined;
                         }
-                        const wrapped = new Sk.builtin.RuntimeError(this.gi$kind + " raised StopIteration");
+                        const wrapped = new Sk.builtin.RuntimeError(this.gi$kind + " raised " + (error instanceof Sk.builtin.StopAsyncIteration ? "StopAsyncIteration" : "StopIteration"));
                         wrapped.$cause = error;
+                        wrapped.context = error;
                         throw wrapped;
                     }
                     throw error;
                 }
             );
         },
-        gi$throw(error, throwArgs) {
+        gi$throw(error, throwArgs, closeOnExit) {
             if (this.gi$closed || !this.gi$started) {
                 this.gi$closed = true;
                 this.curr$susp = null;
@@ -227,7 +229,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
             if (!delegate) {
                 return inject(error);
             }
-            if (error instanceof Sk.builtin.GeneratorExit) {
+            if (error instanceof Sk.builtin.GeneratorExit && closeOnExit !== false) {
                 // Close the delegate first, then inject GeneratorExit into the
                 // outer frame even when delegate.close() returns normally.
                 return Sk.misceval.chain(Sk.misceval.tryCatch(
@@ -240,6 +242,21 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
             }
             return Sk.misceval.chain(Sk.misceval.tryCatch(
                 () => {
+                    // _gen_throw preserves async cleanup awaits through native
+                    // delegated frames when close_on_genexit is false.
+                    if (closeOnExit === false && delegate instanceof Sk.builtin.generator) {
+                        return Sk.misceval.chain(delegate.gi$throwArgs(throwArgs[0], throwArgs[1], throwArgs[2], false), value => {
+                            if (value === undefined) throw new Sk.builtin.StopIteration(delegate.gi$ret);
+                            return { value };
+                        });
+                    }
+                    if (closeOnExit === false && delegate instanceof Sk.builtin.coroutine_wrapper) {
+                        delegate.$coro.$checkReusable();
+                        return Sk.misceval.chain(delegate.$coro.$gen.gi$throwArgs(throwArgs[0], throwArgs[1], throwArgs[2], false), value => {
+                            if (value === undefined) throw new Sk.builtin.StopIteration(delegate.$coro.$gen.gi$ret);
+                            return { value };
+                        });
+                    }
                     const meth = Sk.abstr.lookupAttr(delegate, new Sk.builtin.str("throw"));
                     if (meth === undefined) {
                         return { error };
