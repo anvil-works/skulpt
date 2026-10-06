@@ -708,6 +708,14 @@ Sk.misceval.loadname = function (name, other, builtins) {
 };
 Sk.exportSymbol("Sk.misceval.loadname", Sk.misceval.loadname);
 
+// LOAD_BUILD_CLASS consults builtins without global-name fallback.
+Sk.misceval.loadBuildClass = function (builtins) {
+    const builder = Sk.misceval.lookupBuiltin("__build_class__", builtins);
+    if (builder === undefined) throw new Sk.builtin.NameError("__build_class__ not found");
+    return builder;
+};
+Sk.exportSymbol("Sk.misceval.loadBuildClass", Sk.misceval.loadBuildClass);
+
 // Python/ceval.c IMPORT_NAME uses only the frame's builtin __import__.
 Sk.misceval.importName = function (name, globals, locals, fromlist, level, builtins) {
     const importer = Sk.misceval.lookupBuiltin("__import__", builtins);
@@ -1532,13 +1540,6 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
     }
     const locals = Sk.misceval.namespaceToJs(ns);
 
-    // file's __name__ is class's __module__
-    if (globals["__name__"]) {
-        // some js modules haven't set their module name and we shouldn't set a dictionary value to be undefined that should be equivalent to deleting a value;
-        locals.__module__ = globals["__name__"];
-    }
-    // @todo add qualname here to pass to the code object
-
     const l_cell = cell === undefined ? {} : cell;
 
     // Look up enclosing free variables without overwriting local cells or
@@ -1548,9 +1549,22 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
     }
 
     // pass the locals to the code object which populates the namespace of the class
-    func(globals, locals, l_cell);
-
-    const classcell = locals.__classcell__ instanceof Sk.builtin.cell ? locals.__classcell__ : undefined;
+    let bodyResult;
+    if (func instanceof Sk.builtin.func) {
+        func.$classLocals = locals;
+        try {
+            bodyResult = Sk.misceval.callsimArray(func);
+        } finally {
+            delete func.$classLocals;
+        }
+    } else {
+        // Native stdlib modules supply a JS body without compiler-emitted
+        // __module__ initialization; preserve their existing buildClass API.
+        if (globals.__name__ !== undefined) locals.__module__ = globals.__name__;
+        bodyResult = func(globals, locals, l_cell);
+        if (bodyResult === undefined) bodyResult = locals.__classcell__;
+    }
+    const classcell = bodyResult instanceof Sk.builtin.cell ? bodyResult : undefined;
 
     const klass = Sk.misceval.callsimOrSuspendArray(meta, [_name, _bases, ns], kws);
 
