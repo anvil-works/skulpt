@@ -640,6 +640,14 @@ Sk.setupObjects = function (py3) {
         removeBuiltin("bytes");
         removeBuiltin("ascii");
     }
+    // Legacy extension/stub entries also need Python function objects now
+    // that builtins.__dict__ exposes their values through the real dictionary.
+    for (const name of Object.keys(Sk.builtins)) {
+        const value = Sk.builtins[name];
+        if (typeof value === "function" && value.ob$type === undefined) {
+            Sk.builtins[name] = new Sk.builtin.func(value);
+        }
+    }
     Sk.builtins.__name__ = new Sk.builtin.str(py3 ? "builtins" : "__builtin__");
     Sk.builtins = Sk.misceval.namespaceToJs(Sk.builtins);
 };
