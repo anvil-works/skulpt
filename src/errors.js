@@ -76,8 +76,8 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
         __suppress_context__: {
             $get() { return this.$suppressContext ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$; },
             $set(value) {
-                if (value === undefined) throw new Sk.builtin.TypeError("can't delete numeric/char attribute");
-                if (!(value instanceof Sk.builtin.bool)) throw new Sk.builtin.TypeError("attribute value type must be bool");
+                if (value === undefined) {throw new Sk.builtin.TypeError("can't delete numeric/char attribute");}
+                if (!(value instanceof Sk.builtin.bool)) {throw new Sk.builtin.TypeError("attribute value type must be bool");}
                 this.$suppressContext = value.v !== 0;
             },
         },
@@ -96,7 +96,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
                 }
                 const name = new Sk.builtin.str("__notes__");
                 const notes = Sk.misceval.tryCatch(() => Sk.abstr.gattr(this, name, true), error => {
-                    if (!(error instanceof Sk.builtin.AttributeError)) throw error;
+                    if (!(error instanceof Sk.builtin.AttributeError)) {throw error;}
                 });
                 return Sk.misceval.chain(notes, notes => {
                     if (notes === undefined) {
@@ -106,7 +106,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
                             return Sk.builtin.none.none$;
                         });
                     }
-                    if (!(notes instanceof Sk.builtin.list)) throw new Sk.builtin.TypeError("Cannot add note: __notes__ is not a list");
+                    if (!(notes instanceof Sk.builtin.list)) {throw new Sk.builtin.TypeError("Cannot add note: __notes__ is not a list");}
                     notes.v.push(note);
                     return Sk.builtin.none.none$;
                 });
