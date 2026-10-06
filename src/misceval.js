@@ -1572,3 +1572,15 @@ function do_prepare(meta, _name, _bases, kws, is_class) {
     }
     return ns;
 }
+
+// Python/codegen.c: interactive expressions call sys.displayhook (PRINT_EXPR).
+Sk.misceval.displayhook = function (value) {
+    return Sk.misceval.chain(Sk.importModule("sys", false, true), sys => {
+        const hook = sys.tp$getattr(new Sk.builtin.str("displayhook"));
+        if (hook === undefined) {
+            throw new Sk.builtin.RuntimeError("lost sys.displayhook");
+        }
+        return Sk.misceval.callsimOrSuspendArray(hook, [value]);
+    });
+};
+Sk.exportSymbol("Sk.misceval.displayhook", Sk.misceval.displayhook);
