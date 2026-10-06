@@ -25,4 +25,9 @@ class UnicodeEscape(unittest.TestCase):
         check('\U0001d120', br'\U0001d120')
 
 
+    def test_unused_error_handlers(self):
+        for errors in ('strict', 'replace', 'backslashreplace', 'surrogatepass', 'bogus'):
+            self.assertEqual('é'.encode('unicode_escape', errors), b'\\xe9')
+        with self.assertRaises(TypeError): 'é'.encode('unicode_escape', 1)
+
 if __name__ == '__main__': unittest.main()

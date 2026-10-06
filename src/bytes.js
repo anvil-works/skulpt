@@ -985,7 +985,9 @@ function checkErrorsIsValid(errors) {
 function strEncode(pyStr, encoding, errors) {
     const source = pyStr.$jsstr();
     encoding = normalizeEncoding(encoding);
-    checkErrorsIsValid(errors);
+    // unicode_escape can encode every Python character, so CPython never
+    // looks up the requested error handler for this codec.
+    if (encoding !== "unicode-escape") {checkErrorsIsValid(errors);}
     let uint8;
     if (encoding === "ascii") {
         uint8 = encodeAscii(source, errors);
