@@ -1597,7 +1597,7 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
 
     // builtin___build_class__ stores original bases after executing the body,
     // so this compiler-generated value wins over a body assignment.
-    if (_bases !== origBases) locals.__orig_bases__ = origBases;
+    if (_bases !== origBases) {locals.__orig_bases__ = origBases;}
     const klass = Sk.misceval.callsimOrSuspendArray(meta, [_name, _bases, ns], kws);
 
     // type.__new__ must populate the cell, including when called by a metaclass.
@@ -1627,7 +1627,7 @@ function update_bases(bases) {
             try {
                 entries = Sk.abstr.gattr(base, new Sk.builtin.str("__mro_entries__"));
             } catch (err) {
-                if (!(err instanceof Sk.builtin.AttributeError)) throw err;
+                if (!(err instanceof Sk.builtin.AttributeError)) {throw err;}
             }
         }
         if (entries === undefined) {
