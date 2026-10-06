@@ -2,15 +2,20 @@
 from _typing import TypeAliasType, TypeVar, NoDefault, ParamSpec, ParamSpecArgs, ParamSpecKwargs, TypeVarTuple, Unpack, _UnpackGenericAlias, _type_repr as _native_type_repr
 from types import GenericAlias, UnionType
 import functools
+import operator
+import collections.abc
 Union = UnionType
 
 def get_args(tp):
     if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias)):
-        return tp.__args__
+        args = tp.__args__
+        if isinstance(tp, (_GenericAlias, GenericAlias)) and _should_unflatten_callable_args(tp, args):
+            args = (list(args[:-1]), args[-1])
+        return args
     return ()
 
 def get_origin(tp):
-    if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias, ParamSpecArgs, ParamSpecKwargs)):
+    if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias, _SpecialGenericAlias, ParamSpecArgs, ParamSpecKwargs)):
         return tp.__origin__
     return None
 
@@ -132,6 +137,8 @@ def _type_check(arg, message):
         raise NotImplementedError("string type arguments require ForwardRef support")
     if isinstance(arg, _GenericAlias) and arg.__origin__ in (Generic,):
         raise TypeError(f"{arg} is not valid as type argument")
+    if arg in (Any, NoReturn):
+        return arg
     if isinstance(arg, _SpecialForm) or arg is Unpack or arg in (Generic,):
         raise TypeError(f"Plain {arg} is not valid as type argument")
     if type(arg) is tuple:
@@ -243,6 +250,8 @@ def _type_convert(arg):
 def _generic_alias_mro_entries(alias, bases):
     if isinstance(alias.__origin__, _SpecialForm):
         raise TypeError(f"Cannot subclass {alias!r}")
+    if alias._name:
+        return _BaseGenericAlias.__mro_entries__(alias, bases)
     if alias.__origin__ is Generic:
         i = bases.index(alias)
         for base in bases[i+1:]:
@@ -450,6 +459,39 @@ class _BaseGenericAlias:
         if not _root:
             raise TypeError("Cannot subclass special typing classes")
 
+    def __mro_entries__(self, bases):
+        res = []
+        if self.__origin__ not in bases:
+            res.append(self.__origin__)
+
+        # Check if any base that occurs after us in `bases` is either itself a
+        # subclass of Generic, or something which will add a subclass of Generic
+        # to `__bases__` via its `__mro_entries__`. If not, add Generic
+        # ourselves. The goal is to ensure that Generic (or a subclass) will
+        # appear exactly once in the final bases tuple. If we let it appear
+        # multiple times, we risk "can't form a consistent MRO" errors.
+        i = bases.index(self)
+        for b in bases[i+1:]:
+            if isinstance(b, _BaseGenericAlias):
+                break
+            if not isinstance(b, type):
+                meth = getattr(b, "__mro_entries__", None)
+                new_bases = meth(bases) if meth else None
+                if (
+                    isinstance(new_bases, tuple) and
+                    any(
+                        isinstance(b2, type) and issubclass(b2, Generic)
+                        for b2 in new_bases
+                    )
+                ):
+                    break
+            elif issubclass(b, Generic):
+                break
+        else:
+            res.append(Generic)
+        return tuple(res)
+
+
     def __getattr__(self, attr):
         if attr in {'__name__', '__qualname__'}:
             return self._name or self.__origin__.__name__
@@ -585,7 +627,10 @@ class _GenericAlias(_BaseGenericAlias, _root=True):
                             subargs.append(new_arg_by_param[x])
                     new_arg = old_arg[tuple(subargs)]
 
-            if _is_unpacked_typevartuple(old_arg):
+            if self.__origin__ == collections.abc.Callable and isinstance(new_arg, tuple):
+                # CPython flattens Callable parameter expressions into __args__.
+                new_args.extend(new_arg)
+            elif _is_unpacked_typevartuple(old_arg):
                 # Consider the following `_GenericAlias`, `B`:
                 #   class A(Generic[*Ts]): ...
                 #   B = A[T, *Ts]
@@ -652,3 +697,207 @@ def Concatenate(self, parameters):
     return _ConcatenateGenericAlias(self, parameters)
 
 
+
+
+class _AnyMeta(type):
+    def __instancecheck__(self, obj):
+        if self is Any:
+            raise TypeError("typing.Any cannot be used with isinstance()")
+        return super().__instancecheck__(obj)
+
+    def __repr__(self):
+        if self is Any:
+            return "typing.Any"
+        return super().__repr__()  # respect to subclasses
+
+
+class Any(metaclass=_AnyMeta):
+    """Special type indicating an unconstrained type.
+
+    - Any is assignable to every type.
+    - Any assumed to have all methods and attributes.
+    - All values are assignable to Any.
+
+    Note that all the above statements are true from the point of view of
+    static type checkers. At runtime, Any cannot be used with instance
+    checks.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        if cls is Any:
+            raise TypeError("Any cannot be instantiated")
+        return super().__new__(cls)
+
+
+@_SpecialForm
+def NoReturn(self, parameters):
+    """Special type indicating functions that never return.
+
+    Example::
+
+        from typing import NoReturn
+
+        def stop() -> NoReturn:
+            raise Exception('no way')
+
+    NoReturn can also be used as a bottom type, a type that
+    has no values. Starting in Python 3.11, the Never type should
+    be used for this concept instead. Type checkers should treat the two
+    equivalently.
+    """
+    raise TypeError(f"{self} is not subscriptable")
+
+
+def _should_unflatten_callable_args(typ, args):
+    """Internal helper for munging collections.abc.Callable's __args__.
+
+    The canonical representation for a Callable's __args__ flattens the
+    argument types, see https://github.com/python/cpython/issues/86361.
+
+    For example::
+
+        >>> import collections.abc
+        >>> P = ParamSpec('P')
+        >>> collections.abc.Callable[[int, int], str].__args__ == (int, int, str)
+        True
+        >>> collections.abc.Callable[P, str].__args__ == (P, str)
+        True
+
+    As a result, if we need to reconstruct the Callable from its __args__,
+    we need to unflatten it.
+    """
+    return (
+        typ.__origin__ is collections.abc.Callable
+        and not (len(args) == 2 and _is_param_expr(args[0]))
+    )
+
+
+class _SpecialGenericAlias(_NotIterable, _BaseGenericAlias, _root=True):
+    def __init__(self, origin, nparams, *, inst=True, name=None, defaults=()):
+        if name is None:
+            name = origin.__name__
+        super().__init__(origin, inst=inst, name=name)
+        self._nparams = nparams
+        self._defaults = defaults
+        if origin.__module__ == 'builtins':
+            self.__doc__ = f'Deprecated alias to {origin.__qualname__}.'
+        else:
+            self.__doc__ = f'Deprecated alias to {origin.__module__}.{origin.__qualname__}.'
+
+    @_tp_cache
+    def __getitem__(self, params):
+        if not isinstance(params, tuple):
+            params = (params,)
+        msg = "Parameters to generic types must be types."
+        params = tuple(_type_check(p, msg) for p in params)
+        if (self._defaults
+            and len(params) < self._nparams
+            and len(params) + len(self._defaults) >= self._nparams
+        ):
+            params = (*params, *self._defaults[len(params) - self._nparams:])
+        actual_len = len(params)
+
+        if actual_len != self._nparams:
+            if self._defaults:
+                expected = f"at least {self._nparams - len(self._defaults)}"
+            else:
+                expected = str(self._nparams)
+            if not self._nparams:
+                raise TypeError(f"{self} is not a generic class")
+            raise TypeError(f"Too {'many' if actual_len > self._nparams else 'few'} arguments for {self};"
+                            f" actual {actual_len}, expected {expected}")
+        return self.copy_with(params)
+
+    def copy_with(self, params):
+        return _GenericAlias(self.__origin__, params,
+                             name=self._name, inst=self._inst)
+
+    def __repr__(self):
+        return 'typing.' + self._name
+
+    def __subclasscheck__(self, cls):
+        if isinstance(cls, _SpecialGenericAlias):
+            return issubclass(cls.__origin__, self.__origin__)
+        if not isinstance(cls, _GenericAlias):
+            return issubclass(cls, self.__origin__)
+        return super().__subclasscheck__(cls)
+
+    def __reduce__(self):
+        return self._name
+
+    def __or__(self, right):
+        return Union[self, right]
+
+    def __ror__(self, left):
+        return Union[left, self]
+
+
+class _CallableGenericAlias(_NotIterable, _GenericAlias, _root=True):
+    def __repr__(self):
+        assert self._name == 'Callable'
+        args = self.__args__
+        if len(args) == 2 and _is_param_expr(args[0]):
+            return super().__repr__()
+        return (f'typing.Callable'
+                f'[[{", ".join([_type_repr(a) for a in args[:-1]])}], '
+                f'{_type_repr(args[-1])}]')
+
+    def __reduce__(self):
+        args = self.__args__
+        if not (len(args) == 2 and _is_param_expr(args[0])):
+            args = list(args[:-1]), args[-1]
+        return operator.getitem, (Callable, args)
+
+
+class _CallableType(_SpecialGenericAlias, _root=True):
+    def copy_with(self, params):
+        return _CallableGenericAlias(self.__origin__, params,
+                                     name=self._name, inst=self._inst)
+
+    def __getitem__(self, params):
+        if not isinstance(params, tuple) or len(params) != 2:
+            raise TypeError("Callable must be used as "
+                            "Callable[[arg, ...], result].")
+        args, result = params
+        # This relaxes what args can be on purpose to allow things like
+        # PEP 612 ParamSpec.  Responsibility for whether a user is using
+        # Callable[...] properly is deferred to static type checkers.
+        if isinstance(args, list):
+            params = (tuple(args), result)
+        else:
+            params = (args, result)
+        return self.__getitem_inner__(params)
+
+    @_tp_cache
+    def __getitem_inner__(self, params):
+        args, result = params
+        msg = "Callable[args, result]: result must be a type."
+        result = _type_check(result, msg)
+        if args is Ellipsis:
+            return self.copy_with((Ellipsis, result))
+        if not isinstance(args, tuple):
+            args = (args,)
+        args = tuple(_type_convert(arg) for arg in args)
+        params = args + (result,)
+        return self.copy_with(params)
+
+
+Callable = _CallableType(collections.abc.Callable, 2)
+List = _SpecialGenericAlias(list, 1, inst=False)
+
+
+class _TupleType(_SpecialGenericAlias, _root=True):
+    @_tp_cache
+    def __getitem__(self, params):
+        if not isinstance(params, tuple):
+            params = (params,)
+        if len(params) >= 2 and params[-1] is ...:
+            msg = "Tuple[t, ...]: t must be a type."
+            params = tuple(_type_check(p, msg) for p in params[:-1])
+            return self.copy_with((*params, Ellipsis))
+        msg = "Tuple[t0, t1, ...]: each t must be a type."
+        params = tuple(_type_check(p, msg) for p in params)
+        return self.copy_with(params)
+
+
+Tuple = _TupleType(tuple, -1, inst=False, name="Tuple")
