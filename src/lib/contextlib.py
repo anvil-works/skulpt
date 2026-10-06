@@ -1,14 +1,12 @@
 # CPython 3.14 Lib/contextlib.py at 18ef0f0cb52; Python-2.0 license.
-# Generator context managers used by compiler-generated with/async-with paths.
+# Generator context managers used by compiler-generated with paths.
 # ExitStack and unrelated stream/filesystem helpers remain unsupported.
 import abc
 import collections.abc as _collections_abc
 from functools import wraps
 from types import GenericAlias
 
-__all__ = ["AbstractContextManager", "AbstractAsyncContextManager",
-           "ContextDecorator", "AsyncContextDecorator", "contextmanager",
-           "asynccontextmanager", "closing", "aclosing", "nullcontext"]
+__all__ = ["AbstractContextManager", "ContextDecorator", "contextmanager", "closing", "nullcontext"]
 
 class AbstractContextManager(abc.ABC):
 
@@ -34,29 +32,6 @@ class AbstractContextManager(abc.ABC):
         return NotImplemented
 
 
-class AbstractAsyncContextManager(abc.ABC):
-
-    """An abstract base class for asynchronous context managers."""
-
-    __class_getitem__ = classmethod(GenericAlias)
-
-    __slots__ = ()
-
-    async def __aenter__(self):
-        """Return `self` upon entering the runtime context."""
-        return self
-
-    @abc.abstractmethod
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        """Raise any exception triggered within the runtime context."""
-        return None
-
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls is AbstractAsyncContextManager:
-            return _collections_abc._check_methods(C, "__aenter__",
-                                                   "__aexit__")
-        return NotImplemented
 
 
 class ContextDecorator(object):
@@ -82,20 +57,6 @@ class ContextDecorator(object):
         return inner
 
 
-class AsyncContextDecorator(object):
-    "A base class or mixin that enables async context managers to work as decorators."
-
-    def _recreate_cm(self):
-        """Return a recreated instance of self.
-        """
-        return self
-
-    def __call__(self, func):
-        @wraps(func)
-        async def inner(*args, **kwds):
-            async with self._recreate_cm():
-                return await func(*args, **kwds)
-        return inner
 
 
 class _GeneratorContextManagerBase:
@@ -196,78 +157,6 @@ class _GeneratorContextManager(
                 self.gen.close()
 
 
-class _AsyncGeneratorContextManager(
-    _GeneratorContextManagerBase,
-    AbstractAsyncContextManager,
-    AsyncContextDecorator,
-):
-    """Helper for @asynccontextmanager decorator."""
-
-    async def __aenter__(self):
-        # do not keep args and kwds alive unnecessarily
-        # they are only needed for recreation, which is not possible anymore
-        del self.args, self.kwds, self.func
-        try:
-            return await anext(self.gen)
-        except StopAsyncIteration:
-            raise RuntimeError("generator didn't yield") from None
-
-    async def __aexit__(self, typ, value, traceback):
-        if typ is None:
-            try:
-                await anext(self.gen)
-            except StopAsyncIteration:
-                return False
-            else:
-                try:
-                    raise RuntimeError("generator didn't stop")
-                finally:
-                    await self.gen.aclose()
-        else:
-            if value is None:
-                # Need to force instantiation so we can reliably
-                # tell if we get the same exception back
-                value = typ()
-            try:
-                await self.gen.athrow(value)
-            except StopAsyncIteration as exc:
-                # Suppress StopIteration *unless* it's the same exception that
-                # was passed to throw().  This prevents a StopIteration
-                # raised inside the "with" statement from being suppressed.
-                return exc is not value
-            except RuntimeError as exc:
-                # Don't re-raise the passed in exception. (issue27122)
-                if exc is value:
-                    exc.__traceback__ = traceback
-                    return False
-                # Avoid suppressing if a Stop(Async)Iteration exception
-                # was passed to athrow() and later wrapped into a RuntimeError
-                # (see PEP 479 for sync generators; async generators also
-                # have this behavior). But do this only if the exception wrapped
-                # by the RuntimeError is actually Stop(Async)Iteration (see
-                # issue29692).
-                if (
-                    isinstance(value, (StopIteration, StopAsyncIteration))
-                    and exc.__cause__ is value
-                ):
-                    value.__traceback__ = traceback
-                    return False
-                raise
-            except BaseException as exc:
-                # only re-raise if it's *not* the exception that was
-                # passed to throw(), because __exit__() must not raise
-                # an exception unless __exit__() itself failed.  But throw()
-                # has to raise the exception to signal propagation, so this
-                # fixes the impedance mismatch between the throw() protocol
-                # and the __exit__() protocol.
-                if exc is not value:
-                    raise
-                exc.__traceback__ = traceback
-                return False
-            try:
-                raise RuntimeError("generator didn't stop after athrow()")
-            finally:
-                await self.gen.aclose()
 
 
 def contextmanager(func):
@@ -303,37 +192,6 @@ def contextmanager(func):
     return helper
 
 
-def asynccontextmanager(func):
-    """@asynccontextmanager decorator.
-
-    Typical usage:
-
-        @asynccontextmanager
-        async def some_async_generator(<arguments>):
-            <setup>
-            try:
-                yield <value>
-            finally:
-                <cleanup>
-
-    This makes this:
-
-        async with some_async_generator(<arguments>) as <variable>:
-            <body>
-
-    equivalent to this:
-
-        <setup>
-        try:
-            <variable> = <value>
-            <body>
-        finally:
-            <cleanup>
-    """
-    @wraps(func)
-    def helper(*args, **kwds):
-        return _AsyncGeneratorContextManager(func, args, kwds)
-    return helper
 
 
 class closing(AbstractContextManager):
@@ -361,33 +219,9 @@ class closing(AbstractContextManager):
         self.thing.close()
 
 
-class aclosing(AbstractAsyncContextManager):
-    """Async context manager for safely finalizing an asynchronously cleaned-up
-    resource such as an async generator, calling its ``aclose()`` method.
-
-    Code like this:
-
-        async with aclosing(<module>.fetch(<arguments>)) as agen:
-            <block>
-
-    is equivalent to this:
-
-        agen = <module>.fetch(<arguments>)
-        try:
-            <block>
-        finally:
-            await agen.aclose()
-
-    """
-    def __init__(self, thing):
-        self.thing = thing
-    async def __aenter__(self):
-        return self.thing
-    async def __aexit__(self, *exc_info):
-        await self.thing.aclose()
 
 
-class nullcontext(AbstractContextManager, AbstractAsyncContextManager):
+class nullcontext(AbstractContextManager):
     """Context manager that does no additional processing.
 
     Used as a stand-in for a normal context manager, when a particular
@@ -406,10 +240,3 @@ class nullcontext(AbstractContextManager, AbstractAsyncContextManager):
 
     def __exit__(self, *excinfo):
         pass
-
-    async def __aenter__(self):
-        return self.enter_result
-
-    async def __aexit__(self, *excinfo):
-        pass
-
