@@ -1277,7 +1277,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
     var output = (localsToSave.length > 0 ? ("var " + localsToSave.join(",") + ";") : "") +
                  "var $wakeFromSuspension = function() {" +
                     "var susp = "+unit.scopename+".$wakingSuspension; "+unit.scopename+".$wakingSuspension = undefined;" +
-                    "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $exc=susp.$exc; $err=susp.$err; $postfinally=susp.$postfinally;" +
+                    "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $builtins=susp.$builtins; $exc=susp.$exc; $err=susp.$err; $postfinally=susp.$postfinally;" +
                     "$currLineNo=susp.$lineno; $currColNo=susp.$colno; Sk.lastYield=Date.now();" +
                     (hasCell?"$cell=susp.$cell;":"");
 
@@ -1297,7 +1297,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
     output += "var $saveSuspension = function($child, $filename, $lineno, $colno) {" +
                 "var susp = new Sk.misceval.Suspension(); susp.child=$child;" +
                 "susp.resume=function(){"+unit.scopename+".$wakingSuspension=susp; return "+unit.scopename+".call("+(unit.ste.generator?"$gen":"$self")+"); };" +
-                "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$exc=$exc;susp.$err=$err;susp.$postfinally=$postfinally;" +
+                "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$builtins=$builtins;susp.$exc=$exc;susp.$err=$err;susp.$postfinally=$postfinally;" +
                 "susp.$filename=$filename;susp.$lineno=$lineno;susp.$colno=$colno;" +
                 "susp.optional=susp.child.optional;" +
                 (hasCell ? "susp.$cell=$cell;" : "");
@@ -1340,7 +1340,7 @@ Compiler.prototype.outputAllUnits = function () {
             ret += frame;
             ret += unit.varDeclsCode;
             if (unit.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock) {
-                ret += "$loc=Sk.misceval.namespaceToJs($loc);$gbl=Sk.misceval.namespaceToJs($gbl,true);Sk.globals=$gbl;";
+                ret += "$loc=Sk.misceval.namespaceToJs($loc);$gbl=Sk.misceval.namespaceToJs($gbl,true);Sk.globals=$gbl;if(!$waking){$builtins=$gbl.__builtins__===undefined?Sk.misceval.namespaceDict(Sk.builtins):Sk.misceval.getBuiltins($gbl);}";
             }
             ret += unit.switchCode;
         }
@@ -1425,7 +1425,7 @@ Compiler.prototype.outputFrame = function (unit) {
     if (unit.ste.blockType === constants.ClassBlock) {
         code += "$loc=Sk.misceval.namespaceToJs($loc);";
     }
-    code += "Sk.misceval.currentFrame={getGlobals:function(){return $gbl;},getLocals:function(){switch($localsScope){";
+    code += "Sk.misceval.currentFrame={getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getLocals:function(){switch($localsScope){";
     for (const scope of unit.comprehensions) {
         code += "case " + scope.id + ":return " + snapshot(scopeBindings(scope)) + ";";
     }
@@ -1938,7 +1938,7 @@ Compiler.prototype.cimport = function (s) {
     var n = s.names.length;
     for (i = 0; i < n; ++i) {
         alias = s.names[i];
-        out("$ret = Sk.builtin.__import__(", JSON.stringify(alias.name), ",$gbl,$loc,[],",(Sk.__future__.absolute_import?0:-1),");");
+        out("$ret = Sk.misceval.importName(", JSON.stringify(alias.name), ",$gbl,Sk.misceval.currentFrame.getLocals(),null,",(Sk.__future__.python3 || Sk.__future__.absolute_import?0:-1),",$builtins);");
 
         this._checkSuspension(s);
 
@@ -1967,13 +1967,13 @@ Compiler.prototype.cfromimport = function (s) {
     var n = s.names.length;
     var names = [];
     var level = s.level;
-    if (level == 0 && !Sk.__future__.absolute_import) {
+    if (level == 0 && !Sk.__future__.python3 && !Sk.__future__.absolute_import) {
         level = -1;
     }
     for (i = 0; i < n; ++i) {
         names[i] = "'" + s.names[i].name + "'";
     }
-    out("$ret = Sk.builtin.__import__(", JSON.stringify(s.module || ""), ",$gbl,$loc,[", names, "],",level,");");
+    out("$ret = Sk.misceval.importName(", JSON.stringify(s.module || ""), ",$gbl,Sk.misceval.currentFrame.getLocals(),[", names, "],",level,",$builtins);");
 
     this._checkSuspension(s);
 
@@ -2134,7 +2134,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // note special usage of 'this' to avoid having to slice globals into
     // all function invocations in call
     // (fastcall doesn't need to do this, as 'this' is the func object)
-    this.u.varDeclsCode += "var $blk="+entryBlock+",$exc=[],$loc={},$cell={" + cellNames.map(name => name + ":undefined").join(",") + "},$gbl=this && this.func_globals" + (hasFree?",$free=this && this.func_closure":"") + ",$err=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
+    this.u.varDeclsCode += "var $blk="+entryBlock+",$exc=[],$loc={},$cell={" + cellNames.map(name => name + ":undefined").join(",") + "},$gbl=this && this.func_globals,$builtins=this && this.func_builtins" + (hasFree?",$free=this && this.func_closure":"") + ",$err=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
     if (Sk.execLimit !== null) {
         this.u.varDeclsCode += "if (typeof Sk.execStart === 'undefined') {Sk.execStart = Date.now()}";
     }
@@ -2564,7 +2564,7 @@ Compiler.prototype.cclass = function (s) {
     scopename = this.enterScope(s.name, s, s.lineno);
     entryBlock = this.newBlock("class entry");
 
-    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($globals,$locals,$cell){var $gbl=$globals,$loc=$locals,$free=$cell;";
+    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($globals,$locals,$cell){var $gbl=$globals,$loc=$locals,$free=$cell,$builtins=Sk.misceval.currentFrame.getBuiltins();";
     const needsClassClosure = this.u.ste.needsClassClosure;
     if (needsClassClosure) {
         this.u.prefixCode += "var $classcell={__class__:undefined};";
@@ -2879,7 +2879,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
                 case "Load":
                     // can't be || for loc.x = 0 or null
                     const local = this._gr("loadlocal", mangled);
-                    return this._gr("loadname", local, "!==undefined?", local, ":Sk.misceval.loadname('", mangledNoPre, "',$gbl);");
+                    return this._gr("loadname", local, "!==undefined?", local, ":Sk.misceval.loadname('", mangledNoPre, "',$gbl,$builtins);");
                 case "Store":
                     out(mangled, "=", dataToStore, ";");
                     break;
@@ -2895,7 +2895,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
         case OP_GLOBAL:
             switch (ctx) {
                 case "Load":
-                    return this._gr("loadgbl", "Sk.misceval.loadname('", mangledNoPre, "',$gbl)");
+                    return this._gr("loadgbl", "Sk.misceval.loadname('", mangledNoPre, "',$gbl,$builtins)");
                 case "Store":
                     out("$gbl.", mangledNoPre, "=", dataToStore, ";");
                     break;
@@ -3071,7 +3071,7 @@ Compiler.prototype.cmod = function (mod) {
     var entryBlock = this.newBlock("module entry");
     this.u.prefixCode = "var " + modf + "=(function($forcegbl, $forceloc){";
     this.u.varDeclsCode =
-        "var $gbl = $forcegbl || {}, $blk=" + entryBlock +
+        "var $gbl = $forcegbl || {}, $builtins, $blk=" + entryBlock +
         ",$exc=[],$loc=$forceloc || $gbl,$cell={},$err=undefined;" +
         "var $ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
 
