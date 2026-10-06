@@ -177,6 +177,9 @@ function slotFuncNoArgsWithCheck(dunderName, checkFunc, checkMsg, f) {
             const func = dunderFunc.tp$descr_get ? dunderFunc.tp$descr_get(this, this.ob$type) : dunderFunc;
             let res = Sk.misceval.callsimArray(func, []);
             if (!checkFunc(res)) {
+                if (Sk.__future__.python3 && dunderName === "__repr__") {
+                    throw new Sk.builtin.TypeError("__repr__ returned non-string (type " + Sk.abstr.typeName(res) + ")");
+                }
                 throw new Sk.builtin.TypeError(dunderName + " should return " + checkMsg + " (returned " + Sk.abstr.typeName(res) + ")");
             }
             // f is might be a function that changes the result to a js object like for nb$bool which returns a Boolean
