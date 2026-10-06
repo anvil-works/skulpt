@@ -690,7 +690,8 @@ Python 2 retains its existing missing-attribute behavior. Async generators expos
 ag_suspended from their compiled frame state.
 
 Thirty-five synchronous and 27 asynchronous CPython contextlib tests, plus six
-unchanged test_with protocol-error cases, pass in both runtimes. Test bodies are
+unchanged test_with protocol-error cases and a qualified-owner regression, pass
+in both runtimes. Test bodies are
 unchanged; docstring decorators and assertion/support infrastructure are adapted.
 Slots, traceback formatting and weakref/GC cases remain deferred. ExitStack,
 stream redirection and filesystem context helpers are outside this increment.
