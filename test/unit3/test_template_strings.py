@@ -571,6 +571,28 @@ class TemplateCompilerRegression(HarnessCase, TStringBaseCase):
         self.assertEqual(template.values, (value, 2, 3))
         self.assertEqual(template.interpolations[2].format_spec, '4')
 
+    # Additional CPython-checked cases for the upstream evaluation-order contract.
+    def test_format_spec_preserves_interpolation_value(self):
+        x = 1
+        template = t'{x:{(x:=2)}}'
+        self.assertEqual(template.values, (1,))
+        self.assertEqual(template.interpolations[0].format_spec, '2')
+        x = 1
+        self.assertEqual(f'{x:{(x:=2)}}', ' 1')
+
+    def test_constructor_errors_match_cpython(self):
+        with self.assertRaises(ValueError):
+            Interpolation(0, 'x', 'bad', 123)
+        for create in (Template, lambda **kwargs: Template.__new__(Template, **kwargs)):
+            with self.assertRaisesRegex(TypeError, r'only accepts \*args arguments'):
+                create(**{})
+        class Outer:
+            class Bad: pass
+        for create in (lambda: Template(Outer.Bad()), lambda: Template() + Outer.Bad(),
+                       lambda: Interpolation(0, conversion=Outer.Bad())):
+            with self.assertRaisesRegex(TypeError, 'Outer.Bad'):
+                create()
+
     def test_native_constructor_validation_and_reduction(self):
         for field in ('expression', 'conversion', 'format_spec'):
             with self.assertRaises(TypeError):
@@ -627,6 +649,17 @@ class TemplateUnparseCases(ASTTestCase):
         )
 
 class TemplateASTCompilation(TStringBaseCase, HarnessCase):
+    def test_adjacent_string_ast_entries(self):
+        import ast
+        tree = ast.fix_missing_locations(ast.Expression(ast.TemplateStr([
+            ast.Constant('a'), ast.Constant('b')])))
+        result = eval(compile(tree, '<template>', 'eval'))
+        self.assertEqual(result.strings, ('a', 'b'))
+        self.assertEqual(result.interpolations, ())
+        self.assertEqual(list(result), ['a'])
+        self.assertEqual((result + Template('c')).strings, ('a', 'bc'))
+        self.assertEqual((Template('c') + result).strings, ('ca', 'b'))
+
     def test_missing_expression_metadata(self):
         import ast
         tree = ast.fix_missing_locations(ast.Expression(ast.TemplateStr([
