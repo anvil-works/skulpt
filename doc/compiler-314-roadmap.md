@@ -373,3 +373,26 @@ Initial raises are distinguished from propagation through caller frames, so a
 generator reraising an exception with no context does not acquire the current
 caller's handled exception. Catch emitters share this policy. PEP 479 and invalid-__anext__ wrappers retain their original cause/context and
 set suppression before propagation.
+
+
+## Traceback objects and exception information
+
+`stu-dev/compiler/tracebacks` adds native traceback nodes with frame/code/line
+identity, mutable cycle-checked tb_next, TracebackType construction,
+BaseException.__traceback__/with_traceback, sys.exc_info and the traceback
+argument passed to context-manager exit. Compiler catch lowering prepends
+call-site nodes once per propagation/frame; bare raise preserves the existing
+node and explicit raise adds its location. Exception group subsets share native
+traceback identity, while later propagation prepends independent nodes. Existing
+JavaScript error rendering retains its legacy array without mutating siblings.
+Frame identity survives suspension; code, line, globals, builtins and back-frame
+getters are provided. Returned ordinary frames retain their back frame; inactive
+generator/coroutine frames have no caller back frame.
+
+Fourteen unchanged CPython 3.14 methods from test_exceptions, test_types, test_sys
+and test_exception_group at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 plus three
+CPython-checked regressions cover the native descriptor, frame and group contracts.
+JavaScript-generated traceback/frame bytecode offsets and frame locals proxies
+raise explicit NotImplementedError until those compiler metadata/runtime
+increments land. Frame tracing/line jumps, frame clearing, sys._getframe and
+traceback formatting modules remain separate work.

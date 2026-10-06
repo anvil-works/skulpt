@@ -35,6 +35,13 @@ var $builtinmodule = function (name) {
         });
     }
 
+    sys.exc_info = new Sk.builtin.func(function () {
+        Sk.abstr.checkArgsLen("exc_info", arguments, 0, 0);
+        const error = Sk.misceval.getException();
+        const none = Sk.builtin.none.none$;
+        return new Sk.builtin.tuple(error ? [error.ob$type, error, error.$traceback || none] : [none, none, none]);
+    });
+
     sys.modules = Sk.sysmodules;
 
     sys.path = Sk.realsyspath;

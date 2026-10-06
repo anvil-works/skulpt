@@ -26,6 +26,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
         this.cause = null;
         this.$suppressContext = false;
         this.context = null;
+        this.$traceback = null;
         this.$d = new Sk.builtin.dict();
     },
     slots: /**@lends {BaseException}*/ {
@@ -82,11 +83,28 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
             },
         },
         __dict__: Sk.generic.getSetDict,
-        /**@todo */
-        // __traceback__: {},
-        // __cause__: {}
+        __traceback__: {
+            $get() { return this.$traceback || Sk.builtin.none.none$; },
+            $set(value) {
+                checkDeleting(value, "__traceback__");
+                if (value !== Sk.builtin.none.none$ && !(value instanceof Sk.builtin.traceback)) {
+                    throw new Sk.builtin.TypeError("__traceback__ must be a traceback or None");
+                }
+                this.$traceback = value;
+                this.$tracebackFrame = undefined;
+                if (value === Sk.builtin.none.none$) this.traceback = [];
+            },
+        },
     },
     methods: {
+        with_traceback: {
+            $meth(traceback) {
+                const descriptor = Sk.builtin.BaseException.prototype.__traceback__;
+                descriptor.tp$descr_set(this, traceback);
+                return this;
+            },
+            $flags: { OneArg: true },
+        },
         // Objects/exceptions.c: BaseException_add_note_impl uses optional attribute
         // lookup and the native list append, including for list subclasses.
         add_note: {
@@ -469,11 +487,7 @@ Sk.builtin.ExternalError = Sk.abstr.buildNativeClass("ExternalError", {
     base: Exception,
 });
 
-// TODO: Extract into sys.exc_info(). Work out how the heck
-// to find out what exceptions are being processed by parent stack frames...
-Sk.builtin.getExcInfo = function (e) {
-    const v = [e.ob$type || Sk.builtin.none.none$, e, Sk.builtin.none.none$];
-    // TODO create a Traceback object for the third tuple element
-
-    return new Sk.builtin.tuple(v);
+// Context managers receive the same native traceback object as sys.exc_info.
+Sk.builtin.getExcInfo = function (error) {
+    return new Sk.builtin.tuple([error.ob$type, error, error.$traceback || Sk.builtin.none.none$]);
 };
