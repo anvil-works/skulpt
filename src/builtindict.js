@@ -536,6 +536,8 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
     },
 });
 
+const asyncIterationBuiltins = { aiter: Sk.builtins.aiter, anext: Sk.builtins.anext };
+
 // function used for exec and eval
 function executionNamespaces(globals, locals) {
     const implicitGlobals = globals === undefined || Sk.builtin.checkNone(globals);
@@ -569,6 +571,8 @@ Sk.setupObjects = function (py3) {
         }
     };
     if (py3) {
+        Sk.builtins.aiter = asyncIterationBuiltins.aiter;
+        Sk.builtins.anext = asyncIterationBuiltins.anext;
         Sk.builtins["filter"] = Sk.builtin.filter_;
         Sk.builtins["map"] = Sk.builtin.map_;
         Sk.builtins["zip"] = Sk.builtin.zip_;
