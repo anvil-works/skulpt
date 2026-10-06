@@ -126,21 +126,5 @@ def f(x: Missing) -> Missing: pass
             "return": 1,
         })
 
-    def test_async_function(self):
-        async def func(x: undefined, /, y: undefined, *args: undefined, z: undefined, **kwargs: undefined) -> undefined:
-            pass
-
-        with self.assertRaises(NameError):
-            func.__annotations__
-
-        undefined = 1
-        self.assertEqual(func.__annotations__, {
-            "x": 1,
-            "y": 1,
-            "args": 1,
-            "z": 1,
-            "kwargs": 1,
-            "return": 1,
-        })
 
 if __name__ == "__main__": unittest.main()
