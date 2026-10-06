@@ -149,7 +149,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             },
             $set(value) {
                 // Objects/funcobject.c: func_set_code; closure cells retain their order.
-                if (!(value instanceof Sk.builtin.code)) throw new Sk.builtin.TypeError("__code__ must be set to a code object");
+                if (!(value instanceof Sk.builtin.code)) {throw new Sk.builtin.TypeError("__code__ must be set to a code object");}
                 const closure = this.$getClosure();
                 const cells = closure === Sk.builtin.none.none$ ? [] : closure.v;
                 const metadata = value.$jsCode.$metadata;
@@ -228,8 +228,8 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
     },
     proto: {
         $getClosure() {
-            if (!this.func_code.$metadata) throw new Sk.builtin.AttributeError("function has no attribute '__closure__'");
-            if (this.$closure !== undefined) return this.$closure;
+            if (!this.func_code.$metadata) {throw new Sk.builtin.AttributeError("function has no attribute '__closure__'");}
+            if (this.$closure !== undefined) {return this.$closure;}
             const names = this.func_code.$metadata.freevars;
             return this.$closure = names.length ? new Sk.builtin.tuple(names.map(name =>
                 Sk.builtin.cell.fromClosure(this.func_closure, Sk.fixReserved(name)))) : Sk.builtin.none.none$;
