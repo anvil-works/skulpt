@@ -3,6 +3,9 @@ import types
 import unittest
 
 # inspect's code flag constants, copied as harness fixtures until inspect is ported.
+class support:
+    MISSING_C_DOCSTRINGS = False
+
 class inspect:
     CO_GENERATOR = 0x20
     CO_COROUTINE = 0x80
@@ -57,6 +60,70 @@ def run_async__await__(coro):
 
 
 class CoroutineTest(unittest.TestCase):
+    def test_coroutine_names(self):
+        async def f(): pass
+        f.__name__ = 'custom'
+        f.__qualname__ = 'qualified'
+        coro = f()
+        self.assertEqual(coro.__name__, 'custom')
+        self.assertEqual(coro.__qualname__, 'qualified')
+        class Name(str): pass
+        name = Name('new')
+        coro.__name__ = name
+        coro.__qualname__ = name
+        self.assertIs(coro.__name__, name)
+        self.assertIs(coro.__qualname__, name)
+        for attribute in ['__name__', '__qualname__']:
+            with self.assertRaises(TypeError): setattr(coro, attribute, 1)
+            with self.assertRaises(TypeError): delattr(coro, attribute)
+        coro.close()
+
+    def test_corotype_1(self):
+        ct = types.CoroutineType
+        if not support.MISSING_C_DOCSTRINGS:
+            self.assertIn('into coroutine', ct.send.__doc__)
+            self.assertIn('inside coroutine', ct.close.__doc__)
+            self.assertIn('in coroutine', ct.throw.__doc__)
+            self.assertIn('of the coroutine', ct.__dict__['__name__'].__doc__)
+            self.assertIn('of the coroutine', ct.__dict__['__qualname__'].__doc__)
+        self.assertEqual(ct.__name__, 'coroutine')
+
+        async def f(): pass
+        c = f()
+        self.assertIn('coroutine object', repr(c))
+        c.close()
+
+    def test_custom_await_delegate_and_next_only_iterator(self):
+        class Awaitable:
+            def __init__(self): self.iterator = iter(self.values())
+            def values(self):
+                yield 1
+                return 42
+            def __await__(self): return self.iterator
+        value = Awaitable()
+        async def f(): return await value
+        coro = f()
+        self.assertEqual(coro.send(None), 1)
+        self.assertIs(coro.cr_await, value.iterator)
+        with self.assertRaises(StopIteration) as cm: coro.send(None)
+        self.assertEqual(cm.exception.value, 42)
+        self.assertIsNone(coro.cr_await)
+        class NextOnly:
+            def __next__(self): raise StopIteration(42)
+        class Custom:
+            def __await__(self): return NextOnly()
+        async def g(): return await Custom()
+        self.assertEqual(run_async(g()), ([], 42))
+
+    def test_coroutine_close_returns_value(self):
+        async def f():
+            try: await AsyncYield(1)
+            except GeneratorExit: return 42
+        coro = f()
+        self.assertEqual(coro.send(None), 1)
+        self.assertEqual(coro.close(), 42)
+        self.assertIsNone(coro.close())
+
     def test_async_definition_and_await_scope(self):
         for source in ['await thing', 'def f():\n await thing',
                        'async def f():\n yield from thing',
