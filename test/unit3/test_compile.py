@@ -2,6 +2,7 @@
 # Selected method bodies and assertions are unchanged.
 import unittest
 import textwrap
+import types
 
 # Global fixture from CPython test_builtin.py.
 A_GLOBAL_VALUE = 123
@@ -339,6 +340,96 @@ class TestSpecifics(unittest.TestCase):
         self.assertEqual(eval(code), '# -*- coding: iso8859-15 -*-\n\xc2\xa4')
         code = b'"""\\\n# -*- coding: iso8859-15 -*-\n\xc2\xa4"""\n'
         self.assertEqual(eval(code), '# -*- coding: iso8859-15 -*-\n\xa4')
+
+    # CPython test_builtin.py custom-builtin methods, unchanged.
+    def test_exec_globals(self):
+        code = compile("print('Hello World!')", "", "exec")
+        # no builtin function
+        self.assertRaisesRegex(NameError, "name 'print' is not defined",
+                               exec, code, {'__builtins__': {}})
+        # __builtins__ must be a mapping type
+        self.assertRaises(TypeError,
+                          exec, code, {'__builtins__': 123})
+    def test_exec_globals_error_on_get(self):
+        # custom `globals` or `builtins` can raise errors on item access
+        class setonlyerror(Exception):
+            pass
+
+        class setonlydict(dict):
+            def __getitem__(self, key):
+                raise setonlyerror
+
+        # globals' `__getitem__` raises
+        code = compile("globalname", "test", "exec")
+        self.assertRaises(setonlyerror,
+                          exec, code, setonlydict({'globalname': 1}))
+
+        # builtins' `__getitem__` raises
+        code = compile("superglobal", "test", "exec")
+        self.assertRaises(setonlyerror, exec, code,
+                          {'__builtins__': setonlydict({'superglobal': 1})})
+    def test_exec_globals_dict_subclass(self):
+        class customdict(dict):  # this one should not do anything fancy
+            pass
+
+        code = compile("superglobal", "test", "exec")
+        # works correctly
+        exec(code, {'__builtins__': customdict({'superglobal': 1})})
+        # custom builtins dict subclass is missing key
+        self.assertRaisesRegex(NameError, "name 'superglobal' is not defined",
+                               exec, code, {'__builtins__': customdict()})
+    def test_eval_builtins_mapping(self):
+        code = compile("superglobal", "test", "eval")
+        # works correctly
+        ns = {'__builtins__': types.MappingProxyType({'superglobal': 1})}
+        self.assertEqual(eval(code, ns), 1)
+        # custom builtins mapping is missing key
+        ns = {'__builtins__': types.MappingProxyType({})}
+        self.assertRaisesRegex(NameError, "name 'superglobal' is not defined",
+                               eval, code, ns)
+    def test_exec_builtins_mapping_import(self):
+        code = compile("import foo.bar", "test", "exec")
+        ns = {'__builtins__': types.MappingProxyType({})}
+        self.assertRaisesRegex(ImportError, "__import__ not found", exec, code, ns)
+        ns = {'__builtins__': types.MappingProxyType({'__import__': lambda *args: args})}
+        exec(code, ns)
+        self.assertEqual(ns['foo'], ('foo.bar', ns, ns, None, 0))
+
+    # CPython Objects/funcobject.c function builtin capture / frame lifetime.
+    def test_captured_builtin_namespace(self):
+        original = {'value': 1}
+        ns = {'__builtins__': original}
+        exec('def f(): return value\ndef g():\n yield value\n yield value', ns)
+        ns['__builtins__'] = {'value': 2}
+        self.assertEqual(ns['f'](), 1)
+        self.assertIs(ns['f'].__builtins__, original)
+        with self.assertRaises(AttributeError):
+            ns['f'].__builtins__ = {}
+        gen = ns['g']()
+        self.assertEqual(next(gen), 1)
+        original['value'] = 3
+        self.assertEqual(next(gen), 3)
+        self.assertEqual(ns['f'](), 3)
+        exec('def h(): return value', ns)
+        self.assertEqual(ns['h'](), 2)
+
+    def test_module_builtin_namespace(self):
+        import builtins
+        self.assertEqual(eval('len([1, 2])', {'__builtins__': builtins}), 2)
+        ns = {'__builtins__': builtins}
+        exec('def f(): return len([1, 2])', ns)
+        # Native module.__dict__ identity is covered by its separate increment.
+        self.assertEqual(ns['f'](), 2)
+
+    def test_import_hook_namespace_and_arguments(self):
+        events = []
+        def hook(*args):
+            events.append(args)
+            return {'answer': 42}
+        ns = {'__builtins__': {'__import__': hook}}
+        exec('import package', ns)
+        self.assertEqual(events[0], ('package', ns, ns, None, 0))
+        self.assertEqual(ns['package'], {'answer': 42})
 
 if __name__ == "__main__":
     unittest.main()
