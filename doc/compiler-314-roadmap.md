@@ -790,3 +790,9 @@ Rich-comparison review also corrects the native dictionary-view equality slot:
 unequal view lengths return False explicitly instead of leaking JavaScript
 undefined. CPython's existing test_keys_contained and its complete key/item-view
 comparison helper cover this case through compiled expressions.
+
+## Exception lookup metadata
+
+`stu-dev/compiler/exception-metadata` adds keyword-only `NameError.name` and `AttributeError.name`/`obj`, retaining ordinary exception arguments. Compiled `LOAD_ATTR` and augmented reads use the same runtime lookup as builtin `getattr`; missing lookups and user-raised errors acquire context through CPython's `_PyObject_SetAttributeErrorContext` rules. Explicit metadata, including `None`, remains intact. Missing globals, deleted names, and unbound free variables carry their identifier, corresponding to `_PyEval_FormatExcCheckArg`. Local `UnboundLocalError` still has no inferred name, as in CPython.
+
+Four complete methods from the pinned `Lib/test/test_exceptions.py` cover constructor attributes, missing names, attribute reads, methods, and direct `object.__getattribute__`. Three focused CPython-checked regressions cover user exceptions, explicit context, keyword inheritance/deletion and compiler name failures. All eleven exception metadata/notes tests pass in both interpreters; the existing notes/chaining tests are retained. These fields are prerequisites for the upstream `annotationlib` forward-reference implementation.

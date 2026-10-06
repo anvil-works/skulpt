@@ -713,7 +713,8 @@ Sk.exportSymbol("Sk.misceval.lookupBuiltin", Sk.misceval.lookupBuiltin);
 function loadBuiltinName(name, builtins) {
     const value = lookupMapping(name, builtins);
     if (value !== undefined) {return value;}
-    throw new Sk.builtin.NameError("name '" + Sk.unfixReserved(name) + "' is not defined");
+    const identifier = Sk.unfixReserved(name);
+    throw Sk.builtin.nameError("name '" + identifier + "' is not defined", identifier);
 }
 
 Sk.misceval.loadname = function (name, other, builtins) {
@@ -1466,7 +1467,7 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
                     // CPython DELETE_NAME replaces any mapping deletion
                     // failure with NameError; DELETE_GLOBAL only handles KeyError.
                     if (!globals || err instanceof Sk.builtin.KeyError) {
-                        throw new Sk.builtin.NameError("name '" + key.$jsstr() + "' is not defined");
+                        throw Sk.builtin.nameError("name '" + key.$jsstr() + "' is not defined", key);
                     }
                     throw err;
                 }

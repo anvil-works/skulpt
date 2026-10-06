@@ -206,6 +206,38 @@ function BaseExc_str() {
     return this.args.$r();
 }
 
+function exceptionFields(fields) {
+    return Object.fromEntries(fields.map((field) => [field, {
+        $get() {
+            return this["$" + field] || Sk.builtin.none.none$;
+        },
+        $set(value) {
+            this["$" + field] = value;
+        },
+    }]));
+}
+
+// NameError and AttributeError metadata are keyword-only, separate from args.
+function keywordExtends(base, name, doc, fields) {
+    return Sk.abstr.buildNativeClass(name, {
+        base,
+        constructor: function pyExc(...args) {
+            base.apply(this, args);
+        },
+        slots: {
+            tp$doc: doc,
+            tp$init(args, kws) {
+                BaseExc_init.call(this, args);
+                const values = Sk.abstr.copyKeywordsToNamedArgs(name, fields, [], kws);
+                fields.forEach((field, i) => {
+                    this["$" + field] = values[i];
+                });
+            },
+        },
+        getsets: exceptionFields(fields),
+    });
+}
+
 function complexExtends(base, name, doc, init, descriptors, str) {
     descriptors || (descriptors = []);
     const flags = init ? {} : { sk$solidBase: false };
@@ -223,19 +255,7 @@ function complexExtends(base, name, doc, init, descriptors, str) {
             });
         },
         slots,
-        getsets: Object.fromEntries(
-            descriptors.map((getset) => [
-                getset,
-                {
-                    $get() {
-                        return this["$" + getset] || Sk.builtin.none.none$;
-                    },
-                    $set(v) {
-                        this["$" + getset] = v || Sk.builtin.none.none$;
-                    },
-                },
-            ])
-        ),
+        getsets: exceptionFields(descriptors),
         flags,
     });
 }
@@ -287,7 +307,7 @@ const ZeroDivisionError = simpleExtends(
 );
 
 const AssertionError = simpleExtends(Exception, "AssertionError", "Assertion failed.");
-const AttributeError = simpleExtends(Exception, "AttributeError", "Attribute not found.");
+const AttributeError = keywordExtends(Exception, "AttributeError", "Attribute not found.", ["name", "obj"]);
 const BufferError = simpleExtends(Exception, "BufferError", "Buffer error.");
 const EOFError = simpleExtends(Exception, "EOFError", "Read beyond end of file.");
 
@@ -326,7 +346,7 @@ const KeyError = complexExtends(LookupError, "KeyError", "Mapping key not found.
 
 const MemoryError = simpleExtends(Exception, "MemoryError", "Out of memory.");
 
-const NameError = simpleExtends(Exception, "NameError", "Name not found globally.");
+const NameError = keywordExtends(Exception, "NameError", "Name not found globally.", ["name"]);
 const UnboundLocalError = simpleExtends(
     NameError,
     "UnboundLocalError",
@@ -502,4 +522,20 @@ Sk.builtin.ExternalError = Sk.abstr.buildNativeClass("ExternalError", {
 // Context managers receive the same native traceback object as sys.exc_info.
 Sk.builtin.getExcInfo = function (error) {
     return new Sk.builtin.tuple([error.ob$type, error, error.$traceback || Sk.builtin.none.none$]);
+};
+
+// _PyObject_SetAttributeErrorContext preserves explicitly supplied metadata.
+Sk.builtin.setAttributeErrorContext = function (error, obj, name) {
+    if (error instanceof AttributeError && error.$name === undefined && error.$obj === undefined) {
+        error.$name = name;
+        error.$obj = obj;
+    }
+    return error;
+};
+
+// _PyEval_FormatExcCheckArg: missing names carry the failing identifier.
+Sk.builtin.nameError = function (message, name) {
+    const error = new NameError(message);
+    error.$name = new Sk.builtin.str(name);
+    return error;
 };

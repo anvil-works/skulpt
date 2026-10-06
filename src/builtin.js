@@ -675,25 +675,15 @@ Sk.builtin.getattr = function getattr(obj, pyName, default_) {
     if (!Sk.builtin.checkString(pyName)) {
         throw new Sk.builtin.TypeError("attribute name must be string");
     }
-    const res = Sk.misceval.tryCatch(
-        () => obj.tp$getattr(pyName, true),
-        (e) => {
-            if (e instanceof Sk.builtin.AttributeError) {
-                return undefined;
-            } else {
-                throw e;
-            }
-        }
-    );
-    return Sk.misceval.chain(res, (r) => {
-        if (r === undefined) {
-            if (default_ !== undefined) {
+    return Sk.misceval.tryCatch(
+        () => Sk.abstr.gattr(obj, pyName, true),
+        (error) => {
+            if (default_ !== undefined && error instanceof Sk.builtin.AttributeError) {
                 return default_;
             }
-            throw new Sk.builtin.AttributeError(obj.sk$attrError() + " has no attribute " + Sk.misceval.objectRepr(pyName));
+            throw error;
         }
-        return r;
-    });
+    );
 };
 
 Sk.builtin.setattr = function setattr(obj, pyName, value) {
