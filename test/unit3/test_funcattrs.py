@@ -41,6 +41,39 @@ class FuncAttrsTest(unittest.TestCase):
             self.fail("shouldn't be able to del %s" % name)
 
 
+class ClassQualnameTests(unittest.TestCase):
+    # CPython compiler_set_qualname and class-body namespace ordering.
+    def test_nested_class_namespace(self):
+        seen = []
+        class Meta(type):
+            def __new__(meta, name, bases, namespace):
+                seen.append((name, namespace['__qualname__']))
+                return type.__new__(meta, name, bases, namespace)
+        class Outer(metaclass=Meta):
+            class Inner(metaclass=Meta):
+                pass
+            def method(self):
+                def nested():
+                    return (x for x in [])
+                return nested
+        base = 'ClassQualnameTests.test_nested_class_namespace.<locals>.Outer'
+        self.assertEqual(Outer.__qualname__, base)
+        self.assertEqual(Outer.Inner.__qualname__, base + '.Inner')
+        self.assertEqual(seen, [('Inner', base + '.Inner'), ('Outer', base)])
+        self.assertNotIn('__qualname__', vars(Outer))
+        self.assertEqual(Outer().method().__qualname__, base + '.method.<locals>.nested')
+        self.assertEqual(Outer().method()().__qualname__, base + '.method.<locals>.nested.<locals>.<genexpr>')
+        result = [lambda: None for x in [1]]
+        self.assertEqual(result[0].__qualname__, 'ClassQualnameTests.test_nested_class_namespace.<locals>.<lambda>')
+        global CompilerQualnameGlobal
+        class CompilerQualnameGlobal:
+            class Inner:
+                pass
+        self.assertEqual(CompilerQualnameGlobal.__qualname__, 'CompilerQualnameGlobal')
+        self.assertEqual(CompilerQualnameGlobal.Inner.__qualname__, 'CompilerQualnameGlobal.Inner')
+        del globals()['CompilerQualnameGlobal']
+
+
 class FunctionPropertiesTest(FuncAttrsTest):
     # Include the external setUp method that is common to all tests
     def test_module(self):
@@ -130,25 +163,25 @@ class FunctionPropertiesTest(FuncAttrsTest):
         self.assertEqual(self.fi.a.__name__, 'a')
         self.cannot_set_attr(self.fi.a, "__name__", 'a', AttributeError)
 
-    # def test___qualname__(self):
-    #     # PEP 3155
-    #     self.assertEqual(self.b.__qualname__, 'FuncAttrsTest.setUp.<locals>.b')
-    #     self.assertEqual(FuncAttrsTest.setUp.__qualname__, 'FuncAttrsTest.setUp')
-    #     self.assertEqual(global_function.__qualname__, 'global_function')
-    #     self.assertEqual(global_function().__qualname__,
-    #                      'global_function.<locals>.<lambda>')
-    #     self.assertEqual(global_function()().__qualname__,
-    #                      'global_function.<locals>.inner_function')
-    #     self.assertEqual(global_function()()().__qualname__,
-    #                      'global_function.<locals>.inner_function.<locals>.LocalClass')
-    #     self.assertEqual(inner_global_function.__qualname__, 'inner_global_function')
-    #     self.assertEqual(inner_global_function().__qualname__, 'inner_global_function.<locals>.inner_function2')
-    #     self.b.__qualname__ = 'c'
-    #     self.assertEqual(self.b.__qualname__, 'c')
-    #     self.b.__qualname__ = 'd'
-    #     self.assertEqual(self.b.__qualname__, 'd')
-    #     # __qualname__ must be a string
-    #     self.cannot_set_attr(self.b, '__qualname__', 7, TypeError)
+    def test___qualname__(self):
+        # PEP 3155
+        self.assertEqual(self.b.__qualname__, 'FuncAttrsTest.setUp.<locals>.b')
+        self.assertEqual(FuncAttrsTest.setUp.__qualname__, 'FuncAttrsTest.setUp')
+        self.assertEqual(global_function.__qualname__, 'global_function')
+        self.assertEqual(global_function().__qualname__,
+                         'global_function.<locals>.<lambda>')
+        self.assertEqual(global_function()().__qualname__,
+                         'global_function.<locals>.inner_function')
+        self.assertEqual(global_function()()().__qualname__,
+                         'global_function.<locals>.inner_function.<locals>.LocalClass')
+        self.assertEqual(inner_global_function.__qualname__, 'inner_global_function')
+        self.assertEqual(inner_global_function().__qualname__, 'inner_global_function.<locals>.inner_function2')
+        self.b.__qualname__ = 'c'
+        self.assertEqual(self.b.__qualname__, 'c')
+        self.b.__qualname__ = 'd'
+        self.assertEqual(self.b.__qualname__, 'd')
+        # __qualname__ must be a string
+        self.cannot_set_attr(self.b, '__qualname__', 7, TypeError)
 
     # def test___code__(self):
     #     num_one, num_two = 7, 8

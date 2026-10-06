@@ -230,6 +230,7 @@ function tp$new(args, kwargs) {
             throw new Sk.builtin.TypeError("type __qualname__ must be a str, not '" + Sk.abstr.typeName(qualname) + "'");
         }
         klassProto.ht$qualname = qualname;
+        delete klassProto.__qualname__;
     }
 
     const proto = klass.prototype;

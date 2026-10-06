@@ -4793,15 +4793,15 @@ order (MRO) for bases """
         # self.assertEqual(Y.__qualname__, 'Y')
         # self.assertEqual(Y.Inside.__qualname__, 'Y.Inside')
 
-    # def test_qualname_dict(self):
-    #     ns = {'__qualname__': 'some.name'}
-    #     tp = type('Foo', (), ns)
-    #     self.assertEqual(tp.__qualname__, 'some.name')
-    #     self.assertNotIn('__qualname__', tp.__dict__)
-    #     self.assertEqual(ns, {'__qualname__': 'some.name'})
+    def test_qualname_dict(self):
+        ns = {'__qualname__': 'some.name'}
+        tp = type('Foo', (), ns)
+        self.assertEqual(tp.__qualname__, 'some.name')
+        self.assertNotIn('__qualname__', tp.__dict__)
+        self.assertEqual(ns, {'__qualname__': 'some.name'})
 
-    #     ns = {'__qualname__': 1}
-    #     self.assertRaises(TypeError, type, 'Foo', (), ns)
+        ns = {'__qualname__': 1}
+        self.assertRaises(TypeError, type, 'Foo', (), ns)
 
     # def test_cycle_through_dict(self):
     #     # See bug #1469629

@@ -190,3 +190,9 @@ CPython's unchanged `TestSpecifics.test_globals_dict_subclass` is added, togethe
 CPython's filename, filename error-path and path-like methods are ported; assertions are unchanged, except the bytearray/memoryview fixture block remains deferred until those buffer types exist. The upstream FakePath fixture is retained unchanged. A CPython-checked regression exercises malformed UTF-8, BOM preservation, special-method lookup, invalid path results and functions/generators/classes/comprehensions under quoted filenames. All 41 compile methods pass in both runtimes; compiler and generator/suspension regressions pass.
 
 The filename review found an identity mismatch: CPython retains string filename objects and subclasses. The follow-up preserves that Python object separately from generated JavaScript text, with direct/path-like identity assertions passing in both runtimes (42 compile methods).
+
+## Qualified code-unit names
+
+`stu-dev/compiler/qualified-names` follows `compiler_set_qualname`: each code unit records its qualified name on scope entry, functions/lambdas add `<locals>` to their children, classes preserve nested class paths, and explicit global declarations reset named definitions. Function and generator names use this metadata. Class bodies assign `__qualname__` before running user statements; type construction consumes it without retaining it in the final class dictionary or mutating the input namespace.
+
+CPython's unchanged function qualified-name method, complete generator-name method and class qualified-name dictionary method are restored. A CPython-checked regression verifies metaclass namespace visibility, nested classes/functions/generators, PEP709 lambda naming and global class declarations. Function-attribute, descriptor, generator and compile suites pass. Annotation-scope qualification will be added alongside the annotation-scope implementation.
