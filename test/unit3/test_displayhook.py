@@ -79,5 +79,27 @@ class DisplayHookTest(unittest.TestCase):
             code = compile("42", "<string>", "single")
             self.assertRaises(ValueError, eval, code)
 
+    # CPython-checked regressions for default hook stream selection/write order.
+    def test_repr_replaces_stdout(self):
+        events = []
+        class Stream:
+            def __init__(self, name):
+                self.name = name
+            def write(self, text):
+                events.append((self.name, text))
+        first, second = Stream("first"), Stream("second")
+        class Value:
+            def __repr__(self):
+                sys.stdout = second
+                return "value"
+        with support.swap_attr(sys, "stdout", first):
+            sys.__displayhook__(Value())
+        self.assertEqual(events, [("first", "value"), ("first", "\n")])
+
+    def test_none_stdout(self):
+        with support.swap_attr(sys, "stdout", None):
+            self.assertRaisesRegex(RuntimeError, "lost sys.stdout", sys.__displayhook__, 42)
+
+
 if __name__ == "__main__":
     unittest.main()
