@@ -49,4 +49,9 @@ assert.deepStrictEqual(events, ["start body", "finish body", "start throw", "fin
 
 // Yield itself needs a saved frame even in synchronous compiled code.
 Sk.importMainWithBody("<synchronous generator test>", false, "def gen():\n    yield 42\nassert list(gen()) == [42]\n", false);
+// Native async suspension must retain comprehension state in both compiler modes.
+const asyncSource = fs.readFileSync("test/async_comprehension_suspensions.py", "utf8");
+for (const canSuspend of [false, true]) {
+    Sk.importMainWithBody("<async comprehension suspension test>", false, asyncSource, canSuspend);
+}
 console.log("Generator suspension tests passed");

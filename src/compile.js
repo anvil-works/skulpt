@@ -735,6 +735,8 @@ Compiler.prototype.cyieldfrom = function (e, awaitIterator) {
     out(    "$ret = $gen.gi$finishYieldFrom();");
     out(    "$blk=", afterBlock, ";continue;");
     out("}");
+    // Python-level await/yield-from suspends even with host suspensions disabled.
+    this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
     out(`$blk = ${afterIter};`);
     out(`return $gen.gi$yield((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo), $ret);`);
     this.setBlock(afterBlock);
