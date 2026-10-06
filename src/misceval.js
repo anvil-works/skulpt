@@ -702,7 +702,7 @@ Sk.exportSymbol("Sk.misceval.lookupBuiltin", Sk.misceval.lookupBuiltin);
 
 function loadBuiltinName(name, builtins) {
     const value = lookupMapping(name, builtins);
-    if (value !== undefined) return value;
+    if (value !== undefined) {return value;}
     throw new Sk.builtin.NameError("name '" + Sk.unfixReserved(name) + "' is not defined");
 }
 
