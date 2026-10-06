@@ -59,24 +59,24 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             const none = Sk.builtin.none.none$;
             const [code, globals, name, defaults, closure, kwdefaults] = Sk.abstr.copyKeywordsToNamedArgs(
                 "function", ["code", "globals", "name", "argdefs", "closure", "kwdefaults"], args, kwargs, [none, none, none, none]);
-            if (!(code instanceof Sk.builtin.code)) throw new Sk.builtin.TypeError("function() argument 'code' must be code");
-            if (!(globals instanceof Sk.builtin.dict)) throw new Sk.builtin.TypeError("function() argument 'globals' must be dict");
-            if (name !== none && !Sk.builtin.checkString(name)) throw new Sk.builtin.TypeError("arg 3 (name) must be None or string");
-            if (defaults !== none && !(defaults instanceof Sk.builtin.tuple)) throw new Sk.builtin.TypeError("arg 4 (defaults) must be None or tuple");
+            if (!(code instanceof Sk.builtin.code)) {throw new Sk.builtin.TypeError("function() argument 'code' must be code");}
+            if (!(globals instanceof Sk.builtin.dict)) {throw new Sk.builtin.TypeError("function() argument 'globals' must be dict");}
+            if (name !== none && !Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("arg 3 (name) must be None or string");}
+            if (defaults !== none && !(defaults instanceof Sk.builtin.tuple)) {throw new Sk.builtin.TypeError("arg 4 (defaults) must be None or tuple");}
             const names = code.$jsCode.$metadata.freevars;
             if (!(closure instanceof Sk.builtin.tuple)) {
-                if (names.length && closure === none) throw new Sk.builtin.TypeError("arg 5 (closure) must be tuple");
-                if (closure !== none) throw new Sk.builtin.TypeError("arg 5 (closure) must be None or tuple");
+                if (names.length && closure === none) {throw new Sk.builtin.TypeError("arg 5 (closure) must be tuple");}
+                if (closure !== none) {throw new Sk.builtin.TypeError("arg 5 (closure) must be None or tuple");}
             }
-            if (kwdefaults !== none && !(kwdefaults instanceof Sk.builtin.dict)) throw new Sk.builtin.TypeError("arg 6 (kwdefaults) must be None or dict");
+            if (kwdefaults !== none && !(kwdefaults instanceof Sk.builtin.dict)) {throw new Sk.builtin.TypeError("arg 6 (kwdefaults) must be None or dict");}
             const cells = closure === none ? [] : closure.v;
-            if (names.length !== cells.length) throw new Sk.builtin.ValueError(code.$metadata.co_name.$jsstr() + " requires closure of length " + names.length + ", not " + cells.length);
+            if (names.length !== cells.length) {throw new Sk.builtin.ValueError(code.$metadata.co_name.$jsstr() + " requires closure of length " + names.length + ", not " + cells.length);}
             for (const cell of cells) {
-                if (!(cell instanceof Sk.builtin.cell)) throw new Sk.builtin.TypeError("arg 5 (closure) expected cell, found " + Sk.abstr.typeName(cell));
+                if (!(cell instanceof Sk.builtin.cell)) {throw new Sk.builtin.TypeError("arg 5 (closure) expected cell, found " + Sk.abstr.typeName(cell));}
             }
             const func = new Sk.builtin.func(code.$jsCode, Sk.misceval.namespaceToJs(globals, true), closureBindings(names, cells));
             func.$closure = closure;
-            if (name !== none) func.$name = name;
+            if (name !== none) {func.$name = name;}
             func.func_defaults = defaults;
             func.$defaults = defaults === none ? null : defaults.v;
             func.func_kwdefaults = kwdefaults === none ? null : kwdefaults;
@@ -131,8 +131,8 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         },
         __closure__: {
             $get() {
-                if (!this.func_code.$metadata) throw new Sk.builtin.AttributeError("function has no attribute '__closure__'");
-                if (this.$closure !== undefined) return this.$closure;
+                if (!this.func_code.$metadata) {throw new Sk.builtin.AttributeError("function has no attribute '__closure__'");}
+                if (this.$closure !== undefined) {return this.$closure;}
                 const names = this.func_code.$metadata.freevars;
                 return this.$closure = names.length ? new Sk.builtin.tuple(names.map(name =>
                     Sk.builtin.cell.fromClosure(this.func_closure, Sk.fixReserved(name)))) : Sk.builtin.none.none$;
@@ -141,9 +141,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         __kwdefaults__: {
             $get() { return this.$getKwDefaults() || Sk.builtin.none.none$; },
             $set(value) {
-                if (value === undefined || Sk.builtin.checkNone(value)) this.func_kwdefaults = null;
-                else if (value instanceof Sk.builtin.dict) this.func_kwdefaults = value;
-                else throw new Sk.builtin.TypeError("__kwdefaults__ must be set to a dict object");
+                if (value === undefined || Sk.builtin.checkNone(value)) {this.func_kwdefaults = null;} else if (value instanceof Sk.builtin.dict) {this.func_kwdefaults = value;} else {throw new Sk.builtin.TypeError("__kwdefaults__ must be set to a dict object");}
             },
         },
         __code__: {
@@ -174,7 +172,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         },
         __defaults__: {
             $get() {
-                if (this.func_defaults !== undefined) return this.func_defaults;
+                if (this.func_defaults !== undefined) {return this.func_defaults;}
                 return this.func_defaults = this.$defaults == null ? Sk.builtin.none.none$ : new Sk.builtin.tuple(this.$defaults);
             },
             $set(v) {
@@ -227,7 +225,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             if (this.func_kwdefaults === undefined) {
                 const entries = [];
                 for (let i = 0; i < this.co_kwonlyargcount; i++) {
-                    if (this.$kwdefs[i] !== undefined) entries.push(new Sk.builtin.str(this.co_varnames[this.co_argcount + i]), this.$kwdefs[i]);
+                    if (this.$kwdefs[i] !== undefined) {entries.push(new Sk.builtin.str(this.co_varnames[this.co_argcount + i]), this.$kwdefs[i]);}
                 }
                 this.func_kwdefaults = entries.length ? new Sk.builtin.dict(entries) : null;
             }
@@ -286,7 +284,7 @@ Sk.builtin.cell = Sk.abstr.buildNativeClass("cell", {
         this.$closure = closure;
         this.$key = name === undefined ? "__class__" : name;
         let cells = closureCellCache.get(closure);
-        if (!cells) closureCellCache.set(closure, cells = new Map());
+        if (!cells) {closureCellCache.set(closure, cells = new Map());}
         cells.set(this.$key, this);
     },
     slots: {
