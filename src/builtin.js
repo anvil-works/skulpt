@@ -1344,7 +1344,7 @@ Sk.builtin.next_ = function next_(iter, default_) {
             if (default_) {
                 return default_;
             }
-            if (iter.gi$stopIteration !== undefined) throw iter.gi$stopIteration;
+            if (iter.gi$stopIteration !== undefined) {throw iter.gi$stopIteration;}
             const v = iter.gi$ret;
             // gi$ret is the original value that was thrown by the StopIteration
             // (or returned by a generator)
