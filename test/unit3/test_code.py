@@ -60,6 +60,18 @@ class CodeTest(unittest.TestCase):
         self.assertEqual(namespace['f'](), 42)
         self.assertEqual(namespace['value'], '\u2028\u2029')
 
+    def test_class_shadow_preserves_outer_cell_metadata(self):
+        def outer():
+            x = 42
+            class C:
+                x = 1
+                def method(self):
+                    return x
+            return C
+        self.assertEqual(outer.__code__.co_varnames, ('C',))
+        self.assertEqual(outer.__code__.co_cellvars, ('x',))
+        self.assertEqual(outer()().method(), 42)
+
     def test_inlined_walrus_local_and_cell_metadata(self):
         namespace = {}
         exec('def plain(): return [(y:=x) for x in [1]]\ndef captured(): return [lambda: y for x in [1] if (y:=x)]\ndef parameter(y): return [(y:=x) for x in [1]]\ndef before():\n y=0\n return [(y:=x) for x in [1]]', namespace)
