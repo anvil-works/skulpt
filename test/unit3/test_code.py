@@ -60,6 +60,20 @@ class CodeTest(unittest.TestCase):
         self.assertEqual(namespace['f'](), 42)
         self.assertEqual(namespace['value'], '\u2028\u2029')
 
+    def test_inlined_walrus_local_and_cell_metadata(self):
+        namespace = {}
+        exec('def plain(): return [(y:=x) for x in [1]]\ndef captured(): return [lambda: y for x in [1] if (y:=x)]\ndef parameter(y): return [(y:=x) for x in [1]]\ndef before():\n y=0\n return [(y:=x) for x in [1]]', namespace)
+        self.assertEqual(namespace['plain'].__code__.co_varnames, ('x', 'y'))
+        self.assertEqual(namespace['plain'].__code__.co_cellvars, ())
+        self.assertEqual(namespace['plain'].__code__.co_nlocals, 2)
+        self.assertEqual(namespace['captured'].__code__.co_varnames, ('x',))
+        self.assertEqual(namespace['captured'].__code__.co_cellvars, ('y',))
+        self.assertEqual(namespace['parameter'].__code__.co_varnames, ('y', 'x'))
+        self.assertEqual(namespace['parameter'].__code__.co_cellvars, ())
+        self.assertEqual(namespace['before'].__code__.co_varnames, ('y', 'x'))
+        self.assertEqual(namespace['before'].__code__.co_cellvars, ())
+        self.assertEqual(namespace['captured']()[0](), 1)
+
     def test_code_execution_has_no_function_defaults(self):
         def positional(a=42):
             return a
