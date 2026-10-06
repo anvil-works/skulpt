@@ -7,7 +7,7 @@ Sk.builtin.anextawaitable = Sk.abstr.buildIteratorClass("anext_awaitable", {
     },
     iternext(canSuspend) {
         const result = Sk.misceval.tryCatch(() => this.$next(), error => {
-            if (!(error instanceof Sk.builtin.StopIteration)) throw error;
+            if (!(error instanceof Sk.builtin.StopIteration)) {throw error;}
             this.gi$ret = error.$value;
             this.gi$stopIteration = error;
             return undefined;
@@ -30,14 +30,14 @@ Sk.builtin.anextawaitable = Sk.abstr.buildIteratorClass("anext_awaitable", {
         },
         $withDefault(action) {
             return Sk.misceval.tryCatch(action, error => {
-                if (error instanceof Sk.builtin.StopAsyncIteration) throw new Sk.builtin.StopIteration(this.$default);
+                if (error instanceof Sk.builtin.StopAsyncIteration) {throw new Sk.builtin.StopIteration(this.$default);}
                 throw error;
             });
         },
         $next() {
             return Sk.misceval.chain(this.$iterator(), iterator => this.$withDefault(() =>
                 Sk.misceval.chain(iterator.tp$iternext(true), value => {
-                    if (value !== undefined) return value;
+                    if (value !== undefined) {return value;}
                     throw iterator.gi$stopIteration || new Sk.builtin.StopIteration(iterator.gi$ret);
                 })));
         },
