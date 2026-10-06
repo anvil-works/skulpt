@@ -61,12 +61,12 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             let validate = Sk.builtin.none.none$;
             for (const param of params.v) {
                 validate = Sk.misceval.chain(validate, () => {
-                    if (!(param instanceof Sk.builtin.TypeVar)) throw new Sk.builtin.TypeError("Expected a type param, got " + Sk.misceval.objectRepr(param));
+                    if (!(param instanceof Sk.builtin.TypeVar)) {throw new Sk.builtin.TypeError("Expected a type param, got " + Sk.misceval.objectRepr(param));}
                     return param.$getValue("default");
                 }, defaultValue => {
                     if (defaultValue === Sk.builtin.NoDefault) {
-                        if (seenDefault) throw new Sk.builtin.TypeError("non-default type parameter '" + Sk.misceval.objectRepr(param) + "' follows default type parameter");
-                    } else seenDefault = true;
+                        if (seenDefault) {throw new Sk.builtin.TypeError("non-default type parameter '" + Sk.misceval.objectRepr(param) + "' follows default type parameter");}
+                    } else {seenDefault = true;}
                 });
             }
             return Sk.misceval.chain(validate, () => new Sk.builtin.TypeAliasType(name, value, null, module || Sk.builtin.none.none$, params));
@@ -77,7 +77,7 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
         nb$reflected_or(other) { return Sk.builtin.typeUnion(other, this); },
         tp$as_sequence_or_mapping: true,
         mp$subscript(item) {
-            if (!this.$params.v.length) throw new Sk.builtin.TypeError("Only generic type aliases are subscriptable");
+            if (!this.$params.v.length) {throw new Sk.builtin.TypeError("Only generic type aliases are subscriptable");}
             return new Sk.builtin.GenericAlias(this, item);
         },
     },
