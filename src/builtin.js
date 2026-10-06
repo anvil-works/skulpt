@@ -824,7 +824,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
         }
         return Sk.misceval.chain(Sk.importModule("ast", false, true), module =>
             Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_parse_ast")),
-                [new Sk.builtin.str(source), filename, mode]));
+                                              [new Sk.builtin.str(source), filename, mode]));
     }
     mode = mode.$jsstr();
     return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0), flags));
