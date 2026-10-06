@@ -101,6 +101,34 @@ class ClassWithPropertyAbstractVirtual(metaclass=abc.ABCMeta):
         pass
 
 class PropertyTests(HarnessCase):
+    def test_virtual_class_access(self):
+        # CPython types.DynamicClassAttribute's documented metaclass route.
+        class Meta(type):
+            def __getattr__(cls, name):
+                return 'virtual ' + name
+        class Box(metaclass=Meta):
+            @DynamicClassAttribute
+            def VALUE(self):
+                return 'instance'
+        self.assertEqual(Box.VALUE, 'virtual VALUE')
+        self.assertEqual(Box.missing, 'virtual missing')
+        self.assertEqual(Box().VALUE, 'instance')
+        class Broken:
+            def __get__(self, instance, owner):
+                raise ValueError('descriptor failure')
+        class Other(metaclass=Meta):
+            value = Broken()
+        with self.assertRaises(ValueError):
+            Other.value
+
+    def test_public_export(self):
+        # types exports this descriptor as part of CPython's public names.
+        import types
+        self.assertIn('DynamicClassAttribute', types.__all__)
+        namespace = {}
+        exec('from types import *', namespace)
+        self.assertIs(namespace['DynamicClassAttribute'], DynamicClassAttribute)
+
     def test_property_decorator_baseclass(self):
         # see #1620
         base = BaseClass()
