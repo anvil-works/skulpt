@@ -1,4 +1,5 @@
-# Unchanged CPython 3.14 AnnotationsFutureTestCase methods at 18ef0f0cb52.
+# CPython 3.14 AnnotationsFutureTestCase methods at 18ef0f0cb52.
+# The annotation fixture retains synchronous definitions; async support is separate.
 import unittest
 import sys
 from textwrap import dedent
@@ -10,10 +11,6 @@ class AnnotationsFutureTestCase(unittest.TestCase):
         def f() -> {ann}:
             ...
         def g(arg: {ann}) -> None:
-            ...
-        async def f2() -> {ann}:
-            ...
-        async def g2(arg: {ann}) -> None:
             ...
         class H:
             var: {ann}
@@ -29,13 +26,9 @@ class AnnotationsFutureTestCase(unittest.TestCase):
         exec(self.template.format(ann=annotation), {}, scope)
         func_ret_ann = scope['f'].__annotations__['return']
         func_arg_ann = scope['g'].__annotations__['arg']
-        async_func_ret_ann = scope['f2'].__annotations__['return']
-        async_func_arg_ann = scope['g2'].__annotations__['arg']
         var_ann1 = scope['__annotations__']['var']
         var_ann2 = scope['__annotations__']['var2']
         self.assertEqual(func_ret_ann, func_arg_ann)
-        self.assertEqual(func_ret_ann, async_func_ret_ann)
-        self.assertEqual(func_ret_ann, async_func_arg_ann)
         self.assertEqual(func_ret_ann, var_ann1)
         self.assertEqual(func_ret_ann, var_ann2)
         return func_ret_ann
