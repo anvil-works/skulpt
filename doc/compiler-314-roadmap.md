@@ -341,3 +341,8 @@ the actual upstream group helper uses it. Class-subscript and repr failure
 diagnostics are aligned where these upstream methods require them. Traceback
 introspection and the upstream limited-thread-stack machinery remain separate
 runtime work; except-star compilation follows the group runtime.
+
+The group Spec review correction retains supplied exact tuple identity while
+converting tuple subclasses, and applies Python string conversion to message
+subclasses. A CPython-checked regression covers both identities and conversion
+failures.

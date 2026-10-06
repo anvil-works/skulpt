@@ -550,6 +550,24 @@ class ExceptionGroupRegression(HarnessCase):
         self.assertIs(group.subgroup(lambda exc: exc is group), group)
         self.assertIs(group.split(BaseExceptionGroup)[0], group)
 
+    def test_exact_tuple_identity_and_message_string_protocol(self):
+        exceptions = (ValueError(),)
+        group = ExceptionGroup('message', exceptions)
+        self.assertIs(group.exceptions, exceptions)
+        class Tuple(tuple): pass
+        self.assertIs(type(ExceptionGroup('message', Tuple(exceptions)).exceptions), tuple)
+        class Message(str):
+            def __str__(self): return 'display'
+        message = Message('stored')
+        group = ExceptionGroup(message, exceptions)
+        self.assertIs(group.message, message)
+        self.assertEqual(str(group), 'display (1 sub-exception)')
+        class Broken(str):
+            def __str__(self): raise ValueError('string conversion')
+        group = ExceptionGroup(Broken('stored'), exceptions)
+        with self.assertRaisesRegex(ValueError, 'string conversion'):
+            str(group)
+
     def test_derive_validation_and_callable_failures(self):
         class Broken(ExceptionGroup):
             def derive(self, exceptions):
