@@ -31,7 +31,7 @@ function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation, opt
     this.allUnits = [];
 
     this.sourceIsAscii = !sourceCodeForAnnotation || /^[\x00-\x7f]*$/.test(sourceCodeForAnnotation);
-    this.source = sourceCodeForAnnotation ? sourceCodeForAnnotation.split("\n") : false;
+    this.source = sourceCodeForAnnotation ? sourceCodeForAnnotation.split(/\r\n|\r|\n/) : false;
 }
 
 /**
@@ -131,7 +131,7 @@ Compiler.prototype.annotateSource = function (ast) {
     if (this.source) {
         lineno = ast.lineno;
         col_offset = this.getSourceColumn(ast);
-        out("\n//\n// line ", lineno, ":\n// ", this.getSourceLine(lineno), "\n// ");
+        out("\n//\n// line ", lineno, ":\n// ", this.getSourceLine(lineno).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"), "\n// ");
         for (i = 0; i < col_offset; ++i) {
             out(" ");
         }
@@ -555,6 +555,10 @@ Compiler.prototype.ccomprehension = function (e, type, value, key) {
     const closure = this.closureArgs(ste.hasFree);
     const free = closure.length === 2 ? this._gr("compfree", "Sk.misceval.makeClosure(", closure.join(","), ")") : closure[0];
     const names = Object.create(null);
+    for (const name of Object.keys(ste.symFlags)) {
+        const scope = ste.getScope(name);
+        if (name !== ".0" && (scope === Sk.SYMTAB_CONSTS.LOCAL || scope === Sk.SYMTAB_CONSTS.CELL)) this.u.pythonLocals.add(name);
+    }
     const cells = Object.keys(ste.symFlags).filter(name => ste.getScope(name) === Sk.SYMTAB_CONSTS.CELL);
     const cell = cells.length ? this._gr("compcell", "{", cells.map(name => name + ":undefined").join(","), "}") : null;
     for (const name of Object.keys(ste.symFlags)) {
@@ -1374,7 +1378,67 @@ Compiler.prototype.outputAllUnits = function () {
         const suffix = unit.suffixCode.replace(/catch\(err\)\{/, "catch(err){$localsScope=0;");
         ret += suffix.replace("/* frame end */", end);
     }
+    for (const unit of this.allUnits) {
+        ret += this.outputCodeMetadata(unit);
+    }
+    const module = this.allUnits[0].scopename;
+    ret += module + ".$codeUnits=[" + this.allUnits.map(unit => unit.scopename).join(",") + "];";
     return ret;
+};
+
+// Python/compile.c: compiler_enter_scope and compute_code_flags.
+// Argument binding retains its JS ABI; this is the Python code-unit metadata.
+Compiler.prototype.outputCodeMetadata = function (unit) {
+    const constants = Sk.SYMTAB_CONSTS;
+    const optimized = unit.ste.blockType === constants.FunctionBlock;
+    const varnames = unit.pythonLocals;
+    const cellvars = new Set();
+    const freevars = [];
+    for (const name of Object.keys(unit.ste.symFlags)) {
+        const scope = unit.ste.getScope(name);
+        if (scope === constants.CELL) cellvars.add(name);
+        if (scope === constants.FREE) freevars.push(name);
+    }
+    for (const comprehension of unit.comprehensions) {
+        for (const name of Object.keys(comprehension.ste.symFlags)) {
+            const scope = comprehension.ste.getScope(name);
+            if (scope === constants.CELL) cellvars.add(name);
+        }
+    }
+    if (unit.ste.needsClassClosure) cellvars.add("__class__");
+    let flags = optimized ? 3 : 0; // CO_OPTIMIZED | CO_NEWLOCALS
+    if (optimized) {
+        if (unit.ste.isNested) flags |= 0x10;
+        if (unit.ste.generator) flags |= 0x20;
+        if (unit.ste.varargs) flags |= 0x04;
+        if (unit.ste.varkeywords) flags |= 0x08;
+        if (unit.hasDocstring) flags |= 0x4000000;
+        if (unit.ste.isMethod) flags |= 0x8000000;
+    }
+    const metadata = {
+        name: unit.name.v,
+        qualname: unit.qualname,
+        argcount: unit.argcount,
+        posonlyargcount: unit.posonlyargcount,
+        kwonlyargcount: unit.kwonlyargcount,
+        firstlineno: unit.firstlineno || 1,
+        flags,
+        varnames: Array.from(varnames, Sk.unfixReserved),
+        cellvars: Array.from(cellvars, Sk.unfixReserved).sort(),
+        freevars: freevars.map(Sk.unfixReserved).sort(),
+    };
+    let code = unit.scopename + ".$metadata=" + JSON.stringify(metadata) + ";";
+    code += unit.scopename + ".$metadata.filename=new Sk.builtin.str(" + JSON.stringify(this.filename) + ");";
+    code += unit.scopename + ".co_name=new Sk.builtin.str(" + JSON.stringify(unit.name.v) + ");";
+    if (Sk.__future__.python3) {
+        code += unit.scopename + ".co_qualname=new Sk.builtin.str(" + JSON.stringify(unit.qualname) + ");";
+    } else {
+        const parent = unit.parent;
+        if (parent && parent.ste.blockType === constants.ClassBlock) {
+            code += unit.scopename + ".co_qualname=new Sk.builtin.str(" + JSON.stringify(parent.name.v + "." + unit.name.v) + ");";
+        }
+    }
+    return code;
 };
 
 // CPython frame locals: optimized scopes produce independent snapshots;
@@ -1450,38 +1514,27 @@ Compiler.prototype.cif = function (s) {
     var test;
     var next;
     var end;
-    var constant;
     Sk.asserts.assert(s._type === "If");
-    constant = this.exprConstant(s.test);
-    if (constant === 0) {
-        if (s.orelse && s.orelse.length > 0) {
-            this.vseqstmt(s.orelse);
-        }
-    } else if (constant === 1) {
-        this.vseqstmt(s.body);
-    } else {
-        end = this.newBlock("end of if");
-        if (s.orelse && s.orelse.length > 0) {
-            next = this.newBlock("next branch of if");
-        }
-
-        test = this.vexpr(s.test);
-
-        if (s.orelse && s.orelse.length > 0) {
-            this._jumpfalse(test, next);
-            this.vseqstmt(s.body);
-            this._jump(end);
-
-            this.setBlock(next);
-            this.vseqstmt(s.orelse);
-        } else {
-            this._jumpfalse(test, end);
-            this.vseqstmt(s.body);
-        }
-        this._jump(end);
-        this.setBlock(end);
+    end = this.newBlock("end of if");
+    if (s.orelse && s.orelse.length > 0) {
+        next = this.newBlock("next branch of if");
     }
 
+    test = this.vexpr(s.test);
+
+    if (s.orelse && s.orelse.length > 0) {
+        this._jumpfalse(test, next);
+        this.vseqstmt(s.body);
+        this._jump(end);
+
+        this.setBlock(next);
+        this.vseqstmt(s.orelse);
+    } else {
+        this._jumpfalse(test, end);
+        this.vseqstmt(s.body);
+    }
+    this._jump(end);
+    this.setBlock(end);
 };
 
 Compiler.prototype.cwhile = function (s) {
@@ -1489,59 +1542,52 @@ Compiler.prototype.cwhile = function (s) {
     var orelse;
     var next;
     var top;
-    var constant = this.exprConstant(s.test);
-    if (constant === 0) {
-        if (s.orelse) {
-            this.vseqstmt(s.orelse);
-        }
-    } else {
-        top = this.newBlock("while test");
-        this._jump(top);
-        this.setBlock(top);
+    top = this.newBlock("while test");
+    this._jump(top);
+    this.setBlock(top);
 
-        if ((Sk.debugging || Sk.killableWhile) && this.u.canSuspend) {
-            var suspType = "Sk.delay";
-            var debugBlock = this.newBlock("debug breakpoint for line "+s.lineno);
-            const column = this.getSourceColumn(s);
-            out("if (Sk.breakpoints("+JSON.stringify(this.filename)+","+s.lineno+","+column+")) {",
-                "var $susp = $saveSuspension({data: {type: '"+suspType+"'}, resume: function() {}}, "+JSON.stringify(this.filename)+","+s.lineno+","+column+");",
-                "$susp.$blk = "+debugBlock+";",
-                "$susp.optional = true;",
-                "return $susp;",
-                "}");
-            this._jump(debugBlock);
-            this.setBlock(debugBlock);
-            this.u.doesSuspend = true;
-        }
-
-        next = this.newBlock("after while");
-        orelse = s.orelse.length > 0 ? this.newBlock("while orelse") : null;
-        body = this.newBlock("while body");
-
-        this.annotateSource(s);
-        this._jumpfalse(this.vexpr(s.test), orelse ? orelse : next);
-        this._jump(body);
-
-        this.pushBreakBlock(next);
-        this.pushContinueBlock(top);
-
-        this.setBlock(body);
-
-        this.vseqstmt(s.body);
-
-        this._jump(top);
-
-        this.popContinueBlock();
-        this.popBreakBlock();
-
-        if (s.orelse.length > 0) {
-            this.setBlock(orelse);
-            this.vseqstmt(s.orelse);
-            this._jump(next);
-        }
-
-        this.setBlock(next);
+    if ((Sk.debugging || Sk.killableWhile) && this.u.canSuspend) {
+        var suspType = "Sk.delay";
+        var debugBlock = this.newBlock("debug breakpoint for line "+s.lineno);
+        const column = this.getSourceColumn(s);
+        out("if (Sk.breakpoints("+JSON.stringify(this.filename)+","+s.lineno+","+column+")) {",
+            "var $susp = $saveSuspension({data: {type: '"+suspType+"'}, resume: function() {}}, "+JSON.stringify(this.filename)+","+s.lineno+","+column+");",
+            "$susp.$blk = "+debugBlock+";",
+            "$susp.optional = true;",
+            "return $susp;",
+            "}");
+        this._jump(debugBlock);
+        this.setBlock(debugBlock);
+        this.u.doesSuspend = true;
     }
+
+    next = this.newBlock("after while");
+    orelse = s.orelse.length > 0 ? this.newBlock("while orelse") : null;
+    body = this.newBlock("while body");
+
+    this.annotateSource(s);
+    this._jumpfalse(this.vexpr(s.test), orelse ? orelse : next);
+    this._jump(body);
+
+    this.pushBreakBlock(next);
+    this.pushContinueBlock(top);
+
+    this.setBlock(body);
+
+    this.vseqstmt(s.body);
+
+    this._jump(top);
+
+    this.popContinueBlock();
+    this.popBreakBlock();
+
+    if (s.orelse.length > 0) {
+        this.setBlock(orelse);
+        this.vseqstmt(s.orelse);
+        this._jump(next);
+    }
+
+    this.setBlock(next);
 };
 
 Compiler.prototype.cfor = function (s) {
@@ -2089,7 +2135,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     //
     this.u.prefixCode = "var " + scopename + "=(function " + this.niceName(coname.v) + "$(";
 
-    funcArgs = [];
+    funcArgs = n._type === "GeneratorExp" ? ["$iter0"] : [];
     if (kwarg) {
         funcArgs.push("$kwa");
         this.u.tempsToSave.push("$kwa");
@@ -2236,6 +2282,10 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // get a list of all the argument names (used to attach to the code
     // object, and also to allow us to declare only locals that aren't also
     // parameters).
+    if (n._type === "GeneratorExp") {
+        this.u.argnames = ["$iter0"];
+        argnamesarr.push(".0");
+    }
     if (args) {
         for (let arg of positionalArgs) {
             argnamesarr.push(arg.arg);
@@ -2261,7 +2311,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     if (defaults.length > 0) {
         out(scopename, ".$defaults=[", defaults.join(","), "];");
     }
-    out(scopename, ".co_argcount=", positionalArgs.length, ";");
+    out(scopename, ".co_argcount=", positionalArgs.length + (n._type === "GeneratorExp" ? 1 : 0), ";");
     if (args && args.posonlyargs.length) {
         out(scopename, ".co_posonlyargcount=", args.posonlyargs.length, ";");
     }
@@ -2541,11 +2591,8 @@ Compiler.prototype.cgenexp = function (e) {
     // but the code builder builds a wrapper that makes generators for normal
     // function generators, so we just do it outside (even just new'ing it
     // inline would be fine).
-    var gener = this._gr("gener", "Sk.misceval.callsimArray(", gen, ");");
-    // stuff the outermost iterator into the generator after evaluating it
-    // outside of the function. it's retrieved by the fixed name above.
-    out(gener, ".curr$susp.$tmps.$iter0=Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ");");
-    return gener;
+    const iterator = this._gr("geniter", "Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ")");
+    return this._gr("gener", "Sk.misceval.callsimArray(", gen, ",", iterator, ")");
 };
 
 
@@ -2625,7 +2672,7 @@ Compiler.prototype.cclass = function (s) {
 Compiler.prototype.ccontinue = function (s) {
     var nextFinally = this.peekFinallyBlock(), gotoBlock;
     if (this.u.continueBlocks.length == 0) {
-        throw new Sk.builtin.SyntaxError("'continue' outside loop", this.filename, s.lineno);
+        throw new Sk.builtin.SyntaxError("'continue' not properly in loop", this.filename, s.lineno);
     }
     // todo; continue out of exception blocks
     gotoBlock = this.u.continueBlocks[this.u.continueBlocks.length - 1];
@@ -2845,6 +2892,8 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     }
 
 
+    if (optype === OP_FAST) this.u.pythonLocals.add(mangled);
+
     //print("mangled", mangled);
     // TODO TODO TODO todo; import * at global scope failing here
     Sk.asserts.assert(scope || name.v.charAt(1) === "_");
@@ -2967,7 +3016,9 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     var scopeName;
     var u = new CompilerUnit();
     u.ste = this.st.getStsForAst(key);
+    u.pythonLocals = new Set(u.ste.blockType === Sk.SYMTAB_CONSTS.FunctionBlock ? u.ste.varnames : []);
     u.name = name;
+    u.parent = this.u;
     u.scopeType = key._type;
     // Python/compile.c: compiler_set_qualname. Explicit global declarations
     // reset named functions/classes to a module name; lambdas retain nesting.
@@ -2979,7 +3030,12 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
             u.qualname = this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".") + name.v;
         }
     }
-    u.firstlineno = lineno;
+    u.firstlineno = key.decorator_list && key.decorator_list.length ? key.decorator_list[0].lineno : lineno;
+    u.argcount = key.args ? key.args.posonlyargs.length + key.args.args.length : key._type === "GeneratorExp" ? 1 : 0;
+    u.posonlyargcount = key.args ? key.args.posonlyargs.length : 0;
+    u.kwonlyargcount = key.args ? key.args.kwonlyargs.length : 0;
+    u.hasDocstring = this.optimize < 2 && key.body && Array.isArray(key.body) && key.body.length &&
+        key.body[0]._type === "Expr" && key.body[0].value._type === "Constant" && key.body[0].value.value.type === "str";
     u.canSuspend = canSuspend || false;
 
     if (this.u && this.u.private_) {
@@ -3011,14 +3067,6 @@ Compiler.prototype.exitScope = function () {
         this.u.activateScope();
     }
 
-    if (this.u) {
-        out(prev.scopename, ".co_name=new Sk.builtin.str(", JSON.stringify(prev.name.v), ");");
-        if (Sk.__future__.python3) {
-            out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(prev.qualname), ");");
-        } else if (this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock) {
-            out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(this.u.name.v + "." + prev.name.v), ");");
-        }
-    }
     for (var constant in prev.consts) {
         if (prev.consts.hasOwnProperty(constant)) {
             prev.suffixCode += constant + " = " + prev.consts[constant] + ";";
