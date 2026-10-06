@@ -734,6 +734,7 @@ Sk.builtin.type.prototype.tp$getsets = {
         },
         $set(value) {
             if (value === undefined) throw new Sk.builtin.TypeError("cannot delete __annotate__ attribute");
+            if (!this.sk$klass) throw new Sk.builtin.TypeError("cannot set '__annotate__' attribute of immutable type '" + this.prototype.tp$name + "'");
             if (!Sk.builtin.checkNone(value) && !Sk.builtin.checkCallable(value)) {
                 throw new Sk.builtin.TypeError("__annotate__ must be callable or None");
             }
@@ -765,6 +766,7 @@ Sk.builtin.type.prototype.tp$getsets = {
             });
         },
         $set(value) {
+            if (!this.sk$klass) throw new Sk.builtin.TypeError("cannot set '__annotations__' attribute of immutable type '" + this.prototype.tp$name + "'");
             const dict = this.$classDict;
             const annotations = new Sk.builtin.str("__annotations__");
             const cache = new Sk.builtin.str("__annotations_cache__");

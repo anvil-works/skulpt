@@ -83,20 +83,23 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
         __annotations__: {
             $get() {
                 if (this.$d.__annotations__ !== undefined) return this.$d.__annotations__;
-                const annotate = this.$d.__annotate__;
-                const result = annotate !== undefined && Sk.builtin.checkCallable(annotate)
-                    ? Sk.misceval.callsimOrSuspendArray(annotate, [new Sk.builtin.int_(1)]) : new Sk.builtin.dict([]);
-                return Sk.misceval.chain(result, result => {
-                    if (!(result instanceof Sk.builtin.dict)) {
-                        throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
-                    }
-                    const spec = this.$d.__spec__;
-                    const initializing = spec !== undefined && !Sk.builtin.checkNone(spec)
-                        ? spec.tp$getattr(new Sk.builtin.str("_initializing")) : undefined;
-                    if (!this.$initializing && (initializing === undefined || !Sk.misceval.isTrue(initializing))) {
-                        this.$d.__annotations__ = result;
-                    }
-                    return result;
+                const spec = this.$d.__spec__;
+                const specInitializing = spec !== undefined && !Sk.builtin.checkNone(spec)
+                    ? Sk.misceval.tryCatch(() => Sk.abstr.gattr(spec, new Sk.builtin.str("_initializing"), true), error => {
+                        if (!(error instanceof Sk.builtin.AttributeError)) throw error;
+                    }) : undefined;
+                return Sk.misceval.chain(specInitializing, specInitializing => {
+                    const initializing = this.$initializing || (specInitializing !== undefined && Sk.misceval.isTrue(specInitializing));
+                    const annotate = this.$d.__annotate__;
+                    const result = annotate !== undefined && Sk.builtin.checkCallable(annotate)
+                        ? Sk.misceval.callsimOrSuspendArray(annotate, [new Sk.builtin.int_(1)]) : new Sk.builtin.dict([]);
+                    return Sk.misceval.chain(result, result => {
+                        if (!(result instanceof Sk.builtin.dict)) {
+                            throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
+                        }
+                        if (!initializing) this.$d.__annotations__ = result;
+                        return result;
+                    });
                 });
             },
             $set(value) {
