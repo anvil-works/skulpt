@@ -951,6 +951,11 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
     }
     //this.annotateSource(e);
     switch (e._type) {
+        case "NamedExpr": {
+            const value = this._gr("namedexpr", this.vexpr(e.value));
+            this.vexpr(e.target, value);
+            return value;
+        }
         case "BoolOp":
             return this.cboolop(e);
         case "BinOp":
