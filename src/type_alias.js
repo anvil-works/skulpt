@@ -54,16 +54,16 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             }
             if (!Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("name must be a str");}
             if (!(params instanceof Sk.builtin.tuple)) {throw new Sk.builtin.TypeError("type_params must be a tuple");}
-            for (const param of params.v) {
-                if (!(param instanceof Sk.builtin.TypeVar)) throw new Sk.builtin.TypeError("type_params must contain only TypeVar, TypeVarTuple, or ParamSpec objects");
-            }
             const frame = Sk.misceval.currentFrame;
             const globals = frame && frame.getGlobals();
             const module = globals && (globals instanceof Sk.builtin.dict ? globals.quick$lookup(Sk.builtin.str.$name) : globals.__name__);
             let seenDefault = false;
             let validate = Sk.builtin.none.none$;
             for (const param of params.v) {
-                validate = Sk.misceval.chain(validate, () => param.$getValue("default"), defaultValue => {
+                validate = Sk.misceval.chain(validate, () => {
+                    if (!(param instanceof Sk.builtin.TypeVar)) throw new Sk.builtin.TypeError("Expected a type param, got " + Sk.misceval.objectRepr(param));
+                    return param.$getValue("default");
+                }, defaultValue => {
                     if (defaultValue === Sk.builtin.NoDefault) {
                         if (seenDefault) throw new Sk.builtin.TypeError("non-default type parameter '" + Sk.misceval.objectRepr(param) + "' follows default type parameter");
                     } else seenDefault = true;
