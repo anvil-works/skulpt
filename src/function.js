@@ -161,11 +161,11 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
                 const defaults = this.$defaults;
                 const kwdefaults = this.$getKwDefaults();
                 this.func_code = value.$jsCode;
-                this.func_closure = Sk.misceval.makeClosure(closureBindings(metadata.freevars, cells));
+                this.func_closure = closureBindings(metadata.freevars, cells);
                 this.$memoiseFlags();
                 this.$defaults = defaults;
                 this.func_kwdefaults = kwdefaults;
-                this.memoised = this.func_code.co_fastcall || null;
+                this.memoised = true;
                 this.tp$call = this.func_code.co_fastcall ? this.func_code.bind(this) : this.$funcCall.bind(this);
             },
         },
