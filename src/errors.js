@@ -76,8 +76,8 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
         __suppress_context__: {
             $get() { return this.$suppressContext ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$; },
             $set(value) {
-                if (value === undefined) throw new Sk.builtin.TypeError("can't delete numeric/char attribute");
-                if (!(value instanceof Sk.builtin.bool)) throw new Sk.builtin.TypeError("attribute value type must be bool");
+                if (value === undefined) {throw new Sk.builtin.TypeError("can't delete numeric/char attribute");}
+                if (!(value instanceof Sk.builtin.bool)) {throw new Sk.builtin.TypeError("attribute value type must be bool");}
                 this.$suppressContext = value.v !== 0;
             },
         },
