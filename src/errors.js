@@ -24,6 +24,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
         // we should probably change this at some point because this only happens with SyntaxErrors
         this.traceback = tb.length >= 2 ? [{ filename: tb[0] || "<unknown>", lineno: tb[1] }] : [];
         this.cause = null;
+        this.$suppressContext = false;
         this.context = null;
         this.$d = new Sk.builtin.dict();
     },
@@ -54,17 +55,64 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
                 return this.$cause || Sk.builtin.none.none$;
             },
             $set(v) {
+                checkDeleting(v, "__cause__");
                 if (!Sk.builtin.checkNone(v) && !(v instanceof Sk.builtin.BaseException)) {
-                    throw new TypeError("exception cause must be None or derive from BaseException");
+                    throw new Sk.builtin.TypeError("exception cause must be None or derive from BaseException");
                 }
                 this.$cause = v;
+                this.$suppressContext = true;
             }
+        },
+        __context__: {
+            $get() { return this.context || Sk.builtin.none.none$; },
+            $set(value) {
+                checkDeleting(value, "__context__");
+                if (!Sk.builtin.checkNone(value) && !(value instanceof Sk.builtin.BaseException)) {
+                    throw new Sk.builtin.TypeError("exception context must be None or derive from BaseException");
+                }
+                this.context = value;
+            },
+        },
+        __suppress_context__: {
+            $get() { return this.$suppressContext ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$; },
+            $set(value) {
+                if (value === undefined) throw new Sk.builtin.TypeError("can't delete numeric/char attribute");
+                if (!(value instanceof Sk.builtin.bool)) throw new Sk.builtin.TypeError("attribute value type must be bool");
+                this.$suppressContext = value.v !== 0;
+            },
         },
         __dict__: Sk.generic.getSetDict,
         /**@todo */
         // __traceback__: {},
-        // __context__: {},
         // __cause__: {}
+    },
+    methods: {
+        // Objects/exceptions.c: BaseException_add_note_impl uses optional attribute
+        // lookup and the native list append, including for list subclasses.
+        add_note: {
+            $meth(note) {
+                if (!Sk.builtin.checkString(note)) {
+                    throw new Sk.builtin.TypeError("add_note() argument must be str, not " + Sk.abstr.typeName(note));
+                }
+                const name = new Sk.builtin.str("__notes__");
+                const notes = Sk.misceval.tryCatch(() => Sk.abstr.gattr(this, name, true), error => {
+                    if (!(error instanceof Sk.builtin.AttributeError)) throw error;
+                });
+                return Sk.misceval.chain(notes, notes => {
+                    if (notes === undefined) {
+                        notes = new Sk.builtin.list([]);
+                        return Sk.misceval.chain(Sk.abstr.sattr(this, name, notes, true), () => {
+                            notes.v.push(note);
+                            return Sk.builtin.none.none$;
+                        });
+                    }
+                    if (!(notes instanceof Sk.builtin.list)) throw new Sk.builtin.TypeError("Cannot add note: __notes__ is not a list");
+                    notes.v.push(note);
+                    return Sk.builtin.none.none$;
+                });
+            },
+            $flags: { OneArg: true },
+        },
     },
     proto: /**@lends {BaseException}*/ {
         toString() {
