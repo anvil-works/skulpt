@@ -85,7 +85,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                         if (ret !== undefined) {
                             throw new Sk.builtin.RuntimeError("generator ignored GeneratorExit");
                         }
-                        return Sk.builtin.none.none$;
+                        return Sk.__future__.python3 && this.gi$ret !== null ? this.gi$ret : Sk.builtin.none.none$;
                     }),
                     (error) => {
                         if (error instanceof Sk.builtin.GeneratorExit || error instanceof Sk.builtin.StopIteration) {
@@ -129,9 +129,9 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         },
         gi_yieldfrom: {
             $get() {
-                // The delegate is visible while the frame is suspended at
-                // yield from, including during delegated throw/close calls.
-                return this.gi$frame && this.gi$yieldfrom || Sk.builtin.none.none$;
+                // CPython exposes the delegate only while suspended at yield
+                // from, not while executing delegated throw/close calls.
+                return !this.gi$running && this.gi$frame && this.gi$yieldfrom || Sk.builtin.none.none$;
             },
         },
     },
@@ -186,7 +186,10 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         },
         gi$inject(error) {
             return this.gi$run(() => {
-                if (this.gi$frame === null) {
+                if (this.gi$frame === null || !this.gi$started) {
+                    this.gi$frame = null;
+                    this.gi$yieldfrom = null;
+                    this.gi$ret = null;
                     throw error;
                 }
                 this.gi$yieldfrom = null;
