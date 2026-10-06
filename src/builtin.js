@@ -734,6 +734,7 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
         this.compiled = compiled;
         this.code = compiled.code;
         this.filename = filename;
+        this.mode = compiled.mode;
     },
     slots: {
         tp$new(args, kwargs) {
@@ -811,20 +812,11 @@ Sk.builtin.eval = function (source, globals, locals) {
         throw new Sk.builtin.NotImplementedError("bytes for eval is not yet implemented in skulpt");
     }
     if (typeof source === "string") {
-        source = source.trim();
-        const ast = Sk.parseModule(source, "?");
-        if (ast.body.length !== 1 || ast.body[0]._type !== "Expr") {
-            throw new Sk.builtin.SyntaxError("invalid syntax");
-        }
-        source = "__final_res__ = " + source;
+        source = new pyCode("<string>", Sk.compile(source.trim(), "<string>", "eval", true));
     } else if (!(source instanceof pyCode)) {
         throw new Sk.builtin.TypeError("eval() arg 1 must be a string, bytes or code object");
     }
-    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), (new_locals) => {
-        const res = new_locals.__final_res__ || Sk.builtin.none.none$;
-        delete new_locals.__final_res__;
-        return res;
-    });
+    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);
 };
 
 Sk.builtin.map = function map(fun, seq) {
