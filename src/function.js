@@ -320,6 +320,7 @@ Sk.exportSymbol("Sk.builtin.cell", Sk.builtin.cell);
 
 function closureBindings(names, cells) {
     const closure = {};
+    closureCellCache.set(closure, new Map(names.map((name, i) => [Sk.fixReserved(name), cells[i]])));
     names.forEach((name, i) => Object.defineProperty(closure, Sk.fixReserved(name), {
         enumerable: true,
         get() { return cells[i].$closure[cells[i].$key]; },
