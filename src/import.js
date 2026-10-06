@@ -335,7 +335,7 @@ Sk.importModuleInternal_ = function (name, dumpJS, modname, suppliedPyBody, rela
                         modlocs[i] = module["$d"][i];
                     }
                 }
-                module["$d"] = modlocs;
+                module["$d"] = Sk.misceval.moduleNamespace(modlocs);
             }
 
             // If an onAfterImport method is defined on the global Sk
