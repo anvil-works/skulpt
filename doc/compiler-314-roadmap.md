@@ -642,3 +642,17 @@ Eighteen complete BaseCallableTests methods run against both alias variants,
 plus CPython's consistency method and one compiler/type-alias regression (38
 cases). The complete Concatenate valid_uses method is restored. Type-hint evaluation, weakref and pickle
 methods remain deferred with those runtime facilities.
+
+### Public AST objects and source-to-AST compilation
+
+`stu-dev/compiler/ast-objects` exposes the CPython 3.14 ASDL schema, including
+modern type parameters, pattern nodes and template nodes. `compile` with
+PyCF_ONLY_AST and `ast.parse` return mutable Python AST objects with typed fields,
+source locations, Python-valued constants and CPython default contexts/lists.
+Traversal, transformation, literal evaluation, dumps and location helpers are
+ported from CPython ast.py. AST representations follow Python-ast.c's depth and
+sequence abbreviation rules. Fourteen complete upstream test_ast methods plus one
+modern parser/value regression pass in both runtimes (15 cases).
+
+Compilation of edited ASTs, statement unparsing, versioned grammars, optimized
+ASTs, type comments and constructor deprecation warnings follow separately.
