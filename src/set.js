@@ -530,7 +530,7 @@ Sk.builtin.frozenset.$emptyset = new Sk.builtin.frozenset([]);
 Sk.builtin.frozenset.$hashValues = function (hashes) {
     // Numbers taken from CPython 2.7's frozenset hash function.
     let hash = 1927868237 * (hashes.length + 1);
-    for (const h of hashes) hash ^= (h ^ (h << 16) ^ 89869747) * 3644798167;
+    for (const h of hashes) {hash ^= (h ^ (h << 16) ^ 89869747) * 3644798167;}
     return hash * 69069 + 907133923;
 };
 
