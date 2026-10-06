@@ -2,6 +2,7 @@ import unittest
 import random
 import sys
 import math
+from types import CellType
 from operator import neg
 
 def add_one(num):
@@ -71,6 +72,117 @@ class AttrTest(unittest.TestCase):
 
 
 class BuiltinTest(unittest.TestCase):
+    def test_exec_closure_contract(self):
+        value = 1
+        def f():
+            nonlocal value
+            value += 1
+        class Tuple(tuple): pass
+        with self.assertRaisesRegex(TypeError, 'exactly length 1'):
+            exec(f.__code__, closure=Tuple(f.__closure__))
+        with self.assertRaisesRegex(TypeError, 'cannot use a closure'):
+            exec(compile('pass', '<closure>', 'exec'), closure=())
+        with self.assertRaises(TypeError): exec(f.__code__, {}, {}, f.__closure__)
+        namespace = {}
+        self.assertIsNone(exec('value = 42', namespace, closure=None))
+        self.assertEqual(namespace['value'], 42)
+        exec(f.__code__, closure=f.__closure__)
+        self.assertEqual(value, 2)
+
+    def test_exec_closure(self):
+        def function_without_closures():
+            return 3 * 5
+
+        result = 0
+        def make_closure_functions():
+            a = 2
+            b = 3
+            c = 5
+            def three_freevars():
+                nonlocal result
+                nonlocal a
+                nonlocal b
+                result = a*b
+            def four_freevars():
+                nonlocal result
+                nonlocal a
+                nonlocal b
+                nonlocal c
+                result = a*b*c
+            return three_freevars, four_freevars
+        three_freevars, four_freevars = make_closure_functions()
+
+        # "smoke" test
+        result = 0
+        exec(three_freevars.__code__,
+            three_freevars.__globals__,
+            closure=three_freevars.__closure__)
+        self.assertEqual(result, 6)
+
+        # should also work with a manually created closure
+        result = 0
+        my_closure = (CellType(35), CellType(72), three_freevars.__closure__[2])
+        exec(three_freevars.__code__,
+            three_freevars.__globals__,
+            closure=my_closure)
+        self.assertEqual(result, 2520)
+
+        # should fail: closure isn't allowed
+        # for functions without free vars
+        self.assertRaises(TypeError,
+            exec,
+            function_without_closures.__code__,
+            function_without_closures.__globals__,
+            closure=my_closure)
+
+        # should fail: closure required but wasn't specified
+        self.assertRaises(TypeError,
+            exec,
+            three_freevars.__code__,
+            three_freevars.__globals__,
+            closure=None)
+
+        # should fail: closure of wrong length
+        self.assertRaises(TypeError,
+            exec,
+            three_freevars.__code__,
+            three_freevars.__globals__,
+            closure=four_freevars.__closure__)
+
+        # should fail: closure using a list instead of a tuple
+        my_closure = list(my_closure)
+        self.assertRaises(TypeError,
+            exec,
+            three_freevars.__code__,
+            three_freevars.__globals__,
+            closure=my_closure)
+        my_closure = tuple(my_closure)
+
+        # should fail: anything passed to closure= isn't allowed
+        # when the source is a string
+        self.assertRaises(TypeError,
+            exec,
+            "pass",
+            closure=int)
+
+        # should fail: correct closure= argument isn't allowed
+        # when the source is a string
+        self.assertRaises(TypeError,
+            exec,
+            "pass",
+            closure=my_closure)
+
+        # should fail: closure tuple with one non-cell-var
+        my_closure = list(my_closure)
+        my_closure[0] = int
+        my_closure = tuple(my_closure)
+        self.assertRaises(TypeError,
+            exec,
+            three_freevars.__code__,
+            three_freevars.__globals__,
+            closure=my_closure)
+
+
 
     def test_import(self):
         __import__('sys')
