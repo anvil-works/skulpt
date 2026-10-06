@@ -30,6 +30,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         this.curr$susp = null; // set inside the compile code
         this.gi$running = false;
         this.gi$yieldfrom = null;
+        this.gi$yieldfromCoroutine = null;
         this.gi$closed = false;
         this.gi$started = false;
         this.gi$delegationDone = false;
@@ -158,7 +159,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
             $get() {
                 // CPython exposes the delegate only while suspended at yield
                 // from, not while executing delegated throw/close calls.
-                return !this.gi$running && this.curr$susp && this.gi$yieldfrom || Sk.builtin.none.none$;
+                return !this.gi$running && this.curr$susp && this.gi$yieldfrom && (this.gi$yieldfromCoroutine || this.gi$yieldfrom) || Sk.builtin.none.none$;
             },
         },
     },
@@ -273,10 +274,12 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
             return [this.gi$makeSuspension(wrapSuspension), value];
         },
         gi$startYieldFrom(iterable, awaitIterator) {
+            this.gi$yieldfromCoroutine = null;
             if (iterable instanceof Sk.builtin.coroutine) {
                 if (!(this.gi$scope.$metadata.flags & 0x100)) {
                     throw new Sk.builtin.TypeError("cannot 'yield from' a coroutine object in a non-coroutine generator");
                 }
+                this.gi$yieldfromCoroutine = iterable;
                 iterable = new Sk.builtin.coroutine_wrapper(iterable);
                 awaitIterator = true;
             }
