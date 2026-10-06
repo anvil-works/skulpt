@@ -87,6 +87,9 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                     if (!(error instanceof Sk.builtin.BaseException)) {
                         throw new Sk.builtin.TypeError("exception constructor must return a BaseException instance");
                     }
+                    // A throw is a fresh raise at the suspended yield.
+                    error.$propagating = false;
+                    error.$tracebackFrame = undefined;
                     return Sk.misceval.chain(this.gi$run(() => this.gi$throw(error, throwArgs), true), (ret) => {
                         if (ret === undefined) {
                             throw new Sk.builtin.StopIteration(this.gi$ret);
