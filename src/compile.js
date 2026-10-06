@@ -10,12 +10,14 @@ Sk.gensymcount = 0;
  * @param {number} flags
  * @param {boolean=} canSuspend whether compiled code can suspend
  * @param {string=} sourceCodeForAnnotation used to add original source to listing if desired
+ * @param {string=} mode compilation mode
  */
-function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation) {
+function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation, mode) {
     this.filename = filename;
     this.st = st;
     this.flags = flags;
     this.canSuspend = canSuspend;
+    this.mode = mode;
     this.interactive = false;
     this.nestlevel = 0;
 
@@ -3098,8 +3100,12 @@ Compiler.prototype.cmod = function (mod) {
 
     switch (mod._type) {
         case "Module":
-            this.cbody(mod.body);
-            out("return $loc;");
+            if (this.mode === "eval") {
+                out("return ", this.vexpr(mod.body[0].value), ";");
+            } else {
+                this.cbody(mod.body);
+                out("return $loc;");
+            }
             break;
         default:
             Sk.asserts.fail("todo; unhandled case in compilerMod");
@@ -3128,8 +3134,11 @@ Sk.compile = function (source, filename, mode, canSuspend) {
     var funcname;
     try {
         const ast = Sk.parseModule(source, filename);
+        if (mode === "eval" && (ast.body.length !== 1 || ast.body[0]._type !== "Expr")) {
+            throw new Sk.builtin.SyntaxError("invalid syntax", filename);
+        }
         const st = Sk.symboltable(ast, filename);
-        c = new Compiler(filename, st, 0, canSuspend, source);
+        c = new Compiler(filename, st, 0, canSuspend, source, mode);
         funcname = c.cmod(ast);
     } finally {
         Sk.__future__ = savedFlags;
@@ -3141,6 +3150,7 @@ Sk.compile = function (source, filename, mode, canSuspend) {
         funcname: "$compiledmod",
         code    : ret,
         filename: filename,
+        mode: mode,
     };
 };
 

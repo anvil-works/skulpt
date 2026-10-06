@@ -262,9 +262,7 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
         $name: "eval",
         $meth: function (source, globals, locals) {
             const [tmp_globals, tmp_locals] = executionNamespaces(globals, locals);
-            return Sk.misceval.chain(Sk.builtin.eval(source, tmp_globals, tmp_locals), (res) => {
-                return res;
-            });
+            return Sk.builtin.eval(source, tmp_globals, tmp_locals);
         },
         $flags: { MinArgs: 1, MaxArgs: 3 },
         $textsig: "($module, source, globals=None, locals=None, /)",
