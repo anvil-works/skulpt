@@ -67,22 +67,23 @@ class TestSuper(unittest.TestCase):
         self.assertEqual(G.cm(), (G, 'A'))
         self.assertEqual(G().cm(), (G, 'A'))
 
-    # def test_super_in_class_methods_working(self):
-    #     d = D()
-    #     self.assertEqual(d.cm(), (d, (D, (D, (D, 'A'), 'B'), 'C'), 'D'))
-    #     e = E()
-    #     self.assertEqual(e.cm(), (e, (E, (E, (E, 'A'), 'B'), 'C'), 'D'))
+    # CPython 3.14 test_super.py at 18ef0f0cb52; unchanged method.
+    def test_super_in_class_methods_working(self):
+        d = D()
+        self.assertEqual(d.cm(), (d, (D, (D, (D, 'A'), 'B'), 'C'), 'D'))
+        e = E()
+        self.assertEqual(e.cm(), (e, (E, (E, (E, 'A'), 'B'), 'C'), 'D'))
 
-    # def test_super_with_closure(self):
-    #     # Issue4360: super() did not work in a function that
-    #     # contains a closure
-    #     class E(A):
-    #         def f(self):
-    #             def nested():
-    #                 self
-    #             return super().f() + 'E'
+    def test_super_with_closure(self):
+        # Issue4360: super() did not work in a function that
+        # contains a closure
+        class E(A):
+            def f(self):
+                def nested():
+                    self
+                return super().f() + 'E'
 
-    #     self.assertEqual(E().f(), 'AE')
+        self.assertEqual(E().f(), 'AE')
 
     # def test_various___class___pathologies(self):
     #     # See issue #12370
@@ -280,21 +281,44 @@ class TestSuper(unittest.TestCase):
     #             def f(self):
     #                 return __class__
 
+    # CPython 3.14 test_super.py at 18ef0f0cb52; unchanged method.
+    def test_shadowed_local(self):
+        class super:
+            msg = "quite super"
+
+        class C:
+            def method(self):
+                return super().msg
+
+        self.assertEqual(C().method(), "quite super")
+
+    # Dynamic patch-based upstream tests await unittest.mock support.
+
     def test_obscure_super_errors(self):
         def f():
             super()
-        self.assertRaises(RuntimeError, f)
+        with self.assertRaisesRegex(RuntimeError, r"no arguments"):
+            f()
+
+        class C:
+            def f():
+                super()
+        with self.assertRaisesRegex(RuntimeError, r"no arguments"):
+            C.f()
+
         def f(x):
             del x
             super()
-        # skulpt implementation - this will be easier when we can reference $loc inside the scope
-        # self.assertRaises(RuntimeError, f, None)
-        # class X:
-        #     def f(x):
-        #         nonlocal __class__
-        #         del __class__
-        #         super()
-        # self.assertRaises(RuntimeError, X().f)
+        with self.assertRaisesRegex(RuntimeError, r"arg\[0\] deleted"):
+            f(None)
+
+        class X:
+            def f(x):
+                nonlocal __class__
+                del __class__
+                super()
+        with self.assertRaisesRegex(RuntimeError, r"empty __class__ cell"):
+            X().f()
 
     # def test_cell_as_self(self):
     #     class X:
