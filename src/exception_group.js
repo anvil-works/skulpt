@@ -137,6 +137,7 @@ function exceptionGroupSubset(original, exceptions) {
                                      throw new Sk.builtin.TypeError("derive must return an instance of BaseExceptionGroup");
                                  }
                                  derived.traceback = original.traceback;
+                                 derived.$traceback = original.$traceback;
                                  derived.context = original.context;
                                  derived.$cause = original.$cause;
                                  // PyException_SetCause suppresses context even when the cause is None.
