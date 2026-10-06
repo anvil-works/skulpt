@@ -23,17 +23,33 @@ Sk.builtin.coroutine = Sk.abstr.buildNativeClass("coroutine", {
                 return Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(this.$gen, new Sk.builtin.str("throw")), args);
             },
             $flags: { FastCall: true, NoKwargs: true },
+            $doc: "throw(typ[,val[,tb]]) -> raise exception in coroutine.",
         },
         close: {
             $meth() {
-                return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(
-                    Sk.abstr.gattr(this.$gen, new Sk.builtin.str("close"))), () => Sk.builtin.none.none$);
+                return Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(this.$gen, new Sk.builtin.str("close")));
             },
             $flags: { NoArgs: true },
             $doc: "close() -> raise GeneratorExit inside coroutine.",
         },
     },
     getsets: {
+        __name__: {
+            $get() { return this.$gen.$name; },
+            $set(value) {
+                if (!Sk.builtin.checkString(value)) throw new Sk.builtin.TypeError("__name__ must be set to a string object");
+                this.$gen.$name = value;
+            },
+            $doc: "name of the coroutine",
+        },
+        __qualname__: {
+            $get() { return this.$gen.$qualname; },
+            $set(value) {
+                if (!Sk.builtin.checkString(value)) throw new Sk.builtin.TypeError("__qualname__ must be set to a string object");
+                this.$gen.$qualname = value;
+            },
+            $doc: "qualified name of the coroutine",
+        },
         cr_running: { $get() { return new Sk.builtin.bool(this.$gen.gi$running); } },
         cr_suspended: { $get() { return new Sk.builtin.bool(this.$gen.gi$started && !this.$gen.gi$closed && !this.$gen.gi$running); } },
         cr_await: { $get() { return !this.$gen.gi$running && this.$gen.gi$yieldfrom && this.$gen.gi$awaited || Sk.builtin.none.none$; } },

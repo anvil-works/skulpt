@@ -266,11 +266,11 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         gi$yield(wrapSuspension, value) {
             return [this.gi$makeSuspension(wrapSuspension), value];
         },
-        gi$startYieldFrom(iterable) {
+        gi$startYieldFrom(iterable, awaitIterator) {
             if (iterable instanceof Sk.builtin.coroutine) {
                 throw new Sk.builtin.TypeError("cannot 'yield from' a coroutine object in a non-coroutine generator");
             }
-            this.gi$yieldfrom = Sk.abstr.iter(iterable);
+            this.gi$yieldfrom = awaitIterator ? iterable : Sk.abstr.iter(iterable);
             this.gi$data.send = Sk.builtin.none.none$;
         },
         gi$stepYieldFrom() {

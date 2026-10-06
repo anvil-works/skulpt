@@ -693,8 +693,9 @@ Compiler.prototype.cyieldfrom = function (e, awaitable) {
         out("$gen.gi$awaited=", iterable, ";$ret=Sk.builtin.getAwaitable(", iterable, ");");
         this._checkSuspension(e);
         iterable = this._gr("awaititer", "$ret");
+        out("if(!($gen.gi$awaited instanceof Sk.builtin.coroutine)){$gen.gi$awaited=", iterable, ";}");
     }
-    out("$gen.gi$startYieldFrom(", iterable, ");");
+    out("$gen.gi$startYieldFrom(", iterable, ",", !!awaitable, ");");
     this._jump(afterIter);
     this.setBlock(afterIter);
     out("$ret = $gen.gi$stepYieldFrom();");
