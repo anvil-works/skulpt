@@ -31,17 +31,17 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
     slots: {
         tp$new(args, kwargs) {
             const [name, bound = Sk.builtin.none.none$, defaultValue = Sk.builtin.NoDefault,
-                co = Sk.builtin.bool.false$, contra = Sk.builtin.bool.false$, infer = Sk.builtin.bool.false$] =
+                   co = Sk.builtin.bool.false$, contra = Sk.builtin.bool.false$, infer = Sk.builtin.bool.false$] =
                 Sk.abstr.copyKeywordsToNamedArgs("TypeVar", ["name", "bound", "default", "covariant", "contravariant", "infer_variance"], args.slice(0, 1), kwargs);
-            if (name === undefined || !Sk.builtin.checkString(name)) throw new Sk.builtin.TypeError("TypeVar() requires a string name");
+            if (name === undefined || !Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("TypeVar() requires a string name");}
             const covariant = Sk.misceval.isTrue(co), contravariant = Sk.misceval.isTrue(contra), inferVariance = Sk.misceval.isTrue(infer);
-            if (covariant && contravariant) throw new Sk.builtin.ValueError("Bivariant types are not supported.");
-            if (inferVariance && (covariant || contravariant)) throw new Sk.builtin.ValueError("Variance cannot be specified with infer_variance.");
+            if (covariant && contravariant) {throw new Sk.builtin.ValueError("Bivariant types are not supported.");}
+            if (inferVariance && (covariant || contravariant)) {throw new Sk.builtin.ValueError("Variance cannot be specified with infer_variance.");}
             const constraints = new Sk.builtin.tuple(args.slice(1));
-            if (constraints.v.length === 1) throw new Sk.builtin.TypeError("A single constraint is not allowed");
-            if (constraints.v.length && !Sk.builtin.checkNone(bound)) throw new Sk.builtin.TypeError("Constraints cannot be combined with bound=...");
-            if (bound.ob$type === Sk.builtin.tuple) throw new Sk.builtin.TypeError("Bound must be a type. Got " + Sk.misceval.objectRepr(bound) + ".");
-            if (Sk.builtin.checkString(bound)) throw new Sk.builtin.NotImplementedError("string bounds require ForwardRef support");
+            if (constraints.v.length === 1) {throw new Sk.builtin.TypeError("A single constraint is not allowed");}
+            if (constraints.v.length && !Sk.builtin.checkNone(bound)) {throw new Sk.builtin.TypeError("Constraints cannot be combined with bound=...");}
+            if (bound.ob$type === Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Bound must be a type. Got " + Sk.misceval.objectRepr(bound) + ".");}
+            if (Sk.builtin.checkString(bound)) {throw new Sk.builtin.NotImplementedError("string bounds require ForwardRef support");}
             return new Sk.builtin.TypeVar(name, { bound, constraints, default: defaultValue, covariant, contravariant, inferVariance });
         },
         $r() {
@@ -66,9 +66,9 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
     methods: {
         __typing_subst__: {
             $meth(arg) {
-                if (Sk.builtin.checkNone(arg)) return Sk.builtin.none;
-                if (arg.ob$type === Sk.builtin.tuple) throw new Sk.builtin.TypeError("Parameters to generic types must be types. Got " + Sk.misceval.objectRepr(arg) + ".");
-                if (Sk.builtin.checkString(arg)) throw new Sk.builtin.NotImplementedError("string substitutions require ForwardRef support");
+                if (Sk.builtin.checkNone(arg)) {return Sk.builtin.none;}
+                if (arg.ob$type === Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Parameters to generic types must be types. Got " + Sk.misceval.objectRepr(arg) + ".");}
+                if (Sk.builtin.checkString(arg)) {throw new Sk.builtin.NotImplementedError("string substitutions require ForwardRef support");}
                 return arg;
             },
             $flags: { OneArg: true },
@@ -77,11 +77,11 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
             $meth(alias, args) {
                 const parameters = Sk.abstr.gattr(alias, new Sk.builtin.str("__parameters__"));
                 const index = parameters.v.indexOf(this);
-                if (index < 0) throw new Sk.builtin.ValueError("sequence.index(x): x not in sequence");
-                if (index < args.v.length) return args;
+                if (index < 0) {throw new Sk.builtin.ValueError("sequence.index(x): x not in sequence");}
+                if (index < args.v.length) {return args;}
                 if (index === args.v.length) {
                     return Sk.misceval.chain(this.$getValue("default"), value => {
-                        if (value === Sk.builtin.NoDefault) throw new Sk.builtin.TypeError("Too few arguments for " + Sk.misceval.objectRepr(alias) + "; actual " + args.v.length + ", expected at least " + (index + 1));
+                        if (value === Sk.builtin.NoDefault) {throw new Sk.builtin.TypeError("Too few arguments for " + Sk.misceval.objectRepr(alias) + "; actual " + args.v.length + ", expected at least " + (index + 1));}
                         return new Sk.builtin.tuple(args.v.concat([value]));
                     });
                 }
@@ -109,7 +109,7 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
     },
     proto: {
         $getValue(field) {
-            if (this["$" + field] !== undefined) return this["$" + field];
+            if (this["$" + field] !== undefined) {return this["$" + field];}
             return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(this.$evaluate[field]), value => {
                 this["$" + field] = value;
                 return value;
