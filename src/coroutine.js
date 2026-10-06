@@ -37,7 +37,7 @@ Sk.builtin.coroutine = Sk.abstr.buildNativeClass("coroutine", {
         __name__: {
             $get() { return this.$gen.$name; },
             $set(value) {
-                if (!Sk.builtin.checkString(value)) throw new Sk.builtin.TypeError("__name__ must be set to a string object");
+                if (!Sk.builtin.checkString(value)) {throw new Sk.builtin.TypeError("__name__ must be set to a string object");}
                 this.$gen.$name = value;
             },
             $doc: "name of the coroutine",
@@ -45,7 +45,7 @@ Sk.builtin.coroutine = Sk.abstr.buildNativeClass("coroutine", {
         __qualname__: {
             $get() { return this.$gen.$qualname; },
             $set(value) {
-                if (!Sk.builtin.checkString(value)) throw new Sk.builtin.TypeError("__qualname__ must be set to a string object");
+                if (!Sk.builtin.checkString(value)) {throw new Sk.builtin.TypeError("__qualname__ must be set to a string object");}
                 this.$gen.$qualname = value;
             },
             $doc: "qualified name of the coroutine",
@@ -62,12 +62,12 @@ Sk.builtin.coroutine = Sk.abstr.buildNativeClass("coroutine", {
     },
     proto: {
         $checkReusable() {
-            if (this.$gen.gi$closed) throw new Sk.builtin.RuntimeError("cannot reuse already awaited coroutine");
+            if (this.$gen.gi$closed) {throw new Sk.builtin.RuntimeError("cannot reuse already awaited coroutine");}
         },
         $send(value) {
             this.$checkReusable();
             return Sk.misceval.chain(this.$gen.tp$iternext(true, value), result => {
-                if (result === undefined) throw new Sk.builtin.StopIteration(this.$gen.gi$ret);
+                if (result === undefined) {throw new Sk.builtin.StopIteration(this.$gen.gi$ret);}
                 return result;
             });
         },
@@ -78,7 +78,7 @@ Sk.builtin.coroutine_wrapper = Sk.abstr.buildIteratorClass("coroutine_wrapper", 
     constructor: function coroutine_wrapper(coroutine) { this.$coro = coroutine; },
     iternext(canSuspend) {
         const result = Sk.misceval.tryCatch(() => this.$coro.$send(Sk.builtin.none.none$), error => {
-            if (!(error instanceof Sk.builtin.StopIteration)) throw error;
+            if (!(error instanceof Sk.builtin.StopIteration)) {throw error;}
             this.gi$ret = error.$value;
             return undefined;
         });
@@ -100,14 +100,14 @@ Sk.builtin.coroutine_wrapper = Sk.abstr.buildIteratorClass("coroutine_wrapper", 
 // Objects/genobject.c: _PyCoro_GetAwaitableIter.
 Sk.builtin.getAwaitable = function (value) {
     if (value instanceof Sk.builtin.coroutine) {
-        if (value.$gen.gi$yieldfrom) throw new Sk.builtin.RuntimeError("coroutine is being awaited already");
+        if (value.$gen.gi$yieldfrom) {throw new Sk.builtin.RuntimeError("coroutine is being awaited already");}
         return new Sk.builtin.coroutine_wrapper(value);
     }
     const method = Sk.abstr.lookupSpecial(value, new Sk.builtin.str("__await__"));
-    if (method === undefined) throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(value) + "' object can't be awaited");
+    if (method === undefined) {throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(value) + "' object can't be awaited");}
     return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(method), iterator => {
-        if (iterator instanceof Sk.builtin.coroutine) throw new Sk.builtin.TypeError("__await__() returned a coroutine");
-        if (!iterator.tp$iternext) throw new Sk.builtin.TypeError("__await__() returned non-iterator of type '" + Sk.abstr.typeName(iterator) + "'");
+        if (iterator instanceof Sk.builtin.coroutine) {throw new Sk.builtin.TypeError("__await__() returned a coroutine");}
+        if (!iterator.tp$iternext) {throw new Sk.builtin.TypeError("__await__() returned non-iterator of type '" + Sk.abstr.typeName(iterator) + "'");}
         return iterator;
     });
 };
