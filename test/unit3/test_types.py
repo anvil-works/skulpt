@@ -1777,6 +1777,9 @@ class FunctionTests(unittest.TestCase):
         value = 1
         def first(): return value
         def second(): return value
+        def nested():
+            def inner(): return value
+            return inner
         self.assertIs(first.__closure__[0], second.__closure__[0])
         closure = (types.CellType(42),)
         globals_dict = {'__name__': 'new_module'}
@@ -1787,6 +1790,8 @@ class FunctionTests(unittest.TestCase):
         self.assertEqual(func.__name__, 'renamed')
         self.assertEqual(func.__qualname__, first.__qualname__)
         self.assertEqual(func(), 42)
+        nested_func = types.FunctionType(nested.__code__, globals_dict, closure=closure)
+        self.assertIs(nested_func().__closure__[0], closure[0])
         closure[0].cell_contents = 7
         self.assertEqual(func(), 7)
         del closure[0].cell_contents
@@ -1811,7 +1816,11 @@ class FunctionTests(unittest.TestCase):
 
     def test_function_type_module_code(self):
         namespace = {}
-        func = types.FunctionType(compile('value = 42', '<function>', 'exec'), namespace)
+        code = compile('value = 42', '<function>', 'exec')
+        func = types.FunctionType(code, namespace)
+        self.assertIs(func.__code__, code)
+        expression = compile('42', '<function>', 'eval')
+        self.assertIs(types.FunctionType(expression, {}).__code__, expression)
         self.assertIsNone(func())
         self.assertEqual(namespace['value'], 42)
         self.assertEqual(types.FunctionType(compile('value + 1', '<function>', 'eval'), namespace)(), 43)
