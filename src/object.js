@@ -24,6 +24,17 @@ Sk.builtin.object = Sk.abstr.buildNativeClass("object", {
                     throw new Sk.builtin.TypeError(Sk.abstr.typeName(this) + "() takes no arguments");
                 }
             }
+            // Objects/typeobject.c: object_new checks Py_TPFLAGS_IS_ABSTRACT.
+            if (this.constructor.$isAbstract) {
+                const names = Sk.misceval.arrayFromIterable(Sk.abstr.gattr(this.constructor,
+                                                                           new Sk.builtin.str("__abstractmethods__")));
+                names.sort((a, b) => Sk.misceval.richCompareBool(a, b, "Lt") ? -1 :
+                    Sk.misceval.richCompareBool(a, b, "Gt") ? 1 : 0);
+                const joined = names.map(name => Sk.misceval.objectRepr(name)).join(", ");
+                throw new Sk.builtin.TypeError("Can't instantiate abstract class " +
+                    this.tp$name + " without an implementation for abstract method" +
+                    (names.length > 1 ? "s " : " ") + joined);
+            }
             return new this.constructor();
         },
         tp$init(args, kwargs) {
@@ -139,6 +150,13 @@ Sk.builtin.object = Sk.abstr.buildNativeClass("object", {
         },
     },
     classmethods: {
+        __subclasshook__: {
+            $meth(args, kwargs) {
+                Sk.abstr.checkNoKwargs("__subclasshook__", kwargs);
+                return Sk.builtin.NotImplemented.NotImplemented$;
+            },
+            $flags: { FastCall: true },
+        },
         __init_subclass__: {
             $meth(args) {
                 return Sk.builtin.none.none$;

@@ -459,6 +459,9 @@ function setUpKlass(pyName, klass, bases, meta) {
         ht$qualname: { value: pyName, writable: true},
     });
     klass_proto.tp$mro = klass.$buildMRO();
+    for (const base of bases) {
+        Sk.abstr.registerSubclass(base, klass);
+    }
 
     Object.defineProperties(klass, {
         $typeLookup: { value: klass_proto.sk$prototypical ? fastLookup : slowLookup, writable: true },
@@ -735,6 +738,29 @@ Sk.builtin.type.prototype.tp$getsets = {
             return this.sk$tuple_mro;
         },
     },
+    __abstractmethods__: {
+        $get() {
+            const name = new Sk.builtin.str("__abstractmethods__");
+            const value = this.$classDict && this.$classDict.quick$lookup(name);
+            if (value === undefined) { throw new Sk.builtin.AttributeError("__abstractmethods__"); }
+            return value;
+        },
+        $set(value) {
+            if (!this.sk$klass) { throw new Sk.builtin.TypeError("cannot set __abstractmethods__ on an immutable type"); }
+            const name = new Sk.builtin.str("__abstractmethods__");
+            if (value === undefined) {
+                if (this.$classDict.quick$lookup(name) === undefined) { throw new Sk.builtin.AttributeError("__abstractmethods__"); }
+                this.$classDict.dict$delItem(name);
+                delete this.prototype.__abstractmethods__;
+                this.$isAbstract = false;
+            } else {
+                const abstract = Sk.misceval.isTrue(value);
+                this.$classDict.dict$setItem(name, value);
+                this.prototype.__abstractmethods__ = value;
+                this.$isAbstract = abstract;
+            }
+        },
+    },
     __dict__: {
         $get() {
             return new Sk.builtin.mappingproxy(this.$classDict || this.prototype);
@@ -885,6 +911,10 @@ Sk.builtin.type.prototype.tp$getsets = {
 };
 
 Sk.builtin.type.prototype.tp$methods = /**@lends {Sk.builtin.type.prototype}*/ {
+    __subclasses__: {
+        $meth() { return new Sk.builtin.list(Sk.abstr.typeSubclasses(this)); },
+        $flags: { NoArgs: true },
+    },
     mro: {
         $meth() {
             return new Sk.builtin.list(this.$buildMRO());
