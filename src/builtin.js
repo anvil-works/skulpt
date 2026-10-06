@@ -738,13 +738,13 @@ const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
         this.code = compiled && compiled.code;
         this.$jsCode = executable || Sk.global["eval"](compiled.code);
         if (compiled) {
-            for (const unit of this.$jsCode.$codeUnits) unit.$metadata.filename = filename;
+            for (const unit of this.$jsCode.$codeUnits) {unit.$metadata.filename = filename;}
         }
         const metadata = this.$jsCode.$metadata;
         this.$metadata = {};
-        for (const field of ["name", "qualname"]) this.$metadata["co_" + field] = new Sk.builtin.str(metadata[field]);
-        for (const field of ["argcount", "posonlyargcount", "kwonlyargcount", "firstlineno", "flags"]) this.$metadata["co_" + field] = new Sk.builtin.int_(metadata[field]);
-        for (const field of ["varnames", "cellvars", "freevars"]) this.$metadata["co_" + field] = new Sk.builtin.tuple(metadata[field].map(name => new Sk.builtin.str(name)));
+        for (const field of ["name", "qualname"]) {this.$metadata["co_" + field] = new Sk.builtin.str(metadata[field]);}
+        for (const field of ["argcount", "posonlyargcount", "kwonlyargcount", "firstlineno", "flags"]) {this.$metadata["co_" + field] = new Sk.builtin.int_(metadata[field]);}
+        for (const field of ["varnames", "cellvars", "freevars"]) {this.$metadata["co_" + field] = new Sk.builtin.tuple(metadata[field].map(name => new Sk.builtin.str(name)));}
         this.$metadata.co_nlocals = new Sk.builtin.int_(metadata.varnames.length);
         this.filename = filename.$jsstr();
         this.co_filename = filename;
@@ -966,8 +966,8 @@ Sk.builtin.exec = function (code, globals, locals) {
     return Sk.misceval.chain(
         code,
         (co) => {
-            if (!(co instanceof pyCode)) return Sk.global["eval"](co.code)(globals, locals);
-            if (co.mode !== "function") return co.$jsCode(globals, locals);
+            if (!(co instanceof pyCode)) {return Sk.global["eval"](co.code)(globals, locals);}
+            if (co.mode !== "function") {return co.$jsCode(globals, locals);}
             if (co.$jsCode.$metadata.freevars.length) {
                 throw new Sk.builtin.TypeError("code object passed to exec() may not contain free variables");
             }
