@@ -814,6 +814,11 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x400 : 0))) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
+    if (Sk.builtin.astType && source && source.ob$type.$isSubType(Sk.builtin.astType)) {
+        return Sk.misceval.chain(Sk.importModule("_ast", false, true), module =>
+            Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_compile_ast")),
+                [source, filename, mode, new Sk.builtin.int_(flags), new Sk.builtin.int_(Math.max(optimize, 0))]));
+    }
     source = compilerSource(source, filename.$jsstr(), "compile");
     if (flags & 0x400) {
         if (mode.v === "func_type") {

@@ -659,3 +659,19 @@ ASTs, the AST-only func_type grammar, type comments and constructor deprecation
 warnings follow separately. Unsupported func_type parsing raises an explicit
 NotImplementedError. Review corrected typed exception-handler conversion and
 shared parser operator/default-context identities.
+
+### Compilation and validation of edited ASTs
+
+`stu-dev/compiler/ast-compilation` converts public Python ASTs into the same
+modern ASDL representation used by source parsing, then runs the existing symbol
+table and compiler. Conversion checks field/sequence types, integer ranges,
+required fields and immutable Constant values. Procedural semantic validation
+follows CPython Python/ast.c for contexts, arguments, comprehensions, bodies,
+imports, annotations and generic type parameters. Tuple/frozenset constants use
+the existing compiler constant pool. PyCF_ONLY_AST copies converted trees, as
+CPython does, without applying semantic validation.
+
+Thirty-seven complete upstream ASTValidatorTests methods and their compile
+harness are unchanged, plus one edited-generic-function/immutable-constant
+regression (38 cases), passing both runtimes. Pattern validation follows with
+match compilation; whole-stdlib validation follows broader stdlib support.
