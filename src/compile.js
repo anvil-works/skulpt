@@ -2605,7 +2605,7 @@ Compiler.prototype.cclass = function (s) {
     scopename = this.enterScope(s.name, s, s.lineno);
     entryBlock = this.newBlock("class entry");
 
-    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||new Sk.builtin.dict(),$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
+    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||this.func_globals,$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
     const needsClassClosure = this.u.ste.needsClassClosure;
     if (needsClassClosure) {
         // Methods share this storage; the Python cell exposed to metaclasses wraps it.

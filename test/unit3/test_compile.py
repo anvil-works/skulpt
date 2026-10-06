@@ -509,5 +509,35 @@ class TestSpecifics(unittest.TestCase):
         cls = build(lambda: None, 'C')
         self.assertEqual(cls.__name__, 'C')
 
+    # codegen_class returns the cell without reading __prepare__'s mapping.
+    def test_class_cell_return_ignores_namespace_lookup(self):
+        class Namespace(dict):
+            def __getitem__(self, key):
+                if key == '__classcell__':
+                    raise ValueError('unexpected class cell lookup')
+                return dict.__getitem__(self, key)
+        class Meta(type):
+            @classmethod
+            def __prepare__(cls, name, bases):
+                return Namespace()
+        class C(metaclass=Meta):
+            def method(self):
+                return __class__
+        self.assertIs(C().method(), C)
+
+    def test_direct_class_body_uses_globals(self):
+        import builtins
+        seen = []
+        def hook(body, name):
+            body()
+            return object
+        custom = dict(vars(builtins))
+        custom['__build_class__'] = hook
+        ns = {'__builtins__': custom, 'seen': seen}
+        exec('class C:\n seen.append(locals() is globals())\n x = 42', ns)
+        self.assertEqual(seen, [True])
+        self.assertEqual(ns['x'], 42)
+        self.assertIs(ns['C'], object)
+
 if __name__ == "__main__":
     unittest.main()
