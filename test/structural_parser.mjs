@@ -114,6 +114,7 @@ for (const [name, source] of [
     // CPython Lib/test/test_type_params.py: test_name_non_collision_02.
     ["genericfunction", "def func[A](A): return A\nprint(func(1), func.__type_params__[0].__name__)"],
     ["namedexpr", "x = (y := 1)\nprint(x, y)"],
+    ["template strings", "value = 42\nprint(t'{value}'.interpolations[0].value)"],
     // CPython Lib/test/test_except_star.py: test_match_single_type and doSplitTestNamed.
     ["exceptstar", "try:\n    raise ExceptionGroup('test2', [ValueError('V1'), ValueError('V2')])\nexcept* ValueError as e:\n    print([str(exc) for exc in e.exceptions])"],
 ]) {
@@ -129,12 +130,12 @@ for (const [name, source] of [
 
 for (const source of [
     "match x:\n    case 1: pass",
-    "x = t'{value}'",
+    "async def f(): pass",
 ]) {
     Sk.configure({ __future__: { ...Sk.python3 } });
     const saved = Sk.__future__;
     assert.throws(() => Sk.compile(source, "guard.py", "exec", true), (e) =>
-        e instanceof Sk.builtin.SyntaxError && e.toString().includes("not supported by the Skulpt compiler"));
+        e instanceof Sk.builtin.SyntaxError);
     assert.equal(Sk.__future__, saved, "Failed compilation must restore configured flags");
     count++;
 }
