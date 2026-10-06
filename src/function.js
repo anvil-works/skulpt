@@ -155,6 +155,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
                 this.co_argcount = this.co_argcount = this.co_varnames.length;
             }
             this.co_kwonlyargcount = this.func_code.co_kwonlyargcount || 0;
+            this.co_posonlyargcount = this.func_code.co_posonlyargcount || 0;
             this.co_varargs = this.func_code.co_varargs;
             this.co_kwargs = this.func_code.co_kwargs;
             this.$defaults = this.func_code.$defaults;
@@ -234,6 +235,7 @@ function $resolveArgs(posargs, kw) {
     }
     let varnames = this.co_varnames || [];
     let co_kwonlyargcount = this.co_kwonlyargcount || 0;
+    let co_posonlyargcount = this.co_posonlyargcount || 0;
     let totalArgs = co_argcount + co_kwonlyargcount;
 
     // Fast path from _PyFunction_FastCallDict
@@ -267,10 +269,6 @@ function $resolveArgs(posargs, kw) {
     if (this.co_varargs) {
         let vararg = (posargs.length > args.length) ? posargs.slice(args.length) : [];
         args[totalArgs] = new Sk.builtin.tuple(vararg);
-    } else if (nposargs > co_argcount) {
-        const plural_expected = co_argcount == 1 ? "argument" : "arguments";
-        const plural_given = nposargs == 1 ? "was" : "were";
-        throw new Sk.builtin.TypeError(`${this.$name}() takes ${co_argcount} positional ${plural_expected} but ${nposargs} ${plural_given} given`);
     }
 
     /* Handle keyword arguments */
@@ -282,7 +280,9 @@ function $resolveArgs(posargs, kw) {
         for (let i = 0; i < kw.length; i += 2) {
             let name = kw[i]; // JS string
             let value = kw[i+1]; // Python value
-            let idx = varnames.indexOf(name);
+            // initialize_locals in CPython 3.14's Python/ceval.c starts keyword
+            // matching after the positional-only segment of co_varnames.
+            let idx = varnames.indexOf(name, co_posonlyargcount);
 
             if (idx >= 0) {
                 if (args[idx] !== undefined) {
@@ -292,13 +292,40 @@ function $resolveArgs(posargs, kw) {
             } else if (kwargs) {
                 kwargs.push(new Sk.builtin.str(name), value);
             } else {
+                // Like positional_only_passed_as_keyword, report conflicting
+                // names in declaration order, and only when there is no **kw.
+                const conflicts = [];
+                for (let j = 0; j < co_posonlyargcount; j++) {
+                    for (let k = 0; k < kw.length; k += 2) {
+                        if (varnames[j] === kw[k]) {
+                            conflicts.push(varnames[j]);
+                        }
+                    }
+                }
+                if (conflicts.length) {
+                    throw new Sk.builtin.TypeError(this.$name + "() got some positional-only arguments passed as keyword arguments: '" + conflicts.join(", ") + "'");
+                }
                 throw new Sk.builtin.TypeError(this.$name + "() got an unexpected keyword argument '" + name + "'");
             }
         }
     }
 
-    /* "Check the number of positional arguments" (which only checks for too many)
-       has been handled before keywords */
+    /* Check the number of positional arguments after keywords, as in
+       CPython initialize_locals / too_many_positional. */
+    if (!this.co_varargs && nposargs > co_argcount) {
+        const defcount = this.$defaults ? this.$defaults.length : 0;
+        const expected = defcount ? `from ${co_argcount - defcount} to ${co_argcount}` : co_argcount;
+        let kwonlyGiven = 0;
+        for (let i = co_argcount; i < totalArgs; i++) {
+            if (args[i] !== undefined) {
+                kwonlyGiven++;
+            }
+        }
+        const kwonlySig = kwonlyGiven ? ` positional argument${nposargs === 1 ? "" : "s"} (and ${kwonlyGiven} keyword-only argument${kwonlyGiven === 1 ? "" : "s"})` : "";
+        const plural = co_argcount !== 1 || defcount ? "s" : "";
+        const given = nposargs === 1 && !kwonlyGiven ? "was" : "were";
+        throw new Sk.builtin.TypeError(`${this.$name}() takes ${expected} positional argument${plural} but ${nposargs}${kwonlySig} ${given} given`);
+    }
 
     /* Add missing positional arguments (copy default values from defs)
        (also checks for missing args where no defaults) */
@@ -320,9 +347,9 @@ function $resolveArgs(posargs, kw) {
                 this.$name +
                     "() missing " +
                     missing.length +
-                    " required argument" +
+                    " required positional argument" +
                     (missing.length == 1 ? "" : "s") +
-                    (missingUnnamed ? "" : ": " + missing.map((x) => "'" + x + "'").join(", "))
+                    (missingUnnamed ? "" : ": " + formatMissing(missing))
             );
         }
         for (; i < co_argcount; i++) {
@@ -348,7 +375,7 @@ function $resolveArgs(posargs, kw) {
             }
         }
         if (missing.length !== 0) {
-            throw new Sk.builtin.TypeError(this.$name + "() missing " + missing.length + " required keyword argument" + (missing.length==1?"":"s") + ": " + missing.join(", "));
+            throw new Sk.builtin.TypeError(this.$name + "() missing " + missing.length + " required keyword-only argument" + (missing.length==1?"":"s") + ": " + formatMissing(missing));
         }
     }
 
@@ -368,3 +395,15 @@ function $resolveArgs(posargs, kw) {
 
     return args;
 };
+
+// CPython's format_missing: quote names and join the final pair with "and".
+function formatMissing(names) {
+    const quoted = names.map(name => "'" + name + "'");
+    if (quoted.length === 1) {
+        return quoted[0];
+    }
+    if (quoted.length === 2) {
+        return quoted.join(" and ");
+    }
+    return quoted.slice(0, -1).join(", ") + ", and " + quoted[quoted.length - 1];
+}

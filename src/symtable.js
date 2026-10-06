@@ -430,7 +430,7 @@ SymbolTable.prototype.visitArgAnnotations = function (args) {
 };
 
 SymbolTable.prototype.visitArguments = function (a, lineno) {
-    if (a.posonlyargs.length) throw new Sk.builtin.SyntaxError("Positional-only parameters are not supported by the Skulpt compiler", this.filename, lineno);
+    this.visitParams(a.posonlyargs, true);
     if (a.args) {
         this.visitParams(a.args, true);
     }
