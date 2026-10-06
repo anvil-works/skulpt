@@ -500,6 +500,11 @@ class TestExecutionMappingHooks(unittest.TestCase):
         self.assertEqual(events, [("del", "value")])
         with self.assertRaises(NameError):
             exec("del value", {})
+        class FailingDelete(M):
+            def __delitem__(self, name):
+                raise ValueError("bad deletion")
+        with self.assertRaisesRegex(NameError, "name 'value' is not defined"):
+            exec("del value", {}, FailingDelete())
 
 
 if __name__ == "__main__":

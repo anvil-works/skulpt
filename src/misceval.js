@@ -1400,7 +1400,9 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
                         Sk.abstr.objectSetItem(dict, key, undefined);
                     }
                 } catch (err) {
-                    if (err instanceof Sk.builtin.KeyError) {
+                    // CPython DELETE_NAME replaces any mapping deletion
+                    // failure with NameError; DELETE_GLOBAL only handles KeyError.
+                    if (!globals || err instanceof Sk.builtin.KeyError) {
                         throw new Sk.builtin.NameError("name '" + key.$jsstr() + "' is not defined");
                     }
                     throw err;
