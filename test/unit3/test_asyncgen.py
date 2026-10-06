@@ -90,6 +90,30 @@ class AsyncGenSyntaxTest(unittest.TestCase):
 
 
 class AsyncGenTest(unittest.TestCase):
+    def test_athrow_continuation_can_advance_after_yield(self):
+        async def gen():
+            try: yield 1
+            except ValueError:
+                await awaitable()
+                yield 2
+                yield 3
+        g = gen()
+        with self.assertRaises(StopIteration): g.__anext__().send(None)
+        op = g.athrow(ValueError)
+        self.assertEqual(op.send(None), ('result',))
+        for value in [2, 3]:
+            with self.assertRaises(StopIteration) as cm: op.send(None)
+            self.assertEqual(cm.exception.value, value)
+        with self.assertRaises(StopAsyncIteration): op.send(None)
+        with self.assertRaises(StopIteration): op.send(None)
+        with self.assertRaisesRegex(RuntimeError, 'cannot reuse'): op.send(None)
+
+    def test_async_generator_return_error_line(self):
+        for source, line in [('async def f():\n    yield\n    return 1\n', 3),
+                             ('async def f():\n    return 1\n    yield\n', 2)]:
+            with self.assertRaises(SyntaxError) as cm: compile(source, 'return.py', 'exec')
+            self.assertEqual(cm.exception.lineno, line)
+
     def test_yield_values_and_operation_reuse(self):
         async def gen():
             value = yield None
