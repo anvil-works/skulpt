@@ -108,20 +108,24 @@ delete baseline.builtins.adapter_pause;
 count++;
 
 // Newly implemented syntax compares with CPython; the checkpoint predates it.
-const namedExpressionSource = "x = (y := 1)\nprint(x, y)";
-const namedExpressionOracle = spawnSync(python, ["-c", namedExpressionSource], { encoding: "utf8" });
-assert.equal(namedExpressionOracle.status, 0, namedExpressionOracle.stderr);
-Sk.configure({ __future__: { ...Sk.python3 } });
-const namedExpressionFlags = Sk.__future__;
-Sk.compile(namedExpressionSource, "namedexpr.py", "exec", true);
-assert.equal(Sk.__future__, namedExpressionFlags, "Successful compilation must restore configured flags");
-assert.equal(await run(namedExpressionSource, true), namedExpressionOracle.stdout);
-count++;
+for (const [name, source] of [
+    ["namedexpr", "x = (y := 1)\nprint(x, y)"],
+    // CPython Lib/test/test_except_star.py: test_match_single_type and doSplitTestNamed.
+    ["exceptstar", "try:\n    raise ExceptionGroup('test2', [ValueError('V1'), ValueError('V2')])\nexcept* ValueError as e:\n    print([str(exc) for exc in e.exceptions])"],
+]) {
+    const reference = spawnSync(python, ["-c", source], { encoding: "utf8" });
+    assert.equal(reference.status, 0, `${name}: ${reference.stderr}`);
+    Sk.configure({ __future__: { ...Sk.python3 } });
+    const saved = Sk.__future__;
+    Sk.compile(source, `${name}.py`, "exec", true);
+    assert.equal(Sk.__future__, saved, "Successful compilation must restore configured flags");
+    assert.equal(await run(source, true), reference.stdout, `${name}: direct AST vs CPython`);
+    count++;
+}
 
 for (const source of [
     "match x:\n    case 1: pass",
     "def f[T](): pass",
-    "try:\n    pass\nexcept* ValueError: pass",
     "x = t'{value}'",
 ]) {
     Sk.configure({ __future__: { ...Sk.python3 } });
