@@ -1429,9 +1429,11 @@ Compiler.prototype.outputFrame = function (unit) {
     code += "default:return " + (optimized ? snapshot(bindings(unit.ste)) : "Sk.misceval.namespaceDict($loc)") + ";}},getSuper:function(){switch($localsScope){";
     const superArgs = scope => {
         const items = scopeBindings(scope);
-        const ste = scope ? scope.ste : unit.ste;
-        const hasClass = ste.getScope("__class__") === constants.FREE;
-        return "[" + (unit.firstArg !== null) + "," + (items.get(unit.firstArg) || "undefined") + "," + hasClass + "," + (hasClass ? items.get("__class__") : "undefined") + "]";
+        // super reads the actual function's free cell, not a logical
+        // comprehension binding named __class__ (which can be unrelated).
+        const hasClass = unit.ste.getScope("__class__") === constants.FREE;
+        const cls = hasClass ? bindings(unit.ste).get("__class__") : "undefined";
+        return "[" + (unit.firstArg !== null) + "," + (items.get(unit.firstArg) || "undefined") + "," + hasClass + "," + cls + "]";
     };
     for (const scope of unit.comprehensions) {
         code += "case " + scope.id + ":return " + superArgs(scope) + ";";

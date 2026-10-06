@@ -558,6 +558,32 @@ class TestLiveSuperBindings(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "__class__ cell not found"):
             a.shadow_class()
 
+    def test_function_class_cell_in_aliased_comprehension(self):
+        class Base:
+            def value(self):
+                return 1
+        class Child(Base):
+            def values(self):
+                alias = super
+                plain = [alias().value() for _ in [0]]
+                shadow = [alias().value() for __class__ in [42]]
+                nested = [[super().value() for _ in [0]] for __class__ in [42]]
+                return plain, shadow, nested
+            def missing(self):
+                return [[super().value() for _ in [0]] for __class__ in [42]]
+        self.assertEqual(Child().values(), ([1], [1], [[1]]))
+        with self.assertRaisesRegex(RuntimeError, "__class__ cell not found"):
+            Child().missing()
+
+    def test_non_type_class_cell(self):
+        class Child:
+            def value(self):
+                nonlocal __class__
+                __class__ = 42
+                return super()
+        with self.assertRaisesRegex(RuntimeError, r"__class__ is not a type \(int\)"):
+            Child().value()
+
     def test_deleted_fast_and_global_names(self):
         def f():
             value = 1
