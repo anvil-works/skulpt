@@ -190,4 +190,43 @@ class AnnotationDescriptorTests(unittest.TestCase):
         self.assertEqual(module.__annotations__, 42)
         self.assertIsNone(module.__annotate__)
 
+class AnnotationDescriptorReviewTests(unittest.TestCase):
+    def test_direct_type_descriptor_setter_checks_immutability(self):
+        for name in ['__annotations__', '__annotate__']:
+            descriptor = type.__dict__[name]
+            with self.assertRaisesRegex(TypeError, 'immutable type'):
+                descriptor.__set__(int, None)
+            with self.assertRaises(TypeError): descriptor.__delete__(int)
+
+    def test_optional_module_initialization_attribute(self):
+        module = types.ModuleType('optional_initialization')
+        class Spec:
+            @property
+            def _initializing(self): raise AttributeError('unset')
+        module.__spec__ = Spec()
+        module.__annotate__ = lambda format: {'x': format}
+        self.assertEqual(module.__annotations__, {'x': 1})
+        self.assertIs(module.__dict__['__annotations__'], module.__annotations__)
+        class Broken:
+            @property
+            def _initializing(self): raise ValueError('broken')
+        module.__spec__ = Broken()
+        module.__annotate__ = lambda format: {'x': format}
+        with self.assertRaisesRegex(ValueError, 'broken'): module.__annotations__
+
+    def test_module_snapshots_initialization_before_callback(self):
+        for initial in [True, False]:
+            module = types.ModuleType('annotation_snapshot')
+            class Spec: _initializing = initial
+            module.__spec__ = Spec()
+            calls = []
+            def annotate(format):
+                calls.append(format)
+                module.__spec__._initializing = not initial
+                return {'x': len(calls)}
+            module.__annotate__ = annotate
+            self.assertEqual(module.__annotations__, {'x': 1})
+            self.assertEqual(module.__annotations__, {'x': 2 if initial else 1})
+            self.assertEqual(calls, [1, 1] if initial else [1])
+
 if __name__ == '__main__': unittest.main()
