@@ -53,8 +53,8 @@ class FutureTest(unittest.TestCase):
             a(hasattr(value, "compiler_flag"),
                    "feature is missing a .compiler_flag attr")
             # Make sure the compile accepts the flag.
-            # Barry and stringized annotations are guarded pending their increments.
-            if feature not in ('barry_as_FLUFL', 'annotations'):
+            # Barry syntax is guarded pending its parser option.
+            if feature != 'barry_as_FLUFL':
                 compile("", "<test>", "exec", value.compiler_flag)
             a(isinstance(getattr(value, "compiler_flag"), int),
                    ".compiler_flag isn't int")

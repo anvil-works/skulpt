@@ -1,3 +1,5 @@
+const { exprAsUnicode } = require("./ast_unparse.js");
+
 /** @param {...*} x */
 var out;
 
@@ -1120,16 +1122,26 @@ Compiler.prototype.vseqexpr = function (exprs, data) {
 Compiler.prototype.cannassign = function (s) {
     const target = s.target;
     let val = s.value;
+    const annotationNamespace = this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock || this.u.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock;
+    if (annotationNamespace) this.u.hasAnnotations = true;
     // perform the actual assignment first
     if (val) {
         val = this.vexpr(s.value);
         this.vexpr(target, val);
     }
     switch (target._type) {
+        case "Attribute":
+            if (!s.value) this.vexpr(target.value);
+            break;
+        case "Subscript":
+            if (!s.value) {
+                this.vexpr(target.value);
+                this.vslicesub(target.slice);
+            }
+            break;
         case "Name":
-            if (s.simple && (this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock || this.u.ste.blockType == Sk.SYMTAB_CONSTS.ModuleBlock)) {
-                this.u.hasAnnotations = true;
-                const val = this.vexpr(s.annotation);
+            if (s.simple && annotationNamespace) {
+                const val = this.cannotation(s.annotation);
                 let mangled = mangleName(this.u.private_, target.id).v;
                 const key = this.makeConstant("new Sk.builtin.str('" + mangled + "')");
                 this.chandlesubscr("Store", "$loc.__annotations__", key, val);
@@ -2392,12 +2404,20 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
 };
 
 
+// codegen.c: codegen_visit_annexpr uses _PyAST_ExprAsUnicode in future mode.
+Compiler.prototype.cannotation = function (annotation) {
+    if (this.flags & 0x1000000) {
+        return this.makeConstant("new Sk.builtin.str(", JSON.stringify(exprAsUnicode(annotation)), ")");
+    }
+    return this.vexpr(annotation);
+};
+
 Compiler.prototype.cargannotation = function (id, annotation, ann_dict) {
     if (annotation) {
         const mangled = mangleName(this.u.private_, id).v;
         // var scope = this.u.ste.getScope(mangled);
         ann_dict.push(`'${mangled}'`);
-        ann_dict.push(this.vexpr(annotation));
+        ann_dict.push(this.cannotation(annotation));
     }
 };
 
@@ -3259,8 +3279,8 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
             : mode === "single" ? Sk.parseInteractive(source, filename) : Sk.parseModule(source, filename);
         const future = futureFromAst(ast);
         flags = (flags || 0) | future.flags;
-        if (flags & 0x1400000) {
-            throw new Sk.builtin.NotImplementedError("Barry syntax and stringized annotations are not yet supported");
+        if (flags & 0x400000) {
+            throw new Sk.builtin.NotImplementedError("Barry syntax is not yet supported");
         }
         const st = Sk.symboltable(ast, filename, flags);
         c = new Compiler(filename, st, flags || 0, canSuspend, source, optimize);
