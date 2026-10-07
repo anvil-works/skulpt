@@ -717,6 +717,71 @@ Sk.builtin.type.prototype.tp$getsets = {
             return new Sk.builtin.mappingproxy(this.$classDict || this.prototype);
         },
     },
+    // type_get/set_annotate and type_get/set_annotations in typeobject.c.
+    __annotate__: {
+        $get() {
+            if (!this.sk$klass) {
+                throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '__annotate__'");
+            }
+            const dict = this.$classDict;
+            let annotate = dict.quick$lookup(new Sk.builtin.str("__annotate__"));
+            if (annotate === undefined) {annotate = dict.quick$lookup(new Sk.builtin.str("__annotate_func__"));}
+            if (annotate === undefined) {
+                annotate = Sk.builtin.none.none$;
+                dict.dict$setItem(new Sk.builtin.str("__annotate_func__"), annotate);
+            }
+            return annotate.tp$descr_get ? annotate.tp$descr_get(null, this, true) : annotate;
+        },
+        $set(value) {
+            if (value === undefined) {throw new Sk.builtin.TypeError("cannot delete __annotate__ attribute");}
+            if (!this.sk$klass) {throw new Sk.builtin.TypeError("cannot set '__annotate__' attribute of immutable type '" + this.prototype.tp$name + "'");}
+            if (!Sk.builtin.checkNone(value) && !Sk.builtin.checkCallable(value)) {
+                throw new Sk.builtin.TypeError("__annotate__ must be callable or None");
+            }
+            this.$classDict.dict$setItem(new Sk.builtin.str("__annotate_func__"), value);
+            if (!Sk.builtin.checkNone(value)) {this.$classDict.dict$delItem(new Sk.builtin.str("__annotations_cache__"));}
+        },
+    },
+    __annotations__: {
+        $get() {
+            if (!this.sk$klass) {
+                throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '__annotations__'");
+            }
+            const dict = this.$classDict;
+            let annotations = dict.quick$lookup(new Sk.builtin.str("__annotations__"));
+            if (annotations === undefined) {annotations = dict.quick$lookup(new Sk.builtin.str("__annotations_cache__"));}
+            if (annotations !== undefined) {
+                return annotations.tp$descr_get ? annotations.tp$descr_get(null, this, true) : annotations;
+            }
+            return Sk.misceval.chain(Sk.abstr.gattr(this, new Sk.builtin.str("__annotate__"), true), annotate => {
+                const result = Sk.builtin.checkCallable(annotate)
+                    ? Sk.misceval.callsimOrSuspendArray(annotate, [new Sk.builtin.int_(1)]) : new Sk.builtin.dict([]);
+                return Sk.misceval.chain(result, result => {
+                    if (!(result instanceof Sk.builtin.dict)) {
+                        throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
+                    }
+                    dict.dict$setItem(new Sk.builtin.str("__annotations_cache__"), result);
+                    return result;
+                });
+            });
+        },
+        $set(value) {
+            if (!this.sk$klass) {throw new Sk.builtin.TypeError("cannot set '__annotations__' attribute of immutable type '" + this.prototype.tp$name + "'");}
+            const dict = this.$classDict;
+            const annotations = new Sk.builtin.str("__annotations__");
+            const cache = new Sk.builtin.str("__annotations_cache__");
+            const key = dict.quick$lookup(annotations) === undefined ? cache : annotations;
+            if (value === undefined) {
+                if (dict.quick$lookup(key) === undefined) {throw new Sk.builtin.AttributeError("__annotations__");}
+                dict.dict$delItem(key);
+            } else {
+                dict.dict$setItem(key, value);
+            }
+            if (key === annotations) {dict.dict$delItem(cache);}
+            dict.dict$delItem(new Sk.builtin.str("__annotate__"));
+            dict.dict$delItem(new Sk.builtin.str("__annotate_func__"));
+        },
+    },
     __doc__: {
         $get() {
             const doc = this.$typeLookup(Sk.builtin.str.$doc);

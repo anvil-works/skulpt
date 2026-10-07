@@ -1123,7 +1123,7 @@ Compiler.prototype.cannassign = function (s) {
     const target = s.target;
     let val = s.value;
     const annotationNamespace = this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock || this.u.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock;
-    if (annotationNamespace) this.u.hasAnnotations = true;
+    if (annotationNamespace && this.flags & 0x1000000) this.u.hasAnnotations = true;
     // perform the actual assignment first
     if (val) {
         val = this.vexpr(s.value);
@@ -1140,7 +1140,16 @@ Compiler.prototype.cannassign = function (s) {
             }
             break;
         case "Name":
-            if (s.simple && annotationNamespace) {
+            if (s.simple && annotationNamespace && !(this.flags & 0x1000000)) {
+                const index = s.conditionalAnnotationIndex;
+                if (index !== -1) {
+                    const set = this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock
+                        ? "$classcell.__conditional_annotations__" : "$loc.__conditional_annotations__";
+                    const conditional = this._gr("conditionalannotations", set);
+                    out("if(!(", conditional, " instanceof Sk.builtin.set))throw new Sk.builtin.TypeError('expected a set for conditional annotations');");
+                    out("Sk.builtin.set.prototype.set$add.call(", conditional, ",new Sk.builtin.int_(", index, "));");
+                }
+            } else if (s.simple && annotationNamespace) {
                 const val = this.cannotation(s.annotation);
                 let mangled = mangleName(this.u.private_, target.id).v;
                 const key = this.makeConstant("new Sk.builtin.str('" + mangled + "')");
@@ -1419,8 +1428,10 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
             if (scope === constants.CELL) cellvars.add(name);
         }
     }
+    if (unit.ste.classScope && !freevars.includes("__classdict__")) freevars.push("__classdict__");
     if (unit.ste.needsClassClosure) cellvars.add("__class__");
     if (unit.ste.needsClassdict) cellvars.add("__classdict__");
+    if (unit.ste.blockType === constants.ClassBlock && unit.ste.hasConditionalAnnotations) cellvars.add("__conditional_annotations__");
     let flags = (optimized ? 3 : 0) | (this.flags & 0x1fe0000); // CO_OPTIMIZED | CO_NEWLOCALS
     if (optimized) {
         if (unit.ste.isNested) flags |= 0x10;
@@ -2657,7 +2668,7 @@ Compiler.prototype.cclass = function (s) {
     this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||this.func_globals,$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
     const needsClassClosure = this.u.ste.needsClassClosure;
     const needsClassdict = this.u.ste.needsClassdict;
-    if (needsClassClosure || needsClassdict) {
+    if (needsClassClosure || needsClassdict || this.u.ste.hasConditionalAnnotations) {
         this.u.prefixCode += "var $classcell={__class__:undefined,__classdict__:undefined};";
     }
     this.u.switchCode += "return (function $" + s.name + "$_closure($cell){";
@@ -2684,6 +2695,9 @@ Compiler.prototype.cclass = function (s) {
     }
     if (needsClassdict) {
         out("$classcell.__classdict__=Sk.misceval.namespaceDict($loc);");
+    }
+    if (this.u.ste.hasConditionalAnnotations) {
+        out("$classcell.__conditional_annotations__=new Sk.builtin.set();");
     }
     this.cbody(s.body, s.name);
     if (needsClassdict) {
@@ -2918,7 +2932,10 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore, skipClassLookup) {
     // Evaluate the fallback only when the actual class dictionary has no value.
     if (!skipClassLookup && ctx === "Load" && this.u.ste.classScope &&
             (scope === Sk.SYMTAB_CONSTS.FREE || scope === Sk.SYMTAB_CONSTS.GLOBAL_IMPLICIT)) {
-        const classdict = this.nameop("__classdict__", "Load", undefined, true);
+        // codegen_load_classdict_freevar forces this synthetic cell even when
+        // the class contains an annotated target named __classdict__.
+        const classdict = this._gr("classdict", "$free.__classdict__");
+        out("if(", classdict, "===undefined)throw new Sk.builtin.NameError(\"cannot access free variable '__classdict__' where it is not associated with a value in enclosing scope\");");
         const value = this._gr("classannotation", "Sk.misceval.namespaceToJs(", classdict, ")[",
             JSON.stringify(mangled), "]");
         const fallback = this.newBlock("class annotation fallback");
@@ -3104,7 +3121,10 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
             u.qualname = this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".") + name.v;
         }
     }
-    if (key._type === "Annotation") {
+    if (key._type === "Annotation" && key.variableAnnotations) {
+        u.qualname = this.u.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock
+            ? "__annotate__" : this.u.qualname + ".__annotate__";
+    } else if (key._type === "Annotation") {
         const ownerName = key.owner.name;
         const global = this.u.ste.getScope(fixReserved(mangleName(this.u.private_, ownerName).v)) === Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT;
         u.qualname = (global || ["Module", "Expression", "Interactive"].includes(this.u.scopeType) ? "" :
@@ -3158,8 +3178,43 @@ Compiler.prototype.exitScope = function () {
  * @param {Array} stmts
  * @param {Sk.builtin.str=} class_for_super
  */
+// codegen_process_deferred_annotations / codegen_deferred_annotations_body.
+Compiler.prototype.cdeferredAnnotations = function (annotations) {
+    const key = this.u.ste.variableAnnotationScope;
+    const classScope = this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock;
+    const annotate = this.buildcodeobj(key, "__annotate__", null, key.args, function () {
+        const format = this.nameop("$annotationFormat", "Load");
+        out("if(Sk.misceval.richCompareBool(", format, ",new Sk.builtin.int_(2),'Gt'))throw new Sk.builtin.NotImplementedError();");
+        const dict = this._gr("annotations", "new Sk.builtin.dict()");
+        for (const { statement, index } of annotations) {
+            const end = this.newBlock("conditional annotation end");
+            if (index !== -1) {
+                const set = this.nameop("__conditional_annotations__", "Load", undefined, true);
+                out("$ret=Sk.abstr.sequenceContains(", set, ",new Sk.builtin.int_(", index, "),true);");
+                this._checkSuspension(statement);
+                this._jumpfalse("$ret", end);
+            }
+            const value = this.vexpr(statement.annotation);
+            const name = mangleName(this.u.private_, statement.target.id).v;
+            out(dict, ".dict$setItem(new Sk.builtin.str(", JSON.stringify(name), "),", value, ");");
+            this._jump(end);
+            this.setBlock(end);
+        }
+        out("return ", dict, ";");
+    });
+    out("$loc.", classScope ? "__annotate_func__" : "__annotate__", "=", annotate, ";");
+};
+
 Compiler.prototype.cbody = function (stmts, class_for_super) {
     var i = 0;
+    const unit = this.u;
+    const annotationSetup = this.newBlock("annotation setup");
+    const body = this.newBlock("body after annotation setup");
+    this._jump(annotationSetup);
+    this.setBlock(body);
+    if (unit.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock && unit.ste.hasConditionalAnnotations) {
+        out("$loc.__conditional_annotations__=new Sk.builtin.set();");
+    }
 
     // If we have a docstring, then assign it to __doc__, and skip over
     // the expression when properly compiling the rest of the body.  This
@@ -3175,7 +3230,14 @@ Compiler.prototype.cbody = function (stmts, class_for_super) {
     for (; i < stmts.length; ++i) {
         this.vstmt(stmts[i], class_for_super);
     }
-    /* Every annotated class and module should have __annotations__. */
+    const continuation = this.u.curblock;
+    this.setBlock(annotationSetup);
+    const annotations = unit.ste.deferredVariableAnnotations;
+    if (annotations && unit.ste.blockType === Sk.SYMTAB_CONSTS.ModuleBlock) this.cdeferredAnnotations(annotations);
+    this._jump(body);
+    this.setBlock(continuation);
+    if (annotations && unit.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock) this.cdeferredAnnotations(annotations);
+    /* Future-mode annotated classes and modules have __annotations__. */
     if (this.u.hasAnnotations) {
         this.u.varDeclsCode += "$loc.__annotations__ || ($loc.__annotations__ = new Sk.builtin.dict());";
     }
