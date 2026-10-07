@@ -50,6 +50,80 @@ def _tp_cache(func=None, /, *, typed=False):
     return decorator
 
 
+class _Final:
+    """Mixin to prohibit subclassing."""
+
+    __slots__ = ('__weakref__',)
+
+    def __init_subclass__(cls, /, *args, **kwds):
+        if '_root' not in kwds:
+            raise TypeError("Cannot subclass special typing classes")
+
+
+class _NotIterable:
+    """Mixin to prevent iteration, without being compatible with Iterable.
+
+    That is, we could do::
+
+        def __iter__(self): raise TypeError()
+
+    But this would make users of this mixin duck type-compatible with
+    collections.abc.Iterable - isinstance(foo, Iterable) would be True.
+
+    Luckily, we can instead prevent iteration by setting __iter__ to None, which
+    is treated specially.
+    """
+
+    __slots__ = ()
+    __iter__ = None
+
+
+# Internal indicator of special typing constructs.
+# See __doc__ instance attribute for specific docs.
+class _SpecialForm(_Final, _NotIterable, _root=True):
+    __slots__ = ('_name', '__doc__', '_getitem')
+
+    def __init__(self, getitem):
+        self._getitem = getitem
+        self._name = getitem.__name__
+        self.__doc__ = getitem.__doc__
+
+    def __getattr__(self, item):
+        if item in {'__name__', '__qualname__'}:
+            return self._name
+
+        raise AttributeError(item)
+
+    def __mro_entries__(self, bases):
+        raise TypeError(f"Cannot subclass {self!r}")
+
+    def __repr__(self):
+        return 'typing.' + self._name
+
+    def __reduce__(self):
+        return self._name
+
+    def __call__(self, *args, **kwds):
+        raise TypeError(f"Cannot instantiate {self!r}")
+
+    def __or__(self, other):
+        return Union[self, other]
+
+    def __ror__(self, other):
+        return Union[other, self]
+
+    def __instancecheck__(self, obj):
+        raise TypeError(f"{self} cannot be used with isinstance()")
+
+    def __subclasscheck__(self, cls):
+        raise TypeError(f"{self} cannot be used with issubclass()")
+
+    @_tp_cache
+    def __getitem__(self, parameters):
+        return self._getitem(self, parameters)
+
+
+
 # Helpers invoked by native parameters, following CPython Lib/typing.py.
 def _type_check(arg, message):
     if arg is None:
@@ -58,14 +132,14 @@ def _type_check(arg, message):
         raise NotImplementedError("string type arguments require ForwardRef support")
     if isinstance(arg, _GenericAlias) and arg.__origin__ in (Generic,):
         raise TypeError(f"{arg} is not valid as type argument")
-    if arg is Unpack or arg in (Generic,):
+    if isinstance(arg, _SpecialForm) or arg is Unpack or arg in (Generic,):
         raise TypeError(f"Plain {arg} is not valid as type argument")
     if type(arg) is tuple:
         raise TypeError(message + " Got " + repr(arg) + ".")
     return arg
 
 def _is_param_expr(arg):
-    return arg is ... or isinstance(arg, (tuple, list, ParamSpec))
+    return arg is ... or isinstance(arg, (tuple, list, ParamSpec, _ConcatenateGenericAlias))
 
 def _unpack_args(*args):
     newargs = []
@@ -162,6 +236,8 @@ def _type_convert(arg):
     return _type_check(arg, "Expected a type.")
 
 def _generic_alias_mro_entries(alias, bases):
+    if isinstance(alias.__origin__, _SpecialForm):
+        raise TypeError(f"Cannot subclass {alias!r}")
     if alias.__origin__ is Generic:
         i = bases.index(alias)
         for base in bases[i+1:]:
@@ -533,4 +609,41 @@ class _GenericAlias(_BaseGenericAlias, _root=True):
 
     def copy_with(self, args):
         return self.__class__(self.__origin__, args, name=self._name, inst=self._inst)
+
+
+class _ConcatenateGenericAlias(_GenericAlias, _root=True):
+    def copy_with(self, params):
+        if isinstance(params[-1], (list, tuple)):
+            return (*params[:-1], *params[-1])
+        if isinstance(params[-1], _ConcatenateGenericAlias):
+            params = (*params[:-1], *params[-1].__args__)
+        return super().copy_with(params)
+
+
+
+@_SpecialForm
+def Concatenate(self, parameters):
+    """Special form for annotating higher-order functions.
+
+    ``Concatenate`` can be used in conjunction with ``ParamSpec`` and
+    ``Callable`` to represent a higher-order function which adds, removes or
+    transforms the parameters of a callable.
+
+    For example::
+
+        Callable[Concatenate[int, P], int]
+
+    See PEP 612 for detailed information.
+    """
+    if parameters == ():
+        raise TypeError("Cannot take a Concatenate of no types.")
+    if not isinstance(parameters, tuple):
+        parameters = (parameters,)
+    if not (parameters[-1] is ... or isinstance(parameters[-1], ParamSpec)):
+        raise TypeError("The last parameter to Concatenate should be a "
+                        "ParamSpec variable or ellipsis.")
+    msg = "Concatenate[arg, ...]: each arg must be a type."
+    parameters = (*(_type_check(p, msg) for p in parameters[:-1]), parameters[-1])
+    return _ConcatenateGenericAlias(self, parameters)
+
 
