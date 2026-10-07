@@ -197,4 +197,6 @@ def _stmts(nodes):
 def _validate(tree):
     if isinstance(tree, (Module, Interactive)): _stmts(tree.body)
     elif isinstance(tree, Expression): _expr(tree.body)
-    else: raise TypeError('expected Module, Interactive or Expression AST')
+    elif isinstance(tree, FunctionType):
+        _exprs(tree.argtypes); _expr(tree.returns)
+    else: raise TypeError('expected Module, Interactive, Expression or FunctionType AST')

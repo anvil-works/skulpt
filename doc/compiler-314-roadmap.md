@@ -832,3 +832,7 @@ The Spec review corrected four public boundaries: PyCF_OPTIMIZED_AST includes Py
 A follow-up review corrected edited-AST future-feature checks. CPython's `future_parse`/`future_check_features` scan now rejects unknown features and `braces` before returning snapshots or compiling edited ASTs, preserving filename and alias ranges. The same helper supplies preprocessing feature bits. A fourth CPython-checked regression brings optimized-AST coverage to 16 tests.
 
 Future-diagnostic review preserves CPython's message-only exception arguments while attaching location attributes separately, as `PyErr_RangedSyntaxLocationObject` does. The edited-feature regression checks both `.args` and location fields.
+
+## Function-type AST input
+
+`stu-dev/compiler/function-type-input` integrates the parser's generated `func_type`/`type_expressions` entry point with `compile` and `ast.parse`. FunctionType requires AST-only flags, validates edited argument/return expressions, and stays unoptimized as in CPython. Two complete upstream methods from `test_type_comments` and `test_ast`, plus one CPython-checked flag/snapshot regression, pass in both runtimes. The parser change is reviewed on local `stu-dev/parser/function-type-input` at 8ed0edb2, with nine upstream source cases, complete parser tests, generation/type checks, build and packaged API checks passing. The local dev.9 tarball is installed only for validation; tracked dependency pins and unpublished status remain unchanged pending parser release authorization.

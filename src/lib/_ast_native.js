@@ -77,7 +77,8 @@ var $builtinmodule = function () {
             Sk.abstr.checkArgsLen("_parse_tree", arguments, 3, 3);
             const text = source.$jsstr(), name = filename.$jsstr();
             const tree = mode.v === "eval" ? Sk.parseExpression(text, name)
-                : mode.v === "single" ? Sk.parseInteractive(text, name) : Sk.parseModule(text, name);
+                : mode.v === "single" ? Sk.parseInteractive(text, name)
+                : mode.v === "func_type" ? Sk.parseFunctionType(text, name) : Sk.parseModule(text, name);
             return toPython(tree);
         }),
     };
