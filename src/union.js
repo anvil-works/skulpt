@@ -79,7 +79,8 @@ function unionContainsHash(buckets, arg, hash) {
 // _Py_union_type_or and unionbuilder_add_single_unchecked.
 Sk.builtin.typeUnion = function (left, right) {
     const unionable = value => Sk.builtin.checkNone(value) || Sk.builtin.checkClass(value) ||
-        value instanceof Sk.builtin.GenericAlias || value instanceof Sk.builtin.UnionType;
+        value instanceof Sk.builtin.GenericAlias || value instanceof Sk.builtin.UnionType ||
+        value instanceof Sk.builtin.TypeAliasType;
     if (!Sk.__future__.python3 || !unionable(left) || !unionable(right)) {
         return Sk.builtin.NotImplemented.NotImplemented$;
     }
