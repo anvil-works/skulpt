@@ -531,7 +531,7 @@ function executionNamespaces(globals, locals) {
         throw new Sk.builtin.TypeError("locals must be a mapping or None, not " + Sk.abstr.typeName(locals));
     }
     if (globals.quick$lookup(new Sk.builtin.str("__builtins__")) === undefined) {
-        globals.dict$setItem(new Sk.builtin.str("__builtins__"), Sk.misceval.namespaceDict(Sk.builtins));
+        globals.dict$setItem(new Sk.builtin.str("__builtins__"), Sk.misceval.getBuiltins());
     }
     return [Sk.misceval.namespaceToJs(globals, true), Sk.misceval.namespaceToJs(locals)];
 }
