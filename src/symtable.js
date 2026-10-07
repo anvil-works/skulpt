@@ -545,6 +545,9 @@ SymbolTable.prototype.visitStmt = function (s) {
             this.cur.coroutine = s._type === "AsyncFunctionDef";
             this.visitArguments(s.args, s.lineno);
             this.SEQStmt(s.body);
+            if (this.cur.coroutine && this.cur.generator && this.cur.returnsValue) {
+                throw new Sk.builtin.SyntaxError("'return' with value in async generator", this.filename, this.cur.returnValueLine);
+            }
             this.exitBlock();
             break;
         case "ClassDef":
@@ -565,6 +568,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             if (s.value) {
                 this.visitExpr(s.value);
                 this.cur.returnsValue = true;
+                if (this.cur.returnValueLine === undefined) this.cur.returnValueLine = s.lineno;
             }
             break;
         case "Delete":
@@ -825,7 +829,7 @@ SymbolTable.prototype.visitExpr = function (e) {
             if (e.value) {
                 this.visitExpr(e.value);
             }
-            if (this.cur.coroutine) throw new Sk.builtin.SyntaxError(e._type === "YieldFrom" ? "'yield from' inside async function" : "Async generators are not yet supported", this.filename, e.lineno);
+            if (this.cur.coroutine && e._type === "YieldFrom") throw new Sk.builtin.SyntaxError("'yield from' inside async function", this.filename, e.lineno);
             this.cur.generator = true;
             if (!Sk.__future__.python3 && this.cur.returnsValue) {
                 throw new Sk.builtin.SyntaxError("'return' with argument inside generator", this.filename);

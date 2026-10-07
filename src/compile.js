@@ -672,6 +672,7 @@ Compiler.prototype.cyield = function(e) {
     if (e.value) {
         val = this.vexpr(e.value);
     }
+    if (this.u.ste.coroutine && this.u.ste.generator) val = "new Sk.builtin.async_generator_wrapped_value(" + val + ")";
     nextBlock = this.newBlock("after yield");
     this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
     out(`$blk=${nextBlock};`);
@@ -1420,7 +1421,8 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
     let flags = (optimized ? 3 : 0) | (this.flags & 0x1fe0000); // CO_OPTIMIZED | CO_NEWLOCALS
     if (optimized) {
         if (unit.ste.isNested) flags |= 0x10;
-        if (unit.ste.coroutine) flags |= 0x80;
+        if (unit.ste.coroutine && unit.ste.generator) flags |= 0x200;
+        else if (unit.ste.coroutine) flags |= 0x80;
         else if (unit.ste.generator) flags |= 0x20;
         if (unit.ste.varargs) flags |= 0x04;
         if (unit.ste.varkeywords) flags |= 0x08;
@@ -2309,9 +2311,9 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // we've resolved the arguments now so we return a generator
     // call new generator and then save the suspension
     if (isGenerator) {
-        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(this.func_code, this.$name, this.$qualname, ${JSON.stringify(this.u.ste.coroutine ? "coroutine" : "generator")});
+        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(this.func_code, this.$name, this.$qualname, ${JSON.stringify(this.u.ste.coroutine ? (this.u.ste.generator ? "async generator" : "coroutine") : "generator")});
         $gen.gi$setInitialSuspension((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo));
-        return ${this.u.ste.coroutine ? "new Sk.builtin.coroutine($gen)" : "$gen"};`
+        return ${this.u.ste.coroutine ? (this.u.ste.generator ? "new Sk.builtin.async_generator($gen)" : "new Sk.builtin.coroutine($gen)") : "$gen"};`
     }
 
     //
