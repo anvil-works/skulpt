@@ -2602,9 +2602,9 @@ Compiler.prototype.cclass = function (s) {
 
     out(scopename, ".co_fastcall=1;", scopename, ".co_varnames=[];");
     const body = this._gr("classbody", "new Sk.builtin.func(", scopename, ",$gbl,$cell", this.u.ste.hasFree ? ",$free" : "", ")");
-    bases = this.vseqexpr(s.bases);
+    bases = this.cunpackstarstoarray(s.bases, !Sk.__future__.python3);
     const keywordArgs = this.cunpackkwstoarray(s.keywords);
-    out("$ret=Sk.misceval.callsimOrSuspendArray(", builder, ", [", body, ",new Sk.builtin.str(", JSON.stringify(s.name), ")", bases.length ? "," + bases.join(",") : "", "],", keywordArgs, ");");
+    out("$ret=Sk.misceval.callsimOrSuspendArray(", builder, ", [", body, ",new Sk.builtin.str(", JSON.stringify(s.name), ")].concat(", bases, "),", keywordArgs, ");");
     this._checkSuspension();
 
     // apply decorators
