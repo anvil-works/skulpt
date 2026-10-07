@@ -12,6 +12,19 @@ NAN = float("nan")
 
 class ComplexTest(unittest.TestCase):
 
+    # CPython 3.14 test_complex.test_format: empty-format subset, assertions unchanged.
+    # Advanced format specifications remain unsupported.
+    def test_empty_format(self):
+        # empty format string is same as str()
+        self.assertEqual(format(1+3j, ''), str(1+3j))
+        self.assertEqual(format(1.5+3.5j, ''), str(1.5+3.5j))
+        self.assertEqual(format(3j, ''), str(3j))
+        self.assertEqual(format(3.2j, ''), str(3.2j))
+        self.assertEqual(format(3+0j, ''), str(3+0j))
+        self.assertEqual(format(3.2+0j, ''), str(3.2+0j))
+
+
+
     def assertAlmostEqual(self, a, b):
         if isinstance(a, complex):
             if isinstance(b, complex):

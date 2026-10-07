@@ -4,6 +4,14 @@ import unittest
 import string
 
 class string_format(unittest.TestCase):
+    def test_percent_float_signs(self):
+        # CPython test_float.test_format_testfile percent assertions and selected
+        # mathdata/formatfloat_testcases.txt rows; advanced format checks omitted.
+        for fmt, f, rhs in (("%.1g", 1.0, "1"), ("%.2e", 0.01, "1.00e-02"),
+                            ("%e", 12345678.0, "1.234568e+07")):
+            self.assertEqual(fmt % f, rhs)
+            self.assertEqual(fmt % -f, '-' + rhs)
+
     def test_simple_position(self):
         self.assertEqual('a, b, c', '{0}, {1}, {2}'.format('a', 'b', 'c'))
         self.assertEqual('a, b, c', '{}, {}, {}'.format('a', 'b', 'c'))
