@@ -690,6 +690,8 @@ Compiler.prototype.cyieldfrom = function (e) {
     // get the iterator we are yielding from and store it
     var iterable = this.vexpr(e.value);
     out("$gen.gi$startYieldFrom(", iterable, ");");
+    // Python yields preserve expression temporaries independently of host suspension.
+    this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
     this._jump(afterIter);
     this.setBlock(afterIter);
     out("$ret = $gen.gi$stepYieldFrom();");
@@ -2251,7 +2253,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // we've resolved the arguments now so we return a generator
     // call new generator and then save the suspension
     if (isGenerator) {
-        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(${scopename}, this.$name, this.$qualname);
+        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(this.func_code, this.$name, this.$qualname);
         $gen.gi$setInitialSuspension((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo));
         return $gen;`
     }

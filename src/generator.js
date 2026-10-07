@@ -142,6 +142,14 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                 this.$qualname = v.toString();
             },
         },
+        gi_code: {
+            $get() {
+                return this.gi$scope.$code || (this.gi$scope.$code = new Sk.builtin.code(this.gi$scope.$metadata.filename, null, this.gi$scope));
+            },
+        },
+        gi_suspended: {
+            $get() { return new Sk.builtin.bool(this.gi$started && !this.gi$running && !this.gi$closed); },
+        },
         gi_running: {
             $get() {
                 return new Sk.builtin.bool(this.gi$running);
