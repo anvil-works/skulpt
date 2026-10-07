@@ -244,3 +244,9 @@ The replacement follow-up marks refreshed call metadata ready immediately. Execu
 Module/expression code entered through a function uses that function's captured builtin mapping, including after code replacement. Ordinary exec/import entry still resolves the execution namespace. A regression changes globals' builtin entry after capture and checks both constructed and replaced functions.
 
 Constructed root-code functions also mark constructor-refreshed metadata ready before their first call, preserving supplied defaults through execution and later replacement. The same replacement regression covers this constructor path.
+
+## Future imports and compiler flag inheritance
+
+`stu-dev/compiler/future-flags` scans initial future imports following Python/future.c and rejects misplaced imports in compiler scopes. Already-mandatory Python 3 source features do not set historical flags; explicit flags retain their existing code metadata. The CPython __future__ module supplies actual feature objects and release information, so future statements execute their imports normally. Runtime compile/exec/eval inherit only the calling frame's future bits, with dont_inherit controlling compile; parser flags and CO_NESTED are excluded. Barry and annotations source modes are explicitly guarded until their following implementations.
+
+The two upstream future-flag methods retain their assertions; the compile check for the two guarded features is deferred. CPython-checked regressions cover import identity, mandatory flags, compile/exec/eval inheritance, class/function/generator frames, dont_inherit, parser-flag isolation and invalid future placement.

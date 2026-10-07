@@ -1494,7 +1494,7 @@ Compiler.prototype.outputFrame = function (unit) {
     if (unit.ste.blockType === constants.ClassBlock) {
         code += "$loc=Sk.misceval.namespaceToJs($loc);";
     }
-    code += "Sk.misceval.currentFrame={getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getLocals:function(){switch($localsScope){";
+    code += "Sk.misceval.currentFrame={getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
     for (const scope of unit.comprehensions) {
         code += "case " + scope.id + ":return " + snapshot(scopeBindings(scope)) + ";";
     }
@@ -2009,6 +2009,10 @@ Compiler.prototype.cimport = function (s) {
 };
 
 Compiler.prototype.cfromimport = function (s) {
+    if (s.level === 0 && s.module === "__future__" && !this.futureImports.has(s)) {
+        throw new Sk.builtin.SyntaxError("from __future__ imports must occur at the beginning of the file", this.filename, s.lineno);
+    }
+
     var storeName;
     var got;
     var alias;
@@ -3209,6 +3213,26 @@ Compiler.prototype.cmod = function (mod) {
     return modf;
 };
 
+// Python/future.c: _PyFuture_FromAST scans the initial future statements.
+// Python 3's already-mandatory features do not set their historical bits.
+function futureFromAst(ast) {
+    let flags = 0;
+    const imports = new Set();
+    if (ast._type !== "Module" && ast._type !== "Interactive") return { flags, imports };
+    const first = ast.body[0];
+    const docstring = first && first._type === "Expr" && first.value._type === "Constant" && first.value.value.type === "str";
+    for (let i = docstring ? 1 : 0; i < ast.body.length; i++) {
+        const stmt = ast.body[i];
+        if (stmt._type !== "ImportFrom" || stmt.level !== 0 || stmt.module !== "__future__") break;
+        imports.add(stmt);
+        for (const alias of stmt.names) {
+            if (alias.name === "barry_as_FLUFL") flags |= 0x400000;
+            if (alias.name === "annotations") flags |= 0x1000000;
+        }
+    }
+    return { flags, imports };
+}
+
 /**
  * @param {string} source the code
  * @param {string} filename where it came from
@@ -3233,8 +3257,14 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
     try {
         const ast = mode === "eval" ? Sk.parseExpression(source, filename)
             : mode === "single" ? Sk.parseInteractive(source, filename) : Sk.parseModule(source, filename);
-        const st = Sk.symboltable(ast, filename);
+        const future = futureFromAst(ast);
+        flags = (flags || 0) | future.flags;
+        if (flags & 0x1400000) {
+            throw new Sk.builtin.NotImplementedError("Barry syntax and stringized annotations are not yet supported");
+        }
+        const st = Sk.symboltable(ast, filename, flags);
         c = new Compiler(filename, st, flags || 0, canSuspend, source, optimize);
+        c.futureImports = future.imports;
         c.interactive = mode === "single";
         funcname = c.cmod(ast);
     } finally {
