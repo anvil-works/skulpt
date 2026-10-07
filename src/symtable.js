@@ -519,6 +519,11 @@ SymbolTable.prototype.visitKeywords = function (keywords) {
     }
 };
 
+// symtable.c: allows_top_level_await applies only to the module block.
+SymbolTable.prototype.allowsTopLevelAwait = function () {
+    return !!(this.flags & 0x2000) && this.cur.blockType === ModuleBlock;
+};
+
 SymbolTable.prototype.visitStmt = function (s) {
     var cur;
     var name;
@@ -614,7 +619,10 @@ SymbolTable.prototype.visitStmt = function (s) {
             break;
         case "AsyncFor":
         case "For":
-            if (s._type === "AsyncFor" && !this.cur.coroutine) throw new Sk.builtin.SyntaxError("'async for' outside async function", this.filename, s.lineno);
+            if (s._type === "AsyncFor") {
+                if (!this.cur.coroutine && !this.allowsTopLevelAwait()) throw new Sk.builtin.SyntaxError("'async for' outside async function", this.filename, s.lineno);
+                this.cur.coroutine = true;
+            }
             this.visitExpr(s.target);
             this.visitExpr(s.iter);
             this.SEQStmt(s.body);
@@ -729,7 +737,10 @@ SymbolTable.prototype.visitStmt = function (s) {
             break;
         case "AsyncWith":
         case "With":
-            if (s._type === "AsyncWith" && !this.cur.coroutine) throw new Sk.builtin.SyntaxError("'async with' outside async function", this.filename, s.lineno);
+            if (s._type === "AsyncWith") {
+                if (!this.cur.coroutine && !this.allowsTopLevelAwait()) throw new Sk.builtin.SyntaxError("'async with' outside async function", this.filename, s.lineno);
+                this.cur.coroutine = true;
+            }
             VISIT_SEQ(this.visit_withitem.bind(this), s.items);
             VISIT_SEQ(this.visitStmt.bind(this), s.body);
             break;
@@ -818,7 +829,7 @@ SymbolTable.prototype.visitExpr = function (e) {
             this.visitGenexp(e);
             break;
         case "Await":
-            if (!this.cur.coroutine && !this.cur.comprehension) throw new Sk.builtin.SyntaxError("'await' outside async function", this.filename, e.lineno);
+            if (!this.cur.coroutine && !this.cur.comprehension && !this.allowsTopLevelAwait()) throw new Sk.builtin.SyntaxError("'await' outside async function", this.filename, e.lineno);
             this.cur.coroutine = true;
             this.visitExpr(e.value);
             break;
@@ -1013,7 +1024,7 @@ SymbolTable.prototype.visitComprehensionScope = function (e, name, value, key) {
     this.visitExpr(value);
     const asynchronous = this.cur.coroutine && !this.cur.generator;
     this.exitBlock();
-    if (asynchronous && !this.cur.coroutine && !this.cur.comprehension) {
+    if (asynchronous && !this.cur.coroutine && !this.cur.comprehension && !this.allowsTopLevelAwait()) {
         throw new Sk.builtin.SyntaxError("asynchronous comprehension outside of an asynchronous function", this.filename, e.lineno);
     }
     if (asynchronous) this.cur.coroutine = true;
@@ -1240,9 +1251,10 @@ SymbolTable.prototype.analyze = function () {
  * @param {Object} ast
  * @param {string} filename
  */
-Sk.symboltable = function (ast, filename) {
+Sk.symboltable = function (ast, filename, flags) {
     var i;
     var ret = new SymbolTable(filename);
+    ret.flags = flags || 0;
 
     ret.enterBlock("top", ModuleBlock, ast, 0);
     ret.top = ret.cur;

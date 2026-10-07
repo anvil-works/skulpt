@@ -54,4 +54,18 @@ const asyncSource = fs.readFileSync("test/async_comprehension_suspensions.py", "
 for (const canSuspend of [false, true]) {
     Sk.importMainWithBody("<async comprehension suspension test>", false, asyncSource, canSuspend);
 }
+// Compiled top-level await has a module namespace and a native coroutine frame.
+const topLevelSource = fs.readFileSync("test/top_level_await_suspensions.py", "utf8");
+for (const canSuspend of [false, true]) {
+    const compiled = Sk.compile(topLevelSource, "<top-level await suspension test>", "exec", canSuspend, 0, 0x2000);
+    const entry = Sk.global["eval"](compiled.code);
+    const namespace = Sk.misceval.namespaceToJs({});
+    const coroutine = entry(namespace);
+    assert(coroutine instanceof Sk.builtin.coroutine);
+    assert.strictEqual(namespace.Pause, undefined);
+    assert.strictEqual(coroutine.$send(Sk.builtin.none.none$).v, "pause");
+    assert.strictEqual(namespace.answer, undefined);
+    assert.throws(() => coroutine.$send(Sk.builtin.none.none$), error => error instanceof Sk.builtin.StopIteration);
+    assert.strictEqual(namespace.answer.v, 42);
+}
 console.log("Generator suspension tests passed");

@@ -818,10 +818,10 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
         throw new Sk.builtin.ValueError("compile(): invalid optimize value");
     }
     // Historical mandatory future features have no effect in Python 3.
-    // AST return/typing, top-level await, incomplete input, Barry syntax and
+    // AST return/typing, incomplete input, Barry syntax and
     // stringized annotations need their own implementations, not ignored flags.
     const mandatoryMask = Sk.__future__.python3 ? 0xbe0010 : 0;
-    if (flags & ~mandatoryMask) {
+    if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x2000 : 0))) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
     source = compilerSource(source, filename.$jsstr(), "compile");
@@ -1032,7 +1032,7 @@ Sk.builtin.eval = function (source, globals, locals) {
         if (!bytesSource) {text = text.replace(/^[ \t]+/, "");}
         source = new pyCode(new Sk.builtin.str("<string>"), Sk.compile(text, "<string>", "eval", true));
     }
-    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" || source.mode === "function" ? result : Sk.builtin.none.none$);
+    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" || source.mode === "function" || source.$jsCode.$metadata.flags & 0x80 ? result : Sk.builtin.none.none$);
 };
 
 Sk.builtin.map = function map(fun, seq) {
