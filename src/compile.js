@@ -1902,6 +1902,9 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     var kw_defaults = [];
     var vararg = null;
     var kwarg = null;
+    // CPython's symbol table orders positional-only parameters before ordinary
+    // positional parameters; defaults span their combined list.
+    const positionalArgs = args ? args.posonlyargs.concat(args.args) : [];
 
     // decorators and defaults have to be evaluated out here before we enter
     // the new scope. we output the defaults and attach them to this code
@@ -1952,8 +1955,8 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
         funcArgs.push("$kwa");
         this.u.tempsToSave.push("$kwa");
     }
-    for (i = 0; args && i < args.args.length; ++i) {
-        funcArgs.push(this.nameop(args.args[i].arg, "Param"));
+    for (i = 0; i < positionalArgs.length; ++i) {
+        funcArgs.push(this.nameop(positionalArgs[i].arg, "Param"));
     }
     for (i = 0; args && args.kwonlyargs && i < args.kwonlyargs.length; ++i) {
         funcArgs.push(this.nameop(args.kwonlyargs[i].arg, "Param"));
@@ -2028,8 +2031,8 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // copy all parameters that are also cells into the cells dict. this is so
     // they can be accessed correctly by nested scopes.
     //
-    for (i = 0; args && i < args.args.length; ++i) {
-        id = args.args[i].arg;
+    for (i = 0; i < positionalArgs.length; ++i) {
+        id = positionalArgs[i].arg;
         if (this.isCell(id)) {
             let mangled = fixReserved(mangleName(this.u.private_, id).v);
             this.u.varDeclsCode += "$cell." + mangled + "=" + mangled + ";";
@@ -2096,7 +2099,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // object, and also to allow us to declare only locals that aren't also
     // parameters).
     if (args) {
-        for (let arg of args.args) {
+        for (let arg of positionalArgs) {
             argnamesarr.push(arg.arg);
         }
         for (let arg of args.kwonlyargs || []) {
@@ -2120,8 +2123,11 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     if (defaults.length > 0) {
         out(scopename, ".$defaults=[", defaults.join(","), "];");
     }
+    out(scopename, ".co_argcount=", positionalArgs.length, ";");
+    if (args && args.posonlyargs.length) {
+        out(scopename, ".co_posonlyargcount=", args.posonlyargs.length, ";");
+    }
     if (args && args.kwonlyargs && args.kwonlyargs.length > 0) {
-        out(scopename, ".co_argcount=", args.args.length, ";");
         out(scopename, ".co_kwonlyargcount=", args.kwonlyargs.length, ";");
         out(scopename, ".$kwdefs=[", kw_defaults.join(","), "];");
     }

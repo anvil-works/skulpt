@@ -110,7 +110,6 @@ count++;
 for (const source of [
     "match x:\n    case 1: pass",
     "def f[T](): pass",
-    "def f(x, /): pass",
     "x = (y := 1)",
     "try:\n    pass\nexcept* ValueError: pass",
     "x = t'{value}'",
