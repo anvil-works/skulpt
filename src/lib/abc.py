@@ -82,7 +82,7 @@ class abstractproperty(property):
 
 
 # CPython Lib/_py_abc.py, with a host weak-reference set for class registries.
-from _abc_support import _WeakTypeSet as WeakSet
+from _abc_support import _WeakTypeSet as WeakSet, _set_pattern_kind, _register_pattern_class
 
 
 def get_cache_token():
@@ -117,7 +117,10 @@ class ABCMeta(type):
     _abc_invalidation_counter = 0
 
     def __new__(mcls, name, bases, namespace, /, **kwargs):
+        # Consume collection flags before the class dictionary is installed.
+        flags = namespace.pop("__abc_tpflags__", 0)
         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        _set_pattern_kind(cls, flags)
         # Compute set of abstract method names
         abstracts = {name
                      for name, value in namespace.items()
@@ -150,6 +153,7 @@ class ABCMeta(type):
             # This would create a cycle, which is bad for the algorithm below
             raise RuntimeError("Refusing to create an inheritance cycle")
         cls._abc_registry.add(subclass)
+        _register_pattern_class(cls, subclass)
         ABCMeta._abc_invalidation_counter += 1  # Invalidate negative cache
         return subclass
 

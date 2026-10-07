@@ -53,15 +53,18 @@ class TStringBaseCase:
         for i, exp in zip(t.interpolations, interpolations, strict=True):
             self.assertInterpolationEqual(i, exp)
 
-# Equivalent test helper until compiler match support: preserve the same formatting.
+# Upstream helper now exercises class patterns directly.
 def fstring(template):
     parts = []
     for item in template:
-        if isinstance(item, str):
-            parts.append(item)
-        else:
-            parts.append(format(convert(item.value, item.conversion), item.format_spec))
-    return ''.join(parts)
+        match item:
+            case str() as s:
+                parts.append(s)
+            case Interpolation(value, _, conversion, format_spec):
+                value = convert(value, conversion)
+                value = format(value, format_spec)
+                parts.append(value)
+    return "".join(parts)
 
 class TestTemplate(HarnessCase, TStringBaseCase):
     def test_common(self):

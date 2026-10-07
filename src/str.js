@@ -1369,7 +1369,7 @@ function strBytesRemainder(rhs) {
                     val = parseFloat(result);
                     result = val.toExponential();
                 }
-                if (result.charAt(result.length - 2) == "-") {
+                if (/e[+-]\d$/i.test(result)) {
                     result = result.slice(0, result.length - 1) + "0" + result.charAt(result.length - 1);
                 }
             }

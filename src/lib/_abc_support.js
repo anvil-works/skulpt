@@ -61,5 +61,20 @@ var $builtinmodule = function () {
         },
         flags: { sk$unacceptableBase: true },
     });
-    return { _WeakTypeSet: WeakTypeSet };
+    return {
+        _WeakTypeSet: WeakTypeSet,
+        _set_pattern_kind: new Sk.builtin.func(function(type, flags) {
+            Sk.abstr.checkArgsLen("_set_pattern_kind", arguments.length, 2, 2);
+            const kind = Number(Sk.builtin.asnum$(flags)) & 96;
+            if (kind === 96) {throw new Sk.builtin.TypeError("__abc_tpflags__ cannot be both Py_TPFLAGS_SEQUENCE and Py_TPFLAGS_MAPPING");}
+            if (kind) {Sk.abstr.setPatternKind(type, kind);}
+            return Sk.builtin.none.none$;
+        }),
+        _register_pattern_class: new Sk.builtin.func(function(type, subclass) {
+            Sk.abstr.checkArgsLen("_register_pattern_class", arguments.length, 2, 2);
+            const kind = Sk.abstr.patternKind(type);
+            if (kind) {Sk.abstr.setPatternKind(subclass, kind);}
+            return Sk.builtin.none.none$;
+        }),
+    };
 };
