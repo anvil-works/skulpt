@@ -46,6 +46,7 @@ function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation, opt
 function CompilerUnit () {
     this.ste = null;
     this.name = null;
+    this.qualname = null;
     this.canSuspend = false;
     this.doesSuspend = false;
 
@@ -2587,7 +2588,10 @@ Compiler.prototype.cclass = function (s) {
 
     this.u.private_ = s.name;
 
-    out("$loc.__module__=", this.nameop("__name__", "Load"), ";");
+    this.nameop("__module__", "Store", this.nameop("__name__", "Load"));
+    if (Sk.__future__.python3) {
+        this.nameop("__qualname__", "Store", "new Sk.builtin.str(" + JSON.stringify(this.u.qualname) + ")");
+    }
     this.cbody(s.body, s.name);
     if (needsClassClosure) {
         const classcell = this._gr("classcell", "new Sk.builtin.cell($classcell)");
@@ -2964,6 +2968,17 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     var u = new CompilerUnit();
     u.ste = this.st.getStsForAst(key);
     u.name = name;
+    u.scopeType = key._type;
+    // Python/compile.c: compiler_set_qualname. Explicit global declarations
+    // reset named functions/classes to a module name; lambdas retain nesting.
+    u.qualname = name.v;
+    if (this.u && !["Module", "Expression", "Interactive"].includes(this.u.scopeType)) {
+        const scope = this.u.ste.getScope(fixReserved(mangleName(this.u.private_, name).v));
+        const named = key._type === "FunctionDef" || key._type === "AsyncFunctionDef" || key._type === "ClassDef";
+        if (!named || scope !== Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT) {
+            u.qualname = this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".") + name.v;
+        }
+    }
     u.firstlineno = lineno;
     u.canSuspend = canSuspend || false;
 
@@ -2985,7 +3000,6 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
 };
 
 Compiler.prototype.exitScope = function () {
-    var mangled;
     var prev = this.u;
     this.nestlevel--;
     if (this.stack.length - 1 >= 0) {
@@ -2997,13 +3011,12 @@ Compiler.prototype.exitScope = function () {
         this.u.activateScope();
     }
 
-    if (prev.name.v !== "<module>") {// todo; hacky
-        mangled = prev.name["$r"]().v;
-        mangled = mangled.substring(1, mangled.length - 1);
-        out(prev.scopename, ".co_name=new Sk.builtins['str']('", mangled, "');");
-        if (this.stack.length && this.u.ste.blockType == "class") {
-            const classname = this.u.name.v;
-            out(prev.scopename, ".co_qualname=new Sk.builtins['str']('"+classname+ "." + mangled + "');");
+    if (this.u) {
+        out(prev.scopename, ".co_name=new Sk.builtin.str(", JSON.stringify(prev.name.v), ");");
+        if (Sk.__future__.python3) {
+            out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(prev.qualname), ");");
+        } else if (this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock) {
+            out(prev.scopename, ".co_qualname=new Sk.builtin.str(", JSON.stringify(this.u.name.v + "." + prev.name.v), ");");
         }
     }
     for (var constant in prev.consts) {
