@@ -492,17 +492,13 @@ slots.__getattribute__ = {
         if (!Sk.builtin.checkString(pyName)) {
             throw new Sk.builtin.TypeError("attribute name must be string, not '" + Sk.abstr.typeName(pyName) + "'");
         }
-        return Sk.misceval.tryCatch(
-            () => Sk.misceval.chain(this.call(self, pyName, true), (res) => {
-                if (res === undefined) {
-                    throw new Sk.builtin.AttributeError(Sk.abstr.typeName(self) + " has no attribute " + pyName.$jsstr());
-                }
-                return res;
-            }),
-            (error) => {
-                throw Sk.builtin.setAttributeErrorContext(error, self, pyName);
+        return Sk.misceval.chain(this.call(self, pyName, true), (res) => {
+            if (res === undefined) {
+                const error = new Sk.builtin.AttributeError(Sk.abstr.typeName(self) + " has no attribute " + pyName.$jsstr());
+                return Sk.builtin.raiseAttributeErrorWithContext(error, self, pyName);
             }
-        );
+            return res;
+        });
     },
     $textsig: "($self, name, /)",
     $flags: { OneArg: true },
