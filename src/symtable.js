@@ -482,12 +482,11 @@ SymbolTable.prototype.visitTypeParameters = function (owner) {
         if (names.has(mangled)) throw new Sk.builtin.SyntaxError("duplicate type parameter '" + param.name + "'", this.filename, param.lineno);
         names.add(mangled);
         if (param.name === "__classdict__") throw new Sk.builtin.SyntaxError("reserved name '__classdict__' cannot be used for type parameter", this.filename, param.lineno);
-        if (param._type !== "TypeVar") throw new Sk.builtin.SyntaxError(param._type + " parameters are not supported by the Skulpt compiler", this.filename, param.lineno);
         this.addDef(param.name, DEF_LOCAL | DEF_TYPE_PARAM, param.lineno);
         if (param.bound) param.boundScope = this.visitTypeVariable(param, param.bound, param.bound._type === "Tuple" ? "a TypeVar constraint" : "a TypeVar bound");
         if (param.default_value) {
             seenDefault = true;
-            param.defaultScope = this.visitTypeVariable(param, param.default_value, "a TypeVar default");
+            param.defaultScope = this.visitTypeVariable(param, param.default_value, "a " + param._type + " default");
         } else if (seenDefault) {
             throw new Sk.builtin.SyntaxError("non-default type parameter '" + param.name + "' follows default type parameter", this.filename, param.lineno);
         }
@@ -1128,9 +1127,9 @@ SymbolTable.prototype.visitNamedExpr = function (e) {
             if (scope.annotationKind === "type alias") {
                 throw new Sk.builtin.SyntaxError("assignment expression within a comprehension cannot be used in a type alias", this.filename, e.lineno);
             }
-            if (scope.annotationKind === "generic" || (scope.annotationKind || "").startsWith("a TypeVar")) {
+            if (scope.annotationKind === "generic" || ["a TypeVar", "a TypeVarTuple", "a ParamSpec"].some(kind => (scope.annotationKind || "").startsWith(kind))) {
                 throw new Sk.builtin.SyntaxError("assignment expression within a comprehension cannot be used " +
-                    (scope.annotationKind === "generic" ? "within the definition of a generic" : "in a TypeVar bound"), this.filename, e.lineno);
+                    (scope.annotationKind === "generic" ? "within the definition of a generic" : "in " + (scope.annotationKind.startsWith("a ParamSpec") ? "a ParamSpec default" : scope.annotationKind.startsWith("a TypeVarTuple") ? "a TypeVarTuple default" : "a TypeVar bound")), this.filename, e.lineno);
             }
             if (scope.annotationScope) continue;
             const flags = scope.symFlags[mangled] || 0;

@@ -2637,8 +2637,8 @@ Compiler.prototype.cDocstringOfCode = function(node) {
 Compiler.prototype.ctypeparams = function (s) {
     const parameters = [];
     for (const param of s.type_params) {
-        const value = this._gr("typeparam", "new Sk.builtin.TypeVar(new Sk.builtin.str(", JSON.stringify(param.name),
-            "),{bound:Sk.builtin.none.none$,constraints:new Sk.builtin.tuple([]),default:Sk.builtin.NoDefault,covariant:false,contravariant:false,inferVariance:true})");
+        const value = this._gr("typeparam", "new Sk.builtin.", param._type, "(new Sk.builtin.str(", JSON.stringify(param.name),
+            param._type === "TypeVarTuple" ? "),Sk.builtin.NoDefault)" : "),{bound:Sk.builtin.none.none$,constraints:new Sk.builtin.tuple([]),default:Sk.builtin.NoDefault,covariant:false,contravariant:false,inferVariance:true})");
         this.nameop(param.name, "Store", value);
         for (const [field, expression, key] of [
             [param.bound && param.bound._type === "Tuple" ? "constraints" : "bound", param.bound, param.boundScope],
@@ -2648,7 +2648,11 @@ Compiler.prototype.ctypeparams = function (s) {
             const evaluate = this.buildcodeobj(key, param.name, null, key.args, function () {
                 const format = this.nameop("$typeFormat", "Load");
                 out("if(Sk.misceval.richCompareBool(", format, ",new Sk.builtin.int_(2),'Gt'))throw new Sk.builtin.NotImplementedError();");
-                out("return ", this.vexpr(expression), ";");
+                if (expression._type === "Starred") {
+                    out("$ret=Sk.abstr.sequenceUnpack(", this.vexpr(expression.value), ",1,1,false);");
+                    this._checkSuspension(expression);
+                    out("return $ret[0];");
+                } else out("return ", this.vexpr(expression), ";");
             });
             out(value, ".$", field, "=undefined;", value, ".$evaluate.", field, "=", evaluate, ";");
         }
