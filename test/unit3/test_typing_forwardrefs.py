@@ -2,7 +2,7 @@
 import unittest
 import typing, types, sys, collections, annotationlib
 from annotationlib import ForwardRef
-from typing import TypeVar, Generic, List, Tuple, Union, Callable, ParamSpec, Any, get_type_hints
+from typing import TypeVarTuple, Unpack, TypeVar, Generic, List, Tuple, Union, Callable, ParamSpec, Any, get_type_hints
 from test_annotationlib import HarnessCase, EqualToForwardRef
 get_args = typing.get_args
 get_origin = typing.get_origin
@@ -572,5 +572,50 @@ class NativeTypeVarForwardRefRegression(HarnessCase):
         with self.assertRaises(TypeError):
             TypeVar('Invalid', bound=(1, 2))
         self.assertEqual(TypeVar('Subst').__typing_subst__('int'), ForwardRef('int'))
+
+
+
+class TypeVarTupleForwardRefTests(HarnessCase):
+    def test_get_type_hints_on_unpack_args(self):
+        Ts = TypeVarTuple('Ts')
+
+        def func1(*args: *Ts): pass
+        self.assertEqual(gth(func1), {'args': Unpack[Ts]})
+
+        def func2(*args: *tuple[int, str]): pass
+        self.assertEqual(gth(func2), {'args': Unpack[tuple[int, str]]})
+
+        class CustomVariadic(Generic[*Ts]): pass
+
+        def func3(*args: *CustomVariadic[int, str]): pass
+        self.assertEqual(gth(func3), {'args': Unpack[CustomVariadic[int, str]]})
+
+
+    def test_get_type_hints_on_unpack_args_string(self):
+        Ts = TypeVarTuple('Ts')
+
+        def func1(*args: '*Ts'): pass
+        self.assertEqual(gth(func1, localns={'Ts': Ts}),
+                        {'args': Unpack[Ts]})
+
+        def func2(*args: '*tuple[int, str]'): pass
+        self.assertEqual(gth(func2), {'args': Unpack[tuple[int, str]]})
+
+        class CustomVariadic(Generic[*Ts]): pass
+
+        def func3(*args: '*CustomVariadic[int, str]'): pass
+        self.assertEqual(gth(func3, localns={'CustomVariadic': CustomVariadic}),
+                         {'args': Unpack[CustomVariadic[int, str]]})
+
+
+class NativeUnpackForwardRefRegression(HarnessCase):
+    # Native aliases must participate in CPython typing's GenericAlias paths.
+    def test_native_alias_evaluation_and_substitution(self):
+        def func(x: Unpack[tuple['X', ...]]): pass
+        self.assertEqual(get_type_hints(func, globals(), {'X': int}),
+                         {'x': Unpack[tuple[int, ...]]})
+        self.assertEqual(Unpack['X'].__args__, (ForwardRef('X'),))
+        with self.assertRaises(TypeError):
+            TypeVar('T').__typing_subst__(Unpack[tuple[int, ...]])
 
 if __name__ == '__main__': unittest.main()
