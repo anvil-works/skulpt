@@ -152,7 +152,13 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
                 throw new Sk.builtin.ValueError("Empty module name");
             }
             // check globals - locals is just ignored __import__
-            globals = globLocToJs(globals, "globals") || {};
+            if (globals === undefined || Sk.builtin.checkNone(globals)) {
+                globals = {};
+            } else if (!(globals instanceof Sk.builtin.dict)) {
+                throw new Sk.builtin.TypeError("globals must be a dict or None, not " + Sk.abstr.typeName(globals));
+            } else {
+                globals = Sk.misceval.namespaceToJs(globals, true);
+            }
             formlist = Sk.ffi.remapToJs(formlist);
             level = Sk.ffi.remapToJs(level);
 
@@ -255,15 +261,8 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
     eval_$rw$: {
         $name: "eval",
         $meth: function (source, globals, locals) {
-            // check globals
-            const tmp_globals = globLocToJs(globals, "globals");
-            // check locals
-            const tmp_locals = globLocToJs(locals, "locals");
-            return Sk.misceval.chain(Sk.builtin.eval(source, tmp_globals, tmp_locals), (res) => {
-                reassignGlobLoc(globals, tmp_globals);
-                reassignGlobLoc(locals, tmp_locals);
-                return res;
-            });
+            const [tmp_globals, tmp_locals] = executionNamespaces(globals, locals);
+            return Sk.builtin.eval(source, tmp_globals, tmp_locals);
         },
         $flags: { MinArgs: 1, MaxArgs: 3 },
         $textsig: "($module, source, globals=None, locals=None, /)",
@@ -273,13 +272,8 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
 
     exec: {
         $meth: function (source, globals, locals) {
-            // check globals
-            const tmp_globals = globLocToJs(globals, "globals");
-            // check locals
-            const tmp_locals = globLocToJs(locals, "locals");
+            const [tmp_globals, tmp_locals] = executionNamespaces(globals, locals);
             return Sk.misceval.chain(Sk.builtin.exec(source, tmp_globals, tmp_locals), (new_locals) => {
-                reassignGlobLoc(globals, tmp_globals);
-                reassignGlobLoc(locals, tmp_locals);
                 return Sk.builtin.none.none$;
             });
         },
@@ -516,33 +510,23 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
 });
 
 // function used for exec and eval
-function globLocToJs(glob_loc, name) {
-    let tmp = undefined;
-    if (glob_loc === undefined || Sk.builtin.checkNone(glob_loc)) {
-        glob_loc = undefined;
-    } else if (!(glob_loc instanceof Sk.builtin.dict)) {
-        throw new Sk.builtin.TypeError(name + " must be a dict or None, not " + Sk.abstr.typeName(glob_loc));
-    } else {
-        tmp = {};
-        // we only support dicts here since actually we need to convert this to a hashmap for skulpts version of
-        // compiled code. Any old mapping won't do, it must be iterable!
-        glob_loc.$items().forEach(([key, val]) => {
-            if (Sk.builtin.checkString(key)) {
-                tmp[key.$mangled] = val;
-            }
-        });
+function executionNamespaces(globals, locals) {
+    const implicitGlobals = globals === undefined || Sk.builtin.checkNone(globals);
+    if (implicitGlobals) {
+        globals = Sk.builtin.globals();
     }
-    return tmp;
-}
-
-function reassignGlobLoc(dict, obj) {
-    if (dict === undefined || Sk.builtin.checkNone(dict)) {
-        return;
+    if (locals === undefined || Sk.builtin.checkNone(locals)) {
+        locals = implicitGlobals ? Sk.builtin.locals() : globals;
     }
-    for (let key in obj) {
-        // this isn't technically correct - if they use delete in the exec this breaks
-        dict.mp$ass_subscript(new Sk.builtin.str(Sk.unfixReserved(key)), obj[key]);
+    for (const [name, namespace] of [["globals", globals], ["locals", locals]]) {
+        if (!(namespace instanceof Sk.builtin.dict)) {
+            throw new Sk.builtin.TypeError(name + " must be a dict or None, not " + Sk.abstr.typeName(namespace));
+        }
     }
+    if (globals.quick$lookup(new Sk.builtin.str("__builtins__")) === undefined) {
+        globals.dict$setItem(new Sk.builtin.str("__builtins__"), Sk.misceval.namespaceDict(Sk.builtins));
+    }
+    return [Sk.misceval.namespaceToJs(globals, true), Sk.misceval.namespaceToJs(locals)];
 }
 
 

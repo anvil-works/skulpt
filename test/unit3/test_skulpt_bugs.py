@@ -456,5 +456,26 @@ class TestGeneratorCells(unittest.TestCase):
             value
 
 
+class TestEvalNamespaces(unittest.TestCase):
+    # Skulpt namespace regression; verified with the pinned CPython 3.14 checkout.
+    # Eval must not use a user-visible temporary for its expression result.
+    def test_expression_result_preserves_namespace(self):
+        namespace = {"__final_res__": 42}
+        self.assertEqual(eval("1", namespace), 1)
+        self.assertEqual(namespace["__final_res__"], 42)
+        self.assertEqual(eval(compile("2 + 3", "probe", "eval"), namespace), 5)
+        self.assertIsNone(eval(compile("value = 6", "probe", "exec"), namespace))
+        self.assertEqual(namespace["value"], 6)
+        self.assertEqual(namespace["__final_res__"], 42)
+
+    def test_eval_uses_expression_grammar(self):
+        for source in ("1;", "*[1],", "a = 1", "1\n2"):
+            with self.assertRaises(SyntaxError):
+                compile(source, "probe", "eval")
+            with self.assertRaises(SyntaxError):
+                eval(source)
+        self.assertEqual(eval(compile("1, 2", "probe", "eval")), (1, 2))
+
+
 if __name__ == "__main__":
     unittest.main()

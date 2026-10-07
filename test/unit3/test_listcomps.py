@@ -1,8 +1,7 @@
 # CPython 3.14 Lib/test/test_listcomps.py, commit 18ef0f0cb52.
 # Method bodies/assertions unchanged. Harness adaptations: no subTest; collect
-# only requested output names in functions until locals() is implemented;
-# supply __name__ for Skulpt class construction in exec namespaces.
-# Frame/code inspection, locals(), walrus and classdict cases follow separately.
+# uses the upstream locals() function harness. Frame/code inspection and
+# classdict cases remain separate.
 import unittest
 import textwrap
 
@@ -23,10 +22,9 @@ class ListComprehensionTest(unittest.TestCase):
                     newcode = textwrap.dedent("""
                         def _f():
                             {code}
-                            return {outputs}
+                            return locals()
                         _out = _f()
-                    """).format(code=textwrap.indent(code, "    "),
-                                outputs="{" + ", ".join(repr(k) + ": " + k for k in (outputs or {})) + "}")
+                    """).format(code=textwrap.indent(code, "    "))
                     def get_output(moddict, name):
                         return moddict["_out"][name]
                 else:
@@ -34,7 +32,6 @@ class ListComprehensionTest(unittest.TestCase):
                     def get_output(moddict, name):
                         return moddict[name]
                 newns = ns.copy() if ns else {}
-                newns["__name__"] = "__main__"
                 try:
                     exec(newcode, newns)
                 except raises as e:
@@ -573,6 +570,93 @@ class ListComprehensionTest(unittest.TestCase):
         outputs = {"x": 2}
         # assignment expression in comprehension is disallowed in class scope
         self._check_in_scopes(code, outputs, scopes=["module", "function"])
+
+
+    def test_in_class_scope_with_global(self):
+        code = """
+            y = 1
+            class C:
+                global y
+                y = 2
+                # Ensure the listcomp uses the global, not the value in the
+                # class namespace
+                locals()['y'] = 3
+                vals = [(x, y) for x in range(2)]
+            vals = C.vals
+        """
+        outputs = {"vals": [(0, 2), (1, 2)]}
+        self._check_in_scopes(code, outputs, scopes=["module", "class"])
+        outputs = {"vals": [(0, 1), (1, 1)]}
+        self._check_in_scopes(code, outputs, scopes=["function"])
+
+
+    def test_in_class_scope_with_nonlocal(self):
+        code = """
+            y = 1
+            class C:
+                nonlocal y
+                y = 2
+                # Ensure the listcomp uses the global, not the value in the
+                # class namespace
+                locals()['y'] = 3
+                vals = [(x, y) for x in range(2)]
+            vals = C.vals
+        """
+        outputs = {"vals": [(0, 2), (1, 2)]}
+        self._check_in_scopes(code, outputs, scopes=["function"])
+
+
+    def test_no_leakage_to_locals(self):
+        code = """
+            def b():
+                [a for b in [1] for _ in []]
+                return b, locals()
+            r, s = b()
+            x = r is b
+            y = list(s.keys())
+        """
+        self._check_in_scopes(code, {"x": True, "y": []}, scopes=["module"])
+        self._check_in_scopes(code, {"x": True, "y": ["b"]}, scopes=["function"])
+        self._check_in_scopes(code, raises=NameError, scopes=["class"])
+
+
+    def test_iter_var_available_in_locals(self):
+        code = """
+            l = [1, 2]
+            y = 0
+            items = [locals()["x"] for x in l]
+            items2 = [vars()["x"] for x in l]
+            items3 = [("x" in dir()) for x in l]
+            items4 = [eval("x") for x in l]
+            # x is available, and does not overwrite y
+            [exec("y = x") for x in l]
+        """
+        self._check_in_scopes(
+            code,
+            {
+                "items": [1, 2],
+                "items2": [1, 2],
+                "items3": [True, True],
+                "items4": [1, 2],
+                "y": 0
+            }
+        )
+
+
+    def test_multiple_comprehension_name_reuse(self):
+        code = """
+            [x for x in [1]]
+            y = [x for _ in [1]]
+        """
+        self._check_in_scopes(code, {"y": [3]}, ns={"x": 3})
+
+        code = """
+            x = 2
+            [x for x in [1]]
+            y = [x for _ in [1]]
+        """
+        self._check_in_scopes(code, {"x": 2, "y": [3]}, ns={"x": 3}, scopes=["class"])
+        self._check_in_scopes(code, {"x": 2, "y": [2]}, ns={"x": 3}, scopes=["function", "module"])
 
 
     def test_only_calls_dunder_iter_once(self):

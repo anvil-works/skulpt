@@ -556,9 +556,7 @@ Sk.builtin.dir = function dir(obj) {
         return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(obj_dir_func, []), (dir) => Sk.builtin.sorted(dir));
         // now iter through the keys and check they are all stings
     }
-    // then we want all the objects in the global scope
-    //todo
-    throw new Sk.builtin.NotImplementedError("skulpt does not yet support dir with no args");
+    return Sk.builtin.sorted(new Sk.builtin.list(Sk.builtin.locals().sk$asarray()));
 };
 
 Sk.builtin.repr = function repr(x) {
@@ -736,6 +734,7 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
         this.compiled = compiled;
         this.code = compiled.code;
         this.filename = filename;
+        this.mode = compiled.mode;
     },
     slots: {
         tp$new(args, kwargs) {
@@ -813,20 +812,11 @@ Sk.builtin.eval = function (source, globals, locals) {
         throw new Sk.builtin.NotImplementedError("bytes for eval is not yet implemented in skulpt");
     }
     if (typeof source === "string") {
-        source = source.trim();
-        const ast = Sk.parseModule(source, "?");
-        if (ast.body.length !== 1 || ast.body[0]._type !== "Expr") {
-            throw new Sk.builtin.SyntaxError("invalid syntax");
-        }
-        source = "__final_res__ = " + source;
+        source = new pyCode("<string>", Sk.compile(source.trim(), "<string>", "eval", true));
     } else if (!(source instanceof pyCode)) {
         throw new Sk.builtin.TypeError("eval() arg 1 must be a string, bytes or code object");
     }
-    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), (new_locals) => {
-        const res = new_locals.__final_res__ || Sk.builtin.none.none$;
-        delete new_locals.__final_res__;
-        return res;
-    });
+    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);
 };
 
 Sk.builtin.map = function map(fun, seq) {
@@ -1060,14 +1050,8 @@ Sk.builtin.issubclass = function issubclass(c1, c2) {
 };
 
 Sk.builtin.globals = function globals () {
-    var i, unmangled;
-    var ret = new Sk.builtin.dict([]);
-    for (i in Sk["globals"]) {
-        unmangled = Sk.unfixReserved(i);
-        ret.mp$ass_subscript(new Sk.builtin.str(unmangled), Sk["globals"][i]);
-    }
-
-    return ret;
+    const frame = Sk.misceval["currentFrame"];
+    return Sk.misceval.namespaceDict(frame ? frame["getGlobals"]() : Sk.globals);
 };
 
 Sk.builtin.divmod = function divmod(a, b) {
@@ -1128,7 +1112,8 @@ Sk.builtin.iter = function iter(obj, sentinel) {
 };
 
 Sk.builtin.locals = function locals() {
-    throw new Sk.builtin.NotImplementedError("locals is not yet implemented");
+    const frame = Sk.misceval["currentFrame"];
+    return frame ? frame["getLocals"]() : Sk.misceval.namespaceDict(Sk.globals);
 };
 Sk.builtin.memoryview = function memoryview() {
     throw new Sk.builtin.NotImplementedError("memoryview is not yet implemented");
@@ -1164,8 +1149,16 @@ Sk.builtin.next_ = function next_(iter, default_) {
 Sk.builtin.reload = function reload() {
     throw new Sk.builtin.NotImplementedError("reload is not yet implemented");
 };
-Sk.builtin.vars = function vars() {
-    throw new Sk.builtin.NotImplementedError("vars is not yet implemented");
+Sk.builtin.vars = function vars(obj) {
+    if (obj === undefined) {
+        return Sk.builtin.locals();
+    }
+    return Sk.misceval.tryCatch(() => Sk.builtin.getattr(obj, new Sk.builtin.str("__dict__")), err => {
+        if (err instanceof Sk.builtin.AttributeError) {
+            throw new Sk.builtin.TypeError("vars() argument must have __dict__ attribute");
+        }
+        throw err;
+    });
 };
 
 Sk.builtin.apply_ = function apply_() {

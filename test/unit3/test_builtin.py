@@ -1438,32 +1438,35 @@ class BuiltinTest(unittest.TestCase):
         self.assertEqual(type(''),  type('123'))
         # self.assertNotEqual(type(''), type(()))
 
-    # # We don't want self in vars(), so these are static methods
-    #
-    # @staticmethod
-    # def get_vars_f0():
-    #     return vars()
-    #
-    # @staticmethod
-    # def get_vars_f2():
-    #     BuiltinTest.get_vars_f0()
-    #     a = 1
-    #     b = 2
-    #     return vars()
-    #
-    # class C_get_vars(object):
-    #     def getDict(self):
-    #         return {'a':2}
-    #     __dict__ = property(fget=getDict)
-    #
-    # def test_vars(self):
-    #     self.assertEqual(set(vars()), set(dir()))
-    #     self.assertEqual(set(vars(sys)), set(dir(sys)))
-    #     self.assertEqual(self.get_vars_f0(), {})
-    #     self.assertEqual(self.get_vars_f2(), {'a': 1, 'b': 2})
-    #     self.assertRaises(TypeError, vars, 42, 42)
-    #     self.assertRaises(TypeError, vars, 42)
-    #     self.assertEqual(vars(self.C_get_vars()), {'a':2})
+    # CPython 3.14 Lib/test/test_builtin.py, commit 18ef0f0cb52; unchanged.
+    @staticmethod
+    def get_vars_f0():
+        return vars()
+
+
+    @staticmethod
+    def get_vars_f2():
+        BuiltinTest.get_vars_f0()
+        a = 1
+        b = 2
+        return vars()
+
+
+    class C_get_vars(object):
+        def getDict(self):
+            return {'a':2}
+        __dict__ = property(fget=getDict)
+
+
+    def test_vars(self):
+        self.assertEqual(set(vars()), set(dir()))
+        self.assertEqual(set(vars(sys)), set(dir(sys)))
+        self.assertEqual(self.get_vars_f0(), {})
+        self.assertEqual(self.get_vars_f2(), {'a': 1, 'b': 2})
+        self.assertRaises(TypeError, vars, 42, 42)
+        self.assertRaises(TypeError, vars, 42)
+        self.assertEqual(vars(self.C_get_vars()), {'a':2})
+
 
     def test_zip(self):
         self.assertEqual(list(zip(str1, str2)), [('A', 'x'), ('B', 'y')])

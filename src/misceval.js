@@ -7,6 +7,7 @@
  *
  */
 Sk.misceval = {};
+Sk.exportSymbol("Sk.misceval.currentFrame", undefined);
 
 /** @typedef {Sk.builtin.object}*/ var pyObject;
 
@@ -1341,6 +1342,81 @@ Sk.misceval.makeClosure = function (closure, closure2) {
 };
 Sk.exportSymbol("Sk.misceval.makeClosure", Sk.misceval.makeClosure);
 
+// The compiler uses property access for module/class namespaces. Keep that
+// interface backed by the actual Python dictionary, so locals()/globals() and
+// exec namespace mutations observe the same mapping in both directions.
+const namespaceCache = new WeakMap();
+Sk.misceval.namespaceToJs = function (namespace, globals) {
+    let entry = namespaceCache.get(namespace);
+    if (entry === undefined) {
+        const dict = namespace instanceof Sk.builtin.dict ? namespace : new Sk.builtin.dict(
+            Object.keys(namespace).filter(name => namespace[name] !== undefined).flatMap(name => [new Sk.builtin.str(Sk.unfixReserved(name)), namespace[name]])
+        );
+        entry = { dict };
+        namespaceCache.set(namespace, entry);
+    }
+    const role = globals ? "globals" : "locals";
+    if (entry[role] === undefined) {
+        const dict = entry.dict;
+        const read = name => {
+            const key = new Sk.builtin.str(Sk.unfixReserved(name));
+            if (globals) {
+                return Sk.builtin.dict.prototype.mp$lookup.call(dict, key);
+            }
+            try {
+                return Sk.misceval.retryOptionalSuspensionOrThrow(dict.mp$subscript(key));
+            } catch (err) {
+                if (err instanceof Sk.builtin.KeyError) {
+                    return undefined;
+                }
+                throw err;
+            }
+        };
+        entry[role] = new Proxy({}, {
+            get(target, name) {
+                if (typeof name !== "string") {
+                    return Reflect.get(target, name);
+                }
+                const value = read(name);
+                return value === undefined ? Reflect.get(target, name) : value;
+            },
+            set(target, name, value) {
+                const assign = globals ? Sk.builtin.dict.prototype.mp$ass_subscript : dict.mp$ass_subscript;
+                Sk.misceval.retryOptionalSuspensionOrThrow(assign.call(dict, new Sk.builtin.str(Sk.unfixReserved(name)), value));
+                return true;
+            },
+            deleteProperty(target, name) {
+                if (read(name) !== undefined) {
+                    const assign = globals ? Sk.builtin.dict.prototype.mp$ass_subscript : dict.mp$ass_subscript;
+                    Sk.misceval.retryOptionalSuspensionOrThrow(assign.call(dict, new Sk.builtin.str(Sk.unfixReserved(name)), undefined));
+                }
+                return true;
+            },
+            ownKeys() {
+                return dict.$items().filter(item => Sk.builtin.checkString(item[0])).map(item => item[0].$mangled);
+            },
+            getOwnPropertyDescriptor(target, name) {
+                const value = read(name);
+                return value === undefined ? undefined : { value, writable: true, enumerable: true, configurable: true };
+            },
+        });
+        namespaceCache.set(entry[role], entry);
+    }
+    return entry[role];
+};
+Sk.exportSymbol("Sk.misceval.namespaceToJs", Sk.misceval.namespaceToJs);
+
+Sk.misceval.namespaceDict = function (namespace) {
+    Sk.misceval.namespaceToJs(namespace);
+    return namespaceCache.get(namespace).dict;
+};
+Sk.exportSymbol("Sk.misceval.namespaceDict", Sk.misceval.namespaceDict);
+
+Sk.misceval.localsSnapshot = function (items) {
+    return new Sk.builtin.dict(items.filter(item => item[1] !== undefined).flatMap(item => [new Sk.builtin.str(item[0]), item[1]]));
+};
+Sk.exportSymbol("Sk.misceval.localsSnapshot", Sk.misceval.localsSnapshot);
+
 /**
  * @function
  * @description
@@ -1400,23 +1476,12 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
         [ns, handler] = do_prepare(meta, _name, _bases, kws, is_class);
     }
 
-    let localsIsProxy = false;
-    let locals = {};
     if (ns === null) {
-        // fast path no metaclass
         ns = new Sk.builtin.dict([]);
-    } else if (ns.constructor === Sk.builtin.dict || _isIE()) {
-        // we move the namespace returned from prepare to locals
-        // can't use Proxy in IE since the polyfill doesn't support set
-        const keys = Sk.abstr.iter(Sk.misceval.callsimArray(ns.tp$getattr(Sk.builtin.str.$keys)));
-        for (let key = keys.tp$iternext(); key !== undefined; key = keys.tp$iternext()) {
-            if (Sk.builtin.checkString(key)) {
-                locals[key.toString()] = ns.mp$subscript(key); // ignore non strings
-            }
-        }
-    } else {
-        locals = new Proxy(ns, handler);
-        localsIsProxy = true;
+    }
+    const locals = ns instanceof Sk.builtin.dict ? Sk.misceval.namespaceToJs(ns) : new Proxy(ns, handler);
+    if (!(ns instanceof Sk.builtin.dict)) {
+        namespaceCache.set(locals, { dict: ns, "locals": locals });
     }
 
     // file's __name__ is class's __module__
@@ -1438,13 +1503,6 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
     func(globals, locals, l_cell);
 
     const classcell = locals.__classcell__ instanceof Sk.builtin.cell ? locals.__classcell__ : undefined;
-
-    if (!localsIsProxy) {
-        // put locals object inside the ns dict
-        Object.keys(locals).forEach((key) => {
-            Sk.abstr.objectSetItem(ns, new Sk.builtin.str(key), locals[key]);
-        });
-    }
 
     const klass = Sk.misceval.callsimOrSuspendArray(meta, [_name, _bases, ns], kws);
 
