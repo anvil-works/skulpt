@@ -524,13 +524,17 @@ Sk.builtin.getExcInfo = function (error) {
     return new Sk.builtin.tuple([error.ob$type, error, error.$traceback || Sk.builtin.none.none$]);
 };
 
-// _PyObject_SetAttributeErrorContext preserves explicitly supplied metadata.
-Sk.builtin.setAttributeErrorContext = function (error, obj, name) {
+// _PyObject_SetAttributeErrorContext preserves explicitly supplied metadata
+// and honors exception subclass setters, including errors from those setters.
+Sk.builtin.raiseAttributeErrorWithContext = function (error, obj, name) {
     if (error instanceof AttributeError && error.$name === undefined && error.$obj === undefined) {
-        error.$name = name;
-        error.$obj = obj;
+        return Sk.misceval.chain(
+            error.tp$setattr(new Sk.builtin.str("name"), name, true),
+            () => error.tp$setattr(new Sk.builtin.str("obj"), obj, true),
+            () => {throw error;}
+        );
     }
-    return error;
+    throw error;
 };
 
 // _PyEval_FormatExcCheckArg: missing names carry the failing identifier.

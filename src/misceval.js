@@ -1685,7 +1685,8 @@ Sk.misceval.calculateMetaclass = function (meta, bases) {
 
 function do_prepare(meta, _name, _bases, kws, is_class) {
     // we have a metaclass
-    const prep = meta.tp$getattr(Sk.builtin.str.$prepare);
+    // builtin___build_class__: optional attribute lookup clears AttributeError.
+    const prep = Sk.abstr.lookupAttr(meta, Sk.builtin.str.$prepare);
     let ns = null;
     if (prep === undefined) {
         // unusual case - the metaclass is not a typeobject

@@ -220,4 +220,24 @@ class AttributeContextRegression(unittest.TestCase):
                 exec(source, {})
             self.assertEqual(caught.exception.name, 'absent')
 
+    def test_context_setters_and_direct_descriptor_failure(self):
+        class Error(AttributeError):
+            def __setattr__(self, name, value):
+                if name == 'name':
+                    raise RuntimeError('blocked')
+                super().__setattr__(name, value)
+        class A:
+            @property
+            def broken(self):
+                raise Error('manual')
+        obj = A()
+        with self.assertRaises(RuntimeError) as caught:
+            obj.broken
+        self.assertEqual(str(caught.exception), 'blocked')
+        with self.assertRaises(Error) as caught:
+            object.__getattribute__(obj, 'broken')
+        self.assertEqual(str(caught.exception), 'manual')
+        self.assertIsNone(caught.exception.name)
+        self.assertIsNone(caught.exception.obj)
+
 if __name__ == '__main__': unittest.main()
