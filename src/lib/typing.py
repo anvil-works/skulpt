@@ -1,4 +1,4 @@
-"""Compiler-created typing objects; further typing APIs remain unimplemented."""
+"""CPython runtime objects for compiler-created type hints."""
 from _typing import TypeAliasType, TypeVar, NoDefault, ParamSpec, ParamSpecArgs, ParamSpecKwargs, TypeVarTuple, Unpack, _UnpackGenericAlias
 from types import GenericAlias, UnionType
 import sys
@@ -19,6 +19,8 @@ _lazy_annotationlib = _LazyAnnotationLib()
 Union = UnionType
 
 def get_args(tp):
+    if isinstance(tp, _AnnotatedAlias):
+        return (tp.__origin__, *tp.__metadata__)
     if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias)):
         args = tp.__args__
         if isinstance(tp, (_GenericAlias, GenericAlias)) and _should_unflatten_callable_args(tp, args):
@@ -27,6 +29,8 @@ def get_args(tp):
     return ()
 
 def get_origin(tp):
+    if isinstance(tp, _AnnotatedAlias):
+        return Annotated
     if isinstance(tp, (GenericAlias, UnionType, _UnpackGenericAlias, _GenericAlias, _SpecialGenericAlias, ParamSpecArgs, ParamSpecKwargs)):
         return tp.__origin__
     return None
@@ -142,17 +146,38 @@ class _SpecialForm(_Final, _NotIterable, _root=True):
 
 
 # Helpers invoked by native parameters, following CPython Lib/typing.py.
-def _type_check(arg, message, is_argument=True, module=None, *, allow_special_forms=False, owner=None):
+def _type_check(arg, msg, is_argument=True, module=None, *, allow_special_forms=False, owner=None):
+    """Check that the argument is a type, and return it (internal helper).
+
+    As a special case, accept None and return type(None) instead. Also wrap strings
+    into ForwardRef instances. Consider several corner cases, for example plain
+    special forms like Union are not valid, while Union[int, str] is OK, etc.
+    The msg argument is a human-readable error message, e.g.::
+
+        "Union[arg, ...]: arg should be a type."
+
+    We append the repr() of the actual value (truncated to 100 chars).
+    """
+    invalid_generic_forms = (Generic,)
+    if not allow_special_forms:
+        invalid_generic_forms += (ClassVar,)
+        if is_argument:
+            invalid_generic_forms += (Final,)
+
     arg = _type_convert(arg, module=module, allow_special_forms=allow_special_forms, owner=owner)
-    if isinstance(arg, _GenericAlias) and arg.__origin__ in (Generic,):
+    if (isinstance(arg, _GenericAlias) and
+            arg.__origin__ in invalid_generic_forms):
         raise TypeError(f"{arg} is not valid as type argument")
-    if arg in (Any, NoReturn):
+    if arg in (Any, LiteralString, NoReturn, Never, Self, TypeAlias):
+        return arg
+    if allow_special_forms and arg in (ClassVar, Final):
         return arg
     if isinstance(arg, _SpecialForm) or arg is Unpack or arg in (Generic,):
         raise TypeError(f"Plain {arg} is not valid as type argument")
     if type(arg) is tuple:
-        raise TypeError(message + " Got " + repr(arg) + ".")
+        raise TypeError(f"{msg} Got {arg!r:.100}.")
     return arg
+
 
 def _is_param_expr(arg):
     return arg is ... or isinstance(arg, (tuple, list, ParamSpec, _ConcatenateGenericAlias))
@@ -1196,6 +1221,14 @@ def _add_type_params_to_scope(type_params, globalns, localns, is_class):
 
 def _strip_annotations(t):
     """Strip the annotations from a given type."""
+    if isinstance(t, _AnnotatedAlias):
+        return _strip_annotations(t.__origin__)
+    if hasattr(t, "__origin__") and t.__origin__ in (Required, NotRequired, ReadOnly):
+        return _strip_annotations(t.__args__[0])
+    # CPython's Unpack alias is a Python _GenericAlias subclass; ours is native.
+    if isinstance(t, _UnpackGenericAlias):
+        stripped_arg = _strip_annotations(t.__args__[0])
+        return t if stripped_arg == t.__args__[0] else Unpack[stripped_arg]
     if isinstance(t, _GenericAlias):
         stripped_args = tuple(_strip_annotations(a) for a in t.__args__)
         if stripped_args == t.__args__:
@@ -1215,6 +1248,7 @@ def _strip_annotations(t):
     return t
 
 
+
 def __getattr__(attr):
     # CPython lazily exports the annotationlib class under its historical name.
     if attr == "ForwardRef":
@@ -1232,3 +1266,538 @@ def _typevar_subst(self, arg):
         (isinstance(arg, GenericAlias) and getattr(arg, '__unpacked__', False))):
         raise TypeError(f"{arg} is not valid as type argument")
     return arg
+
+
+# Annotation qualifiers from CPython 3.14 at 18ef0f0cb52.
+class _TypedCacheSpecialForm(_SpecialForm, _root=True):
+    def __getitem__(self, parameters):
+        if not isinstance(parameters, tuple):
+            parameters = (parameters,)
+        return self._getitem(self, *parameters)
+
+
+def _deduplicate(params, *, unhashable_fallback=False):
+    # Weed out strict duplicates, preserving the first of each occurrence.
+    try:
+        return dict.fromkeys(params)
+    except TypeError:
+        if not unhashable_fallback:
+            raise
+        # Happens for cases like `Annotated[dict, {'x': IntValidator()}]`
+        new_unhashable = []
+        for t in params:
+            if t not in new_unhashable:
+                new_unhashable.append(t)
+        return new_unhashable
+
+
+def _flatten_literal_params(parameters):
+    """Internal helper for Literal creation: flatten Literals among parameters."""
+    params = []
+    for p in parameters:
+        if isinstance(p, _LiteralGenericAlias):
+            params.extend(p.__args__)
+        else:
+            params.append(p)
+    return tuple(params)
+
+
+def _value_and_type_iter(parameters):
+    return ((p, type(p)) for p in parameters)
+
+
+class _LiteralGenericAlias(_GenericAlias, _root=True):
+    def __eq__(self, other):
+        if not isinstance(other, _LiteralGenericAlias):
+            return NotImplemented
+
+        return set(_value_and_type_iter(self.__args__)) == set(_value_and_type_iter(other.__args__))
+
+    def __hash__(self):
+        return hash(frozenset(_value_and_type_iter(self.__args__)))
+
+
+class _AnnotatedAlias(_NotIterable, _GenericAlias, _root=True):
+    """Runtime representation of an annotated type.
+
+    At its core 'Annotated[t, dec1, dec2, ...]' is an alias for the type 't'
+    with extra metadata. The alias behaves like a normal typing alias.
+    Instantiating is the same as instantiating the underlying type; binding
+    it to types is also the same.
+
+    The metadata itself is stored in a '__metadata__' attribute as a tuple.
+    """
+
+    def __init__(self, origin, metadata):
+        if isinstance(origin, _AnnotatedAlias):
+            metadata = origin.__metadata__ + metadata
+            origin = origin.__origin__
+        super().__init__(origin, origin, name='Annotated')
+        self.__metadata__ = metadata
+
+    def copy_with(self, params):
+        assert len(params) == 1
+        new_type = params[0]
+        return _AnnotatedAlias(new_type, self.__metadata__)
+
+    def __repr__(self):
+        return "typing.Annotated[{}, {}]".format(
+            _type_repr(self.__origin__),
+            ", ".join(repr(a) for a in self.__metadata__)
+        )
+
+    def __reduce__(self):
+        return operator.getitem, (
+            Annotated, (self.__origin__,) + self.__metadata__
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, _AnnotatedAlias):
+            return NotImplemented
+        return (self.__origin__ == other.__origin__
+                and self.__metadata__ == other.__metadata__)
+
+    def __hash__(self):
+        return hash((self.__origin__, self.__metadata__))
+
+    def __getattr__(self, attr):
+        if attr in {'__name__', '__qualname__'}:
+            return 'Annotated'
+        return super().__getattr__(attr)
+
+    def __mro_entries__(self, bases):
+        return (self.__origin__,)
+
+
+@_SpecialForm
+def Never(self, parameters):
+    """The bottom type, a type that has no members.
+
+    This can be used to define a function that should never be
+    called, or a function that never returns::
+
+        from typing import Never
+
+        def never_call_me(arg: Never) -> None:
+            pass
+
+        def int_or_str(arg: int | str) -> None:
+            never_call_me(arg)  # type checker error
+            match arg:
+                case int():
+                    print("It's an int")
+                case str():
+                    print("It's a str")
+                case _:
+                    never_call_me(arg)  # OK, arg is of type Never
+    """
+    raise TypeError(f"{self} is not subscriptable")
+
+
+@_SpecialForm
+def Self(self, parameters):
+    """Used to spell the type of "self" in classes.
+
+    Example::
+
+        from typing import Self
+
+        class Foo:
+            def return_self(self) -> Self:
+                ...
+                return self
+
+    This is especially useful for:
+        - classmethods that are used as alternative constructors
+        - annotating an `__enter__` method which returns self
+    """
+    raise TypeError(f"{self} is not subscriptable")
+
+
+@_SpecialForm
+def LiteralString(self, parameters):
+    """Represents an arbitrary literal string.
+
+    Example::
+
+        from typing import LiteralString
+
+        def run_query(sql: LiteralString) -> None:
+            ...
+
+        def caller(arbitrary_string: str, literal_string: LiteralString) -> None:
+            run_query("SELECT * FROM students")  # OK
+            run_query(literal_string)  # OK
+            run_query("SELECT * FROM " + literal_string)  # OK
+            run_query(arbitrary_string)  # type checker error
+            run_query(  # type checker error
+                f"SELECT * FROM students WHERE name = {arbitrary_string}"
+            )
+
+    Only string literals and other LiteralStrings are compatible
+    with LiteralString. This provides a tool to help prevent
+    security issues such as SQL injection.
+    """
+    raise TypeError(f"{self} is not subscriptable")
+
+
+@_SpecialForm
+def ClassVar(self, parameters):
+    """Special type construct to mark class variables.
+
+    An annotation wrapped in ClassVar indicates that a given
+    attribute is intended to be used as a class variable and
+    should not be set on instances of that class.
+
+    Usage::
+
+        class Starship:
+            stats: ClassVar[dict[str, int]] = {} # class variable
+            damage: int = 10                     # instance variable
+
+    ClassVar accepts only types and cannot be further subscribed.
+
+    Note that ClassVar is not a class itself, and cannot
+    be used with isinstance() or issubclass().
+    """
+    item = _type_check(parameters, f'{self} accepts only single type.', allow_special_forms=True)
+    return _GenericAlias(self, (item,))
+
+
+@_SpecialForm
+def Final(self, parameters):
+    """Special typing construct to indicate final names to type checkers.
+
+    A final name cannot be re-assigned or overridden in a subclass.
+
+    For example::
+
+        MAX_SIZE: Final = 9000
+        MAX_SIZE += 1  # Error reported by type checker
+
+        class Connection:
+            TIMEOUT: Final[int] = 10
+
+        class FastConnector(Connection):
+            TIMEOUT = 1  # Error reported by type checker
+
+    There is no runtime checking of these properties.
+    """
+    item = _type_check(parameters, f'{self} accepts only single type.', allow_special_forms=True)
+    return _GenericAlias(self, (item,))
+
+
+@_SpecialForm
+def Optional(self, parameters):
+    """Optional[X] is equivalent to X | None."""
+    arg = _type_check(parameters, f"{self} requires a single type.")
+    return Union[arg, type(None)]
+
+
+@_TypedCacheSpecialForm
+@_tp_cache(typed=True)
+def Literal(self, *parameters):
+    """Special typing form to define literal types (a.k.a. value types).
+
+    This form can be used to indicate to type checkers that the corresponding
+    variable or function parameter has a value equivalent to the provided
+    literal (or one of several literals)::
+
+        def validate_simple(data: Any) -> Literal[True]:  # always returns True
+            ...
+
+        MODE = Literal['r', 'rb', 'w', 'wb']
+        def open_helper(file: str, mode: MODE) -> str:
+            ...
+
+        open_helper('/some/path', 'r')  # Passes type check
+        open_helper('/other/path', 'typo')  # Error in type checker
+
+    Literal[...] cannot be subclassed. At runtime, an arbitrary value
+    is allowed as type argument to Literal[...], but type checkers may
+    impose restrictions.
+    """
+    # There is no '_type_check' call because arguments to Literal[...] are
+    # values, not types.
+    parameters = _flatten_literal_params(parameters)
+    value_and_type_parameters = list(_value_and_type_iter(parameters))
+    deduplicated_parameters = tuple(
+        p
+        for p, _ in _deduplicate(
+            value_and_type_parameters,
+            unhashable_fallback=True,
+        )
+    )
+
+    return _LiteralGenericAlias(self, deduplicated_parameters)
+
+
+@_SpecialForm
+def TypeAlias(self, parameters):
+    """Special form for marking type aliases.
+
+    TypeAlias can be used to indicate that an assignment should
+    be recognized as a proper type alias definition by type
+    checkers.
+
+    For example::
+
+        Predicate: TypeAlias = Callable[..., bool]
+
+    It's invalid when used anywhere except as in the example above.
+    """
+    raise TypeError(f"{self} is not subscriptable")
+
+
+@_SpecialForm
+def TypeGuard(self, parameters):
+    """Special typing construct for marking user-defined type predicate functions.
+
+    ``TypeGuard`` can be used to annotate the return type of a user-defined
+    type predicate function.  ``TypeGuard`` only accepts a single type argument.
+    At runtime, functions marked this way should return a boolean.
+
+    ``TypeGuard`` aims to benefit *type narrowing* -- a technique used by static
+    type checkers to determine a more precise type of an expression within a
+    program's code flow.  Usually type narrowing is done by analyzing
+    conditional code flow and applying the narrowing to a block of code.  The
+    conditional expression here is sometimes referred to as a "type predicate".
+
+    Sometimes it would be convenient to use a user-defined boolean function
+    as a type predicate.  Such a function should use ``TypeGuard[...]`` or
+    ``TypeIs[...]`` as its return type to alert static type checkers to
+    this intention. ``TypeGuard`` should be used over ``TypeIs`` when narrowing
+    from an incompatible type (e.g., ``list[object]`` to ``list[int]``) or when
+    the function does not return ``True`` for all instances of the narrowed type.
+
+    Using  ``-> TypeGuard[NarrowedType]`` tells the static type checker that
+    for a given function:
+
+    1. The return value is a boolean.
+    2. If the return value is ``True``, the type of its argument
+       is ``NarrowedType``.
+
+    For example::
+
+         def is_str_list(val: list[object]) -> TypeGuard[list[str]]:
+             '''Determines whether all objects in the list are strings'''
+             return all(isinstance(x, str) for x in val)
+
+         def func1(val: list[object]):
+             if is_str_list(val):
+                 # Type of ``val`` is narrowed to ``list[str]``.
+                 print(" ".join(val))
+             else:
+                 # Type of ``val`` remains as ``list[object]``.
+                 print("Not a list of strings!")
+
+    Strict type narrowing is not enforced -- ``TypeB`` need not be a narrower
+    form of ``TypeA`` (it can even be a wider form) and this may lead to
+    type-unsafe results.  The main reason is to allow for things like
+    narrowing ``list[object]`` to ``list[str]`` even though the latter is not
+    a subtype of the former, since ``list`` is invariant.  The responsibility of
+    writing type-safe type predicates is left to the user.
+
+    ``TypeGuard`` also works with type variables.  For more information, see
+    PEP 647 (User-Defined Type Guards).
+    """
+    item = _type_check(parameters, f'{self} accepts only single type.')
+    return _GenericAlias(self, (item,))
+
+
+@_SpecialForm
+def TypeIs(self, parameters):
+    """Special typing construct for marking user-defined type predicate functions.
+
+    ``TypeIs`` can be used to annotate the return type of a user-defined
+    type predicate function.  ``TypeIs`` only accepts a single type argument.
+    At runtime, functions marked this way should return a boolean and accept
+    at least one argument.
+
+    ``TypeIs`` aims to benefit *type narrowing* -- a technique used by static
+    type checkers to determine a more precise type of an expression within a
+    program's code flow.  Usually type narrowing is done by analyzing
+    conditional code flow and applying the narrowing to a block of code.  The
+    conditional expression here is sometimes referred to as a "type predicate".
+
+    Sometimes it would be convenient to use a user-defined boolean function
+    as a type predicate.  Such a function should use ``TypeIs[...]`` or
+    ``TypeGuard[...]`` as its return type to alert static type checkers to
+    this intention.  ``TypeIs`` usually has more intuitive behavior than
+    ``TypeGuard``, but it cannot be used when the input and output types
+    are incompatible (e.g., ``list[object]`` to ``list[int]``) or when the
+    function does not return ``True`` for all instances of the narrowed type.
+
+    Using  ``-> TypeIs[NarrowedType]`` tells the static type checker that for
+    a given function:
+
+    1. The return value is a boolean.
+    2. If the return value is ``True``, the type of its argument
+       is the intersection of the argument's original type and
+       ``NarrowedType``.
+    3. If the return value is ``False``, the type of its argument
+       is narrowed to exclude ``NarrowedType``.
+
+    For example::
+
+        from typing import assert_type, final, TypeIs
+
+        class Parent: pass
+        class Child(Parent): pass
+        @final
+        class Unrelated: pass
+
+        def is_parent(val: object) -> TypeIs[Parent]:
+            return isinstance(val, Parent)
+
+        def run(arg: Child | Unrelated):
+            if is_parent(arg):
+                # Type of ``arg`` is narrowed to the intersection
+                # of ``Parent`` and ``Child``, which is equivalent to
+                # ``Child``.
+                assert_type(arg, Child)
+            else:
+                # Type of ``arg`` is narrowed to exclude ``Parent``,
+                # so only ``Unrelated`` is left.
+                assert_type(arg, Unrelated)
+
+    The type inside ``TypeIs`` must be consistent with the type of the
+    function's argument; if it is not, static type checkers will raise
+    an error.  An incorrectly written ``TypeIs`` function can lead to
+    unsound behavior in the type system; it is the user's responsibility
+    to write such functions in a type-safe manner.
+
+    ``TypeIs`` also works with type variables.  For more information, see
+    PEP 742 (Narrowing types with ``TypeIs``).
+    """
+    item = _type_check(parameters, f'{self} accepts only single type.')
+    return _GenericAlias(self, (item,))
+
+
+@_SpecialForm
+def Required(self, parameters):
+    """Special typing construct to mark a TypedDict key as required.
+
+    This is mainly useful for total=False TypedDicts.
+
+    For example::
+
+        class Movie(TypedDict, total=False):
+            title: Required[str]
+            year: int
+
+        m = Movie(
+            title='The Matrix',  # type checker error if key is omitted
+            year=1999,
+        )
+
+    There is no runtime checking that a required key is actually provided
+    when instantiating a related TypedDict.
+    """
+    item = _type_check(parameters, f'{self._name} accepts only a single type.')
+    return _GenericAlias(self, (item,))
+
+
+@_SpecialForm
+def NotRequired(self, parameters):
+    """Special typing construct to mark a TypedDict key as potentially missing.
+
+    For example::
+
+        class Movie(TypedDict):
+            title: str
+            year: NotRequired[int]
+
+        m = Movie(
+            title='The Matrix',  # type checker error if key is omitted
+            year=1999,
+        )
+    """
+    item = _type_check(parameters, f'{self._name} accepts only a single type.')
+    return _GenericAlias(self, (item,))
+
+
+@_SpecialForm
+def ReadOnly(self, parameters):
+    """A special typing construct to mark an item of a TypedDict as read-only.
+
+    For example::
+
+        class Movie(TypedDict):
+            title: ReadOnly[str]
+            year: int
+
+        def mutate_movie(m: Movie) -> None:
+            m["year"] = 1992  # allowed
+            m["title"] = "The Matrix"  # type checker error
+
+    There is no runtime checking for this property.
+    """
+    item = _type_check(parameters, f'{self._name} accepts only a single type.')
+    return _GenericAlias(self, (item,))
+
+
+@_TypedCacheSpecialForm
+@_tp_cache(typed=True)
+def Annotated(self, *params):
+    """Add context-specific metadata to a type.
+
+    Example: Annotated[int, runtime_check.Unsigned] indicates to the
+    hypothetical runtime_check module that this type is an unsigned int.
+    Every other consumer of this type can ignore this metadata and treat
+    this type as int.
+
+    The first argument to Annotated must be a valid type.
+
+    Details:
+
+    - It's an error to call `Annotated` with less than two arguments.
+    - Access the metadata via the ``__metadata__`` attribute::
+
+        assert Annotated[int, '$'].__metadata__ == ('$',)
+
+    - Nested Annotated types are flattened::
+
+        assert Annotated[Annotated[T, Ann1, Ann2], Ann3] == Annotated[T, Ann1, Ann2, Ann3]
+
+    - Instantiating an annotated type is equivalent to instantiating the
+    underlying type::
+
+        assert Annotated[C, Ann1](5) == C(5)
+
+    - Annotated can be used as a generic type alias::
+
+        type Optimized[T] = Annotated[T, runtime.Optimize()]
+        # type checker will treat Optimized[int]
+        # as equivalent to Annotated[int, runtime.Optimize()]
+
+        type OptimizedList[T] = Annotated[list[T], runtime.Optimize()]
+        # type checker will treat OptimizedList[int]
+        # as equivalent to Annotated[list[int], runtime.Optimize()]
+
+    - Annotated cannot be used with an unpacked TypeVarTuple::
+
+        type Variadic[*Ts] = Annotated[*Ts, Ann1]  # NOT valid
+
+      This would be equivalent to::
+
+        Annotated[T1, T2, T3, ..., Ann1]
+
+      where T1, T2 etc. are TypeVars, which would be invalid, because
+      only one type should be passed to Annotated.
+    """
+    if len(params) < 2:
+        raise TypeError("Annotated[...] should be used "
+                        "with at least two arguments (a type and an "
+                        "annotation).")
+    if _is_unpacked_typevartuple(params[0]):
+        raise TypeError("Annotated[...] should not be used with an "
+                        "unpacked TypeVarTuple")
+    msg = "Annotated[t, ...]: t must be a type."
+    origin = _type_check(params[0], msg, allow_special_forms=True)
+    metadata = tuple(params[1:])
+    return _AnnotatedAlias(origin, metadata)
+
+
+Dict = _SpecialGenericAlias(dict, 2, inst=False, name="Dict")
+Counter = _SpecialGenericAlias(collections.Counter, 1)
