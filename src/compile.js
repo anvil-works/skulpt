@@ -254,7 +254,7 @@ Compiler.prototype.outputInterruptTest = function () { // Added by RNL
         }
         if (Sk.yieldLimit !== null && this.u.canSuspend) {
             output += "if (!$waking && ($dateNow - Sk.lastYield > Sk.yieldLimit)) {";
-            output += "var $susp = $saveSuspension({data: {type: 'Sk.yield'}, resume: function() {}}, '"+this.filename+"',$currLineNo,$currColNo);";
+            output += "var $susp = $saveSuspension({data: {type: 'Sk.yield'}, resume: function() {}}, "+JSON.stringify(this.filename)+",$currLineNo,$currColNo);";
             output += "$susp.$blk = $blk;";
             output += "$susp.optional = true;";
             output += "return $susp;";
@@ -305,7 +305,7 @@ Compiler.prototype._checkSuspension = function(e) {
         const column = e ? this.getSourceColumn(e) : "$currColNo";
         const lineno = e ? e.lineno : "$currLineNo";
 
-        out ("if ($ret && $ret.$isSuspension) { return $saveSuspension($ret,'"+this.filename+"',"+lineno+","+column+"); }");
+        out ("if ($ret && $ret.$isSuspension) { return $saveSuspension($ret,"+JSON.stringify(this.filename)+","+lineno+","+column+"); }");
 
         this.u.doesSuspend = true;
         this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
@@ -670,7 +670,7 @@ Compiler.prototype.cyield = function(e) {
     nextBlock = this.newBlock("after yield");
     this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
     out(`$blk=${nextBlock};`);
-    out(`return $gen.gi$yield((susp) => $saveSuspension(susp, '${this.filename}', $currLineNo, $currColNo), ${val});`);
+    out(`return $gen.gi$yield((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo), ${val});`);
 
     this.setBlock(nextBlock);
     return this._gr("yield", "$ret");
@@ -694,7 +694,7 @@ Compiler.prototype.cyieldfrom = function (e) {
     out(    "$blk=", afterBlock, ";continue;");
     out("}");
     out(`$blk = ${afterIter};`);
-    out(`return $gen.gi$yield((susp) => $saveSuspension(susp, '${this.filename}', $currLineNo, $currColNo), $ret);`);
+    out(`return $gen.gi$yield((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo), $ret);`);
     this.setBlock(afterBlock);
     return this._gr("yieldfrom", "$ret");
 };
@@ -1289,7 +1289,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
         }
     }
 
-    output +=  "try { $ret=susp.child.resume(); } catch(err) { $localsScope=0; if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
+    output +=  "try { $ret=susp.child.resume(); } catch(err) { $localsScope=0; if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
                 "};";
     output += "var $self = this;";
     output += unit.ste.generator?"var $gen = $self;":"";
@@ -1502,8 +1502,8 @@ Compiler.prototype.cwhile = function (s) {
             var suspType = "Sk.delay";
             var debugBlock = this.newBlock("debug breakpoint for line "+s.lineno);
             const column = this.getSourceColumn(s);
-            out("if (Sk.breakpoints('"+this.filename+"',"+s.lineno+","+column+")) {",
-                "var $susp = $saveSuspension({data: {type: '"+suspType+"'}, resume: function() {}}, '"+this.filename+"',"+s.lineno+","+column+");",
+            out("if (Sk.breakpoints("+JSON.stringify(this.filename)+","+s.lineno+","+column+")) {",
+                "var $susp = $saveSuspension({data: {type: '"+suspType+"'}, resume: function() {}}, "+JSON.stringify(this.filename)+","+s.lineno+","+column+");",
                 "$susp.$blk = "+debugBlock+";",
                 "$susp.optional = true;",
                 "return $susp;",
@@ -1577,8 +1577,8 @@ Compiler.prototype.cfor = function (s) {
         var suspType = "Sk.delay";
         var debugBlock = this.newBlock("debug breakpoint for line "+s.lineno);
         const column = this.getSourceColumn(s);
-        out("if (Sk.breakpoints('"+this.filename+"',"+s.lineno+","+column+")) {",
-            "var $susp = $saveSuspension({data: {type: '"+suspType+"'}, resume: function() {}}, '"+this.filename+"',"+s.lineno+","+column+");",
+        out("if (Sk.breakpoints("+JSON.stringify(this.filename)+","+s.lineno+","+column+")) {",
+            "var $susp = $saveSuspension({data: {type: '"+suspType+"'}, resume: function() {}}, "+JSON.stringify(this.filename)+","+s.lineno+","+column+");",
             "$susp.$blk = "+debugBlock+";",
             "$susp.optional = true;",
             "return $susp;",
@@ -2203,7 +2203,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // call new generator and then save the suspension
     if (isGenerator) {
         this.u.varDeclsCode += `$gen = new Sk.builtin.generator(${scopename}, this.$name, this.$qualname);
-        $gen.gi$setInitialSuspension((susp) => $saveSuspension(susp, '${this.filename}', $currLineNo, $currColNo));
+        $gen.gi$setInitialSuspension((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo));
         return $gen;`
     }
 
@@ -2223,7 +2223,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     this.u.switchCode = "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }/* frame end */});";
+    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }/* frame end */});";
 
     //
     // jump back to the handler so it can do the main actual work of the
@@ -2518,7 +2518,7 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
 
         velt = this.vexpr(elt);
         out(`$blk=${skip};`);
-        out(`return $gen.gi$yield((susp) => $saveSuspension(susp, '${this.filename}', $currLineNo, $currColNo), ${velt});`);
+        out(`return $gen.gi$yield((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo), ${velt});`);
         this.setBlock(skip);
     }
 
@@ -2582,7 +2582,7 @@ Compiler.prototype.cclass = function (s) {
     this.u.switchCode += "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
+    this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
     this.u.suffixCode += "/* frame end */}).call(null, $cell);});";
 
     this.u.private_ = s.name;
@@ -2664,8 +2664,8 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
     if (Sk.debugging && this.u.canSuspend) {
         debugBlock = this.newBlock("debug breakpoint for line "+s.lineno);
         const column = this.getSourceColumn(s);
-        out("if (Sk.breakpoints('"+this.filename+"',"+s.lineno+","+column+")) {",
-            "var $susp = $saveSuspension({data: {type: 'Sk.debug'}, resume: function() {}}, '"+this.filename+"',"+s.lineno+","+column+");",
+        out("if (Sk.breakpoints("+JSON.stringify(this.filename)+","+s.lineno+","+column+")) {",
+            "var $susp = $saveSuspension({data: {type: 'Sk.debug'}, resume: function() {}}, "+JSON.stringify(this.filename)+","+s.lineno+","+column+");",
             "$susp.$blk = " + debugBlock + ";",
             "$susp.optional = true;",
             "return $susp;",
@@ -3104,7 +3104,7 @@ Compiler.prototype.cmod = function (mod) {
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
     this.u.suffixCode = "}";
-    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } /* frame end */});";
+    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } /* frame end */});";
 
     // Note - this change may need to be adjusted for all the other instances of
     // switchCode and suffixCode in this file.  Not knowing how to test those
