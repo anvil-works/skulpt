@@ -134,6 +134,30 @@ var $builtinmodule = function (name) {
     sys.__stdin__ = new Sk.builtin.file(new Sk.builtin.str("/dev/stdin"), new Sk.builtin.str("r"));
     sys.__stderr__ = new Sk.builtin.file(new Sk.builtin.str("/dev/stderr"), new Sk.builtin.str("w"));
 
+    sys.displayhook = new Sk.builtin.func(function (value) {
+        Sk.abstr.checkArgsLen("displayhook", arguments, 1, 1);
+        if (Sk.builtin.checkNone(value)) return Sk.builtin.none.none$;
+        Sk.builtins._ = Sk.builtin.none.none$;
+        // Python/sysmodule.c: capture the stream and representation writer
+        // before repr, which can change sys.stdout or the stream's write method.
+        const stdout = sys.stdout;
+        if (stdout === undefined || Sk.builtin.checkNone(stdout)) {
+            throw new Sk.builtin.RuntimeError("lost sys.stdout");
+        }
+        return Sk.misceval.chain(Sk.abstr.gattr(stdout, Sk.builtin.str.$write, true), write => {
+            return Sk.misceval.chain(Sk.builtin.repr(value), representation =>
+                Sk.misceval.callsimOrSuspendArray(write, [representation])
+            );
+        }, () => {
+            return Sk.misceval.chain(Sk.abstr.gattr(stdout, Sk.builtin.str.$write, true), write =>
+                Sk.misceval.callsimOrSuspendArray(write, [new Sk.builtin.str("\n")])
+            );
+        }, () => {
+            Sk.builtins._ = value;
+            return Sk.builtin.none.none$;
+        });
+    });
+    sys.__displayhook__ = sys.displayhook;
     sys.stdout = sys.__stdout__;
     sys.stdin = sys.__stdin__;
     sys.stderr = sys.__stderr__;
