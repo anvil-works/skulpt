@@ -148,6 +148,21 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         }
     },
     proto: {
+        // Replace compiled behavior without changing references held by imports or callbacks.
+        // Definition-time defaults and closure cells remain state of the original function.
+        $replaceImplementation(replacement) {
+            if (!this.func_code.co_fastcall || !replacement.func_code.co_fastcall) {
+                throw new Sk.builtin.NotImplementedError("Live updates do not support generators or native functions");
+            }
+            const defaults = this.$defaults;
+            const kwdefaults = this.$kwdefs;
+            this.func_code = replacement.func_code;
+            this.$memoiseFlags();
+            this.$defaults = defaults;
+            this.$kwdefs = kwdefaults;
+            this.$doc = replacement.$doc;
+            this.tp$call = this.func_code.bind(this);
+        },
         $memoiseFlags() {
             this.co_varnames = this.func_code.co_varnames;
             this.co_argcount = this.func_code.co_argcount;
@@ -346,4 +361,3 @@ function $resolveArgs(posargs, kw) {
 
     return args;
 };
-

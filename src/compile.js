@@ -13,6 +13,12 @@ Sk.gensymcount = 0;
  */
 function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation) {
     this.filename = filename;
+    // Capture the source identity once. Suspended old frames must not consult a
+    // newer module's globals after live replacement.
+    // IDE-only hook: capture the version during compilation, never on resume.
+    const sourceVersion = Sk["getSourceVersion"] && Sk["getSourceVersion"](filename, sourceCodeForAnnotation);
+    this.sourceVersionLiteral = typeof sourceVersion === "string" ? JSON.stringify(sourceVersion) : "";
+    this.sourceVersionCode = typeof sourceVersion === "string" ? ",sourceVersion:" + JSON.stringify(sourceVersion) : "";
     this.st = st;
     this.flags = flags;
     this.canSuspend = canSuspend;
@@ -1257,7 +1263,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
         }
     }
 
-    output +=  "try { $ret=susp.child.resume(); } catch(err) { if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
+    output +=  "try { $ret=susp.child.resume(); } catch(err) { if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'"+this.sourceVersionCode+"}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
                 "};";
 
     output += "var $saveSuspension = function($child, $filename, $lineno, $colno) {" +
@@ -1265,6 +1271,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
                 "susp.resume=function(){"+unit.scopename+".$wakingSuspension=susp; return "+unit.scopename+"("+(unit.ste.generator?"$gen":"")+"); };" +
                 "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$exc=$exc;susp.$err=$err;susp.$postfinally=$postfinally;" +
                 "susp.$filename=$filename;susp.$lineno=$lineno;susp.$colno=$colno;" +
+                (this.sourceVersionLiteral ? "susp.sourceVersion=" + this.sourceVersionLiteral + ";" : "") +
                 "susp.optional=susp.child.optional;" +
                 (hasCell ? "susp.$cell=$cell;" : "");
 
@@ -2158,7 +2165,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     this.u.switchCode = "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }});";
+    this.u.suffixCode = "} }catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'"+this.sourceVersionCode+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} }});";
 
     //
     // jump back to the handler so it can do the main actual work of the
@@ -2532,7 +2539,7 @@ Compiler.prototype.cclass = function (s) {
     this.u.switchCode += "while(true){try{";
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
-    this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
+    this.u.suffixCode = "}}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'"+this.sourceVersionCode+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }}}";
     this.u.suffixCode += "}).call(null, $cell);});";
 
     this.u.private_ = s.name;
@@ -3039,7 +3046,7 @@ Compiler.prototype.cmod = function (mod) {
     this.u.switchCode += this.outputInterruptTest();
     this.u.switchCode += "switch($blk){";
     this.u.suffixCode = "}";
-    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } });";
+    this.u.suffixCode += "}catch(err){ if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'"+this.sourceVersionCode+"}); if ($exc.length>0) { $err = err; $blk=$exc.pop(); continue; } else { throw err; }} } });";
 
     // Note - this change may need to be adjusted for all the other instances of
     // switchCode and suffixCode in this file.  Not knowing how to test those
@@ -3103,6 +3110,453 @@ Sk.compile = function (source, filename, mode, canSuspend) {
 };
 
 Sk.exportSymbol("Sk.compile", Sk.compile);
+
+function livePropertyAccessor(node) {
+    if (node.decorator_list.length !== 1) return;
+    const decorator = node.decorator_list[0];
+    if (decorator._type === "Name" && decorator.id === "property") return "get";
+    if (decorator._type === "Attribute" && decorator.value._type === "Name" && decorator.value.id === node.name) {
+        return {getter: "get", setter: "set", deleter: "del"}[decorator.attr];
+    }
+}
+
+/**
+ * Compile one existing module function or direct class method, without running
+ * imports, class bodies, decorators, annotations or default expressions.
+ * The caller must check definition compatibility before installing the result.
+ */
+Sk.compileFunctionUpdate = function (source, filename, path, options) {
+    const globals = options.globals;
+    const ast = Sk.parseModule(source, filename);
+    const st = Sk.symboltable(ast, filename);
+    const c = new Compiler(filename, st, 0, true, source);
+    c.enterScope("<module>", ast, 0, true);
+    c.newBlock("update setup");
+    let parent = ast;
+    let className;
+    for (let i = 0; i < path.length - 1; i++) {
+        const cls = parent.body.find(n => n._type === "ClassDef" && n.name === path[i]);
+        if (!cls || i > 0) {
+            throw new Sk.builtin.NotImplementedError("Live updates support direct class methods only");
+        }
+        c.enterScope(cls.name, cls, cls.lineno, true);
+        c.newBlock("update setup");
+        c.u.private_ = cls.name;
+        className = cls.name;
+        parent = cls;
+    }
+    const node = parent.body.find(n => n._type === "FunctionDef" && n.name === path[path.length - 1] &&
+        (!options.accessor || livePropertyAccessor(n) === options.accessor));
+    if (!node || st.getStsForAst(node).generator) {
+        throw new Sk.builtin.NotImplementedError("Live updates require an ordinary function");
+    }
+    const args = Object.assign({}, node.args, {
+        defaults: [],
+        kw_defaults: (node.args.kw_defaults || []).map(() => null),
+        args: node.args.args.map(a => Object.assign({}, a, {annotation: null})),
+        kwonlyargs: (node.args.kwonlyargs || []).map(a => Object.assign({}, a, {annotation: null})),
+        vararg: node.args.vararg && Object.assign({}, node.args.vararg, {annotation: null}),
+        kwarg: node.args.kwarg && Object.assign({}, node.args.kwarg, {annotation: null}),
+    });
+    const firstUnit = c.allUnits.length;
+    node.returns = null;
+    const fn = c.buildcodeobj(node, node.name, [], args, function () {
+        this.vseqstmt(node.body);
+        out("return Sk.builtin.none.none$;");
+    }, className);
+    const setup = c.u.blocks[0].join("");
+    // Function metadata (notably co_docstring) can allocate constants in its
+    // enclosing scope. Emit those constants without executing that scope's body.
+    const constants = "var " + c.u.scopename + "={};" + Object.entries(c.u.consts)
+        .map(([name, value]) => name + "=" + value + ";").join("");
+    c.allUnits = c.allUnits.slice(firstUnit);
+    const code = "(function($gbl,$cell,$free){" + constants + c.outputAllUnits() + setup + "return " + fn + ";})";
+    // Same evaluation boundary as the module importer; no Python user code is run here.
+    const replacement = (0, eval)(code)(globals, {}, {});
+    replacement.$module = globals["__name__"] || Sk.builtin.none.none$;
+    return replacement;
+};
+Sk.exportSymbol("Sk.compileFunctionUpdate", Sk.compileFunctionUpdate);
+
+function liveAstFingerprint(node) {
+    return JSON.stringify(node, (key, value) =>
+        ["lineno", "col_offset", "end_lineno", "end_col_offset", "scopeId"].includes(key) ? undefined : value);
+}
+
+/** Prepare an atomic set of definition updates. Non-definition statements must stay unchanged. */
+Sk.prepareModuleUpdate = function (before, after, filename, options) {
+    const { globals, unwrap } = options;
+    const oldAst = Sk.parseModule(before, filename);
+    const newAst = Sk.parseModule(after, filename);
+    const changes = [];
+    const resetClasses = new Set();
+    const reject = message => { throw new Sk.builtin.NotImplementedError("Restart required: " + message); };
+    const visit = (oldBody, newBody, path) => {
+        const definitions = body => body.filter(n => n._type === "FunctionDef" || n._type === "ClassDef");
+        const oldDefs = definitions(oldBody);
+        const newDefs = definitions(newBody);
+        const key = node => node.name + (path.length && node._type === "FunctionDef" && livePropertyAccessor(node) ? ":" + livePropertyAccessor(node) : "");
+        const oldNames = new Set(oldDefs.map(key));
+        if (oldNames.size !== oldDefs.length) reject("multiple definitions in running source");
+        // Keep existing definitions in their position relative to initialization.
+        // Moving a def past `alias = def_name` changes what a fresh import means.
+        const skeleton = body => body
+            .filter(n => !(n._type === "FunctionDef" || n._type === "ClassDef") || oldNames.has(key(n)))
+            .map(n => n._type === "FunctionDef" || n._type === "ClassDef" ? {_type: n._type, name: key(n)} : n);
+        const initialization = body => skeleton(body).map(node => {
+            if (!path.length && node._type === "Assign" && node.targets.length === 1 &&
+                node.targets[0]._type === "Name" && options.constantNames && options.constantNames.has(node.targets[0].id)) {
+                return Object.assign({}, node, {value: {_type: "LiveConstant"}});
+            }
+            return node;
+        });
+        if (!(options.rerun && !path.length) && liveAstFingerprint(initialization(oldBody)) !== liveAstFingerprint(initialization(newBody))) {
+            reject("initialization or imports changed in " + (path.join(".") || filename));
+        }
+        const names = new Set();
+        for (const node of newDefs) {
+            if (names.has(key(node))) reject("multiple definitions of " + node.name);
+            names.add(key(node));
+            const previous = oldDefs.find(n => key(n) === key(node));
+            const currentPath = path.concat(node.name);
+            if (node._type === "ClassDef") {
+                if (!previous || previous._type !== "ClassDef" || path.length) reject("class structure changed");
+                if (liveAstFingerprint(Object.assign({}, previous, {body: []})) !== liveAstFingerprint(Object.assign({}, node, {body: []}))) {
+                    reject("class bases or decorators changed for " + node.name);
+                }
+                visit(previous.body, node.body, currentPath);
+            } else {
+                if (previous && previous._type !== "FunctionDef") reject("definition kind changed");
+                if (previous && liveAstFingerprint(previous) === liveAstFingerprint(node)) continue;
+                if (previous && liveAstFingerprint(Object.assign({}, previous, {body: []})) !== liveAstFingerprint(Object.assign({}, node, {body: []}))) {
+                    reject("signature, defaults or decorators changed for " + currentPath.join("."));
+                }
+                if (node.name === "__init__" || node.name === "__new__") {
+                    if (node.name !== "__init__" || path.length !== 1 || path[0] !== options.formClass) {
+                        reject("constructor changed");
+                    }
+                    resetClasses.add(path[0]);
+                }
+                if (!previous && ((!path.length || !livePropertyAccessor(node)) && node.decorator_list.length || node.args.defaults.length || node.args.kw_defaults.some(Boolean))) {
+                    reject("new decorated function or default expression");
+                }
+                if (!previous && (node.returns || node.args.args.concat(node.args.kwonlyargs, [node.args.vararg, node.args.kwarg]).some(a => a && a.annotation))) {
+                    reject("new function annotations");
+                }
+                changes.push({path: currentPath, node, added: !previous, accessor: path.length && livePropertyAccessor(node)});
+            }
+        }
+        if (oldDefs.some(n => !names.has(key(n)))) reject("a definition was removed");
+    };
+    visit(oldAst.body, newAst.body, []);
+    const operations = changes.map(change => {
+        const path = change.path;
+        const cls = path.length === 2 && globals[Sk.fixReserved(path[0])];
+        if (path.length === 2 && !(cls instanceof Sk.builtin.type)) reject("class was rebound");
+        const name = new Sk.builtin.str(path.length === 2 ? Sk.mangleName(path[0], path[1]).v : path[0]);
+        let original = path.length === 2 ? cls.$typeLookup(name) : globals[name.$mangled];
+        const descriptor = original;
+        if (change.accessor) {
+            if (change.accessor === "get" && globals.property && globals.property !== Sk.builtin.property) reject("property decorator was rebound");
+            if (descriptor && descriptor.ob$type !== Sk.builtin.property) reject("unsupported property " + path.join("."));
+            if (!descriptor && change.accessor !== "get") reject("missing property getter " + path.join("."));
+            original = descriptor && descriptor["prop$" + change.accessor];
+        } else original = unwrap ? unwrap(original, change.node) : original;
+        if (!change.added && (!(original instanceof Sk.builtin.func) || !original.func_code.co_fastcall)) {
+            reject("unsupported callable " + path.join("."));
+        }
+        if (!change.added && (original.func_globals !== globals ||
+            (!original.func_code.co_name || original.func_code.co_name.v !== change.node.name) ||
+            (original.func_code.co_qualname || original.func_code.co_name).v !== path.join("."))) {
+            reject("callable was rebound: " + path.join("."));
+        }
+        const replacement = Sk.compileFunctionUpdate(after, filename, path, {globals, accessor: change.accessor});
+        return () => {
+            if (change.added) {
+                if (change.accessor) {
+                    if (descriptor) descriptor["prop$" + change.accessor] = replacement;
+                    else cls.tp$setattr(name, new Sk.builtin.property(replacement));
+                } else if (cls) cls.tp$setattr(name, replacement);
+                else globals[name.$mangled] = replacement;
+            } else original.$replaceImplementation(replacement);
+        };
+    });
+    return {count: operations.length, resetClasses: [...resetClasses], apply: () => operations.forEach(fn => fn())};
+};
+Sk.exportSymbol("Sk.prepareModuleUpdate", Sk.prepareModuleUpdate);
+
+/**
+ * Classify a batch against every loaded app module's source. The marker grants
+ * permission to rerun initialization; it does not prove arbitrary Python side
+ * effects safe. Opaque module captures and dependency cycles require a refresh.
+ */
+Sk.prepareModuleUpdates = function (changes, options) {
+    const reject = message => { throw new Sk.builtin.NotImplementedError("Restart required: " + message); };
+    const marked = (source, filename) => {
+        const lines = source.split("\n");
+        let line = 0, brackets = 0, found = false;
+        Sk._tokenize(filename, () => line < lines.length ? lines[line++] + "\n" : "", "utf-8", token => {
+            // Only an unindented comment outside a continued expression opts in.
+            // Marker text in a docstring is a STRING token, never authorization.
+            if (token.type === Sk.token.tokens.T_COMMENT && token.start[1] === 0 && brackets === 0 &&
+                token.string.trimEnd() === "# anvil: live-update-safe") found = true;
+            if (token.type === Sk.token.tokens.T_OP) {
+                if (["(", "[", "{"].includes(token.string)) brackets++;
+                if ([")", "]", "}"].includes(token.string)) brackets--;
+            }
+        });
+        return found;
+    };
+    const walk = (node, fn, parent, inFunctionBody = false) => {
+        if (!node || typeof node !== "object") return;
+        if (node._type) fn(node, parent, inFunctionBody);
+        for (const [key, value] of Object.entries(node)) {
+            const deferred = inFunctionBody || ["FunctionDef", "Lambda"].includes(node._type) && key === "body";
+            if (Array.isArray(value)) value.forEach(child => walk(child, fn, node, deferred));
+            else if (value && typeof value === "object") walk(value, fn, node, deferred);
+        }
+    };
+    const literal = node => node && (node._type === "Constant" && ["int", "float", "str", "bool", "none"].includes(node.value.type) ||
+        node._type === "UnaryOp" && ["USub", "UAdd"].includes(node.op._type) &&
+        node.operand._type === "Constant" && ["int", "float"].includes(node.operand.value.type));
+    const literalValue = node => {
+        if (node._type === "UnaryOp") {
+            const value = literalValue(node.operand);
+            return node.op._type === "USub" ? Sk.abstr.numberUnaryOp(value, "USub") : value;
+        }
+        const value = node.value;
+        switch (value.type) {
+            case "int": return new Sk.builtin.int_(typeof value.value === "number" ? value.value : String(value.value));
+            case "float": return new Sk.builtin.float_(value.value);
+            case "str": return new Sk.builtin.str(value.value);
+            case "bool": return value.value ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
+            case "none": return Sk.builtin.none.none$;
+            default: reject("unsupported constant literal");
+        }
+    };
+    // Batch policy: literals -> capture/dependency graph -> authorized rerun
+    // propagation -> provider-first ordering and callable identity restoration.
+    // 1. Parse and classify definition edits and unambiguous literal bindings.
+    const entries = new Map(options.modules.map(module => [module.name, Object.assign({}, module, {
+        ast: Sk.parseModule(module.source, module.filename), after: module.source,
+        constants: new Map(), rerun: false, safeToRerun: marked(module.source, module.filename),
+    })]));
+    for (const change of changes) {
+        const entry = entries.get(change.name);
+        entry.after = change.after;
+        entry.nextAst = Sk.parseModule(change.after, entry.filename);
+        entry.safeToRerun = marked(change.after, entry.filename);
+        const assignments = body => new Map(body.filter(n => n._type === "Assign" &&
+            n.targets.length === 1 && n.targets[0]._type === "Name" && literal(n.value))
+            .map(n => [n.targets[0].id, n]));
+        const oldConstants = assignments(entry.ast.body), newConstants = assignments(entry.nextAst.body);
+        for (const [name, node] of oldConstants) {
+            const next = newConstants.get(name);
+            if (next && liveAstFingerprint(node.value) !== liveAstFingerprint(next.value)) entry.constants.set(name, literalValue(next.value));
+        }
+        // A literal is an editable constant only when it has one unambiguous
+        // source binding. Later assignments, imports or definitions can shadow it.
+        const writes = (ast, name) => {
+            let count = 0;
+            walk(ast, node => {
+                if (node._type === "Name" && node.id === name && node.ctx._type !== "Load") count++;
+                if (["FunctionDef", "ClassDef"].includes(node._type) && node.name === name) count++;
+                if (["Import", "ImportFrom"].includes(node._type)) for (const alias of node.names) {
+                    if ((alias.asname || alias.name.split(".")[0]) === name) count++;
+                }
+                if (node._type === "ExceptHandler" && node.name === name) count++;
+            });
+            return count;
+        };
+        for (const name of entry.constants.keys()) {
+            if (writes(entry.ast, name) !== 1 || writes(entry.nextAst, name) !== 1) {
+                if (!entry.safeToRerun) reject(entry.name + ": constant " + name + " has multiple source bindings");
+                entry.rerun = true;
+            }
+        }
+        // Only literal assignments may bypass the ordinary definition policy.
+        try {
+            entry.plan = Sk.prepareModuleUpdate(entry.source, entry.after, entry.filename,
+                Object.assign({}, entry, {constantNames: new Set(entry.constants.keys())}));
+        } catch (error) {
+            if (!entry.safeToRerun) throw error;
+            entry.rerun = true;
+        }
+        if (entry.constants.size) {
+            for (const node of entry.ast.body) {
+                const initialization = node._type === "FunctionDef" ? Object.assign({}, node, {body: []}) : node;
+                walk(initialization, (read, parent, inFunctionBody) => {
+                    if (inFunctionBody) return;
+                    // Initialization can call helpers that extract a constant;
+                    // evaluating that call graph would itself run arbitrary code.
+                    if (read._type === "Call") {
+                        if (!entry.safeToRerun) reject(entry.name + ": initialization calls may capture a constant");
+                        entry.rerun = true;
+                    }
+                    if (read._type === "Name" && read.ctx._type === "Load" && entry.constants.has(read.id)) {
+                        if (!entry.safeToRerun) reject(entry.name + ": a constant was captured during initialization");
+                        entry.rerun = true;
+                    }
+                });
+            }
+        }
+    }
+    // 2. Resolve imports once from both running and proposed source. Keep a
+    // dependency edge and the exported names each consumer may have captured.
+    const importName = (entry, node) => {
+        const parts = entry.name.split(".");
+        const prefix = node.level ? parts.slice(0, parts.length - (entry.isPackage ? node.level - 1 : node.level)).join(".") : "";
+        return [prefix, node.module].filter(Boolean).join(".");
+    };
+    const dependencies = new Map([...entries.keys()].map(name => [name, new Set()]));
+    const captures = new Map([...entries.keys()].map(name => [name, new Map()]));
+    const opaque = new Map([...entries.keys()].map(name => [name, new Set()]));
+    const moduleNames = new Map([...entries.values()].map(entry => [entry.globals, entry.name]));
+    const recordCapture = (consumer, provider, name) => {
+        if (consumer === provider) return;
+        dependencies.get(consumer).add(provider);
+        const consumers = captures.get(provider);
+        let names = consumers.get(consumer);
+        if (!names) consumers.set(consumer, (names = new Set()));
+        names.add(name);
+    };
+    for (const consumer of entries.values()) {
+        const sources = consumer.nextAst ? [consumer.ast, consumer.nextAst] : [consumer.ast];
+        for (const source of sources) {
+            const aliases = new Map();
+            walk(source, node => {
+                if (node._type === "Import") for (const alias of node.names) {
+                    aliases.set(alias.asname || alias.name.split(".")[0], alias.asname ? alias.name : alias.name.split(".")[0]);
+                    if (entries.has(alias.name) && alias.name !== consumer.name) dependencies.get(consumer.name).add(alias.name);
+                }
+                if (node._type === "ImportFrom") {
+                    const from = importName(consumer, node);
+                    for (const alias of node.names) {
+                        if (entries.has(from)) recordCapture(consumer.name, from, alias.name);
+                        const name = from + "." + alias.name;
+                        if (entries.has(name)) {
+                            aliases.set(alias.asname || alias.name, name);
+                            if (name !== consumer.name) dependencies.get(consumer.name).add(name);
+                        }
+                    }
+                }
+            });
+            const moduleFor = node => {
+                if (node._type === "Name") {
+                    const object = consumer.globals[Sk.fixReserved(node.id)];
+                    if (object instanceof Sk.builtin.module && moduleNames.has(object.$d)) return moduleNames.get(object.$d);
+                    return aliases.get(node.id);
+                }
+                if (node._type === "Attribute") {
+                    const base = moduleFor(node.value);
+                    return base && base + "." + node.attr;
+                }
+            };
+            walk(source, (node, parent, inFunctionBody) => {
+                if (!["Name", "Attribute"].includes(node._type) || node.ctx._type !== "Load") return;
+                const provider = moduleFor(node);
+                if (!entries.has(provider) || provider === consumer.name) return;
+                dependencies.get(consumer.name).add(provider);
+                if (!parent || parent._type !== "Attribute" || parent.value !== node) {
+                    opaque.get(provider).add(consumer.name);
+                } else if (!inFunctionBody) {
+                    // `cached = provider.VALUE` and default expressions capture
+                    // now; `def current(): return provider.VALUE` reads the same
+                    // module's current attribute on each future invocation.
+                    recordCapture(consumer.name, provider, parent.attr);
+                }
+            });
+        }
+    }
+    // 3. Propagate captured-value changes until every affected consumer is
+    // authorized to rerun. A marker permits side effects, not opaque references.
+    const changedExports = entry => {
+        if (!entry.rerun) return new Set(entry.constants.keys());
+        const names = new Set(Object.keys(entry.globals).filter(name =>
+            !name.startsWith("__") && !(entry.globals[name] instanceof Sk.builtin.func)));
+        for (const node of (entry.nextAst || entry.ast).body) {
+            if (node._type === "Assign") for (const target of node.targets) {
+                if (target._type === "Name") names.add(target.id);
+            }
+        }
+        return names;
+    };
+    const pending = [...entries.values()].filter(entry => entry.rerun || entry.constants.size);
+    while (pending.length) {
+        const provider = pending.pop(), names = changedExports(provider);
+        if (!names.size) continue;
+        for (const consumer of opaque.get(provider.name)) reject(consumer + ": module reference escapes source analysis");
+        for (const [name, captured] of captures.get(provider.name)) {
+            if (!captured.has("*") && ![...captured].some(name => names.has(name))) continue;
+            const consumer = entries.get(name);
+            if (!consumer.safeToRerun) reject(name + ": imported constants were captured; mark the module safe to rerun or refresh");
+            if (!consumer.rerun) { consumer.rerun = true; pending.push(consumer); }
+        }
+    }
+    for (const entry of entries.values()) if (entry.rerun) {
+        if (entry.ast.body.some(n => n._type === "ClassDef") || (entry.nextAst || entry.ast).body.some(n => n._type === "ClassDef"))
+            reject(entry.name + ": rerunning a class body would replace live classes");
+        entry.plan = Sk.prepareModuleUpdate(entry.source, entry.after, entry.filename, Object.assign({}, entry, {rerun: true}));
+        const functionNames = new Set(entry.ast.body.filter(n => n._type === "FunctionDef").map(n => n.name));
+        if ((entry.nextAst || entry.ast).body.some(n => n._type === "FunctionDef" && n.decorator_list.length))
+            reject(entry.name + ": rerun decorators may replace captured functions");
+        for (const [name, value] of Object.entries(entry.globals)) {
+            if (value instanceof Sk.builtin.func && value.func_globals === entry.globals && !functionNames.has(Sk.unfixReserved(name)))
+                reject(entry.name + ": rerun has an aliased or anonymous function");
+        }
+        for (const node of (entry.nextAst || entry.ast).body) {
+            if (node._type === "FunctionDef") continue;
+            walk(node, (read, parent) => {
+                if (read._type === "Name" && read.ctx._type !== "Load" && functionNames.has(read.id))
+                    reject(entry.name + ": rerun initialization rebinds a function");
+                if (read._type === "Name" && read.ctx._type === "Load" && functionNames.has(read.id) &&
+                    !(parent && parent._type === "Call" && parent.func === read))
+                    reject(entry.name + ": rerun initialization captures a function");
+            });
+        }
+        entry.compiled = (0, eval)(Sk.compile(entry.after, entry.filename, "exec", true).code);
+    }
+    // 4. Prepare a provider-first apply order; preserve callable identities after
+    // authorized initialization runs. Nothing above executes app Python code.
+    const ordered = [], visiting = new Set(), visited = new Set();
+    const visit = entry => {
+        if (visited.has(entry.name)) return;
+        if (visiting.has(entry.name)) reject("module dependency cycle");
+        visiting.add(entry.name);
+        for (const name of dependencies.get(entry.name)) {
+            const dependency = entries.get(name);
+            if (dependency.rerun || dependency.constants.size || dependency.plan) visit(dependency);
+        }
+        visiting.delete(entry.name); visited.add(entry.name); ordered.push(entry);
+    };
+    for (const entry of entries.values()) if (entry.rerun || entry.constants.size || entry.plan) visit(entry);
+    return {
+        count: ordered.reduce((n, entry) => n + (entry.plan ? entry.plan.count : 0), 0),
+        resetClasses: ordered.flatMap(entry => (entry.plan ? entry.plan.resetClasses : []).map(name => ({module: entry.name, name}))),
+        apply: () => Sk.misceval.chain(undefined, ...ordered.map(entry => () => {
+            if (!entry.rerun) {
+                if (entry.plan) entry.plan.apply();
+                for (const [name, value] of entry.constants) entry.globals[Sk.fixReserved(name)] = value;
+                return;
+            }
+            const functions = new Map(Object.entries(entry.globals).filter(([name, value]) =>
+                value instanceof Sk.builtin.func && value.func_globals === entry.globals));
+            return Sk.misceval.chain(entry.compiled(entry.globals), () => {
+                for (const [name, original] of functions) {
+                    const replacement = entry.globals[name];
+                    if (!(replacement instanceof Sk.builtin.func)) reject(entry.name + ": rerun rebound a function");
+                    original.$replaceImplementation(replacement);
+                    // An explicitly authorized rerun evaluates defaults again.
+                    original.$defaults = replacement.$defaults;
+                    original.$kwdefs = replacement.$kwdefs;
+                    entry.globals[name] = original;
+                }
+            });
+        })),
+    };
+};
+Sk.exportSymbol("Sk.prepareModuleUpdates", Sk.prepareModuleUpdates);
+
 
 Sk.resetCompiler = function () {
     Sk.gensymcount = 0;
