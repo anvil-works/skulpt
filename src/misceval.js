@@ -306,9 +306,7 @@ Sk.misceval.opSymbols = {
 Sk.misceval.richCompare = function (v, w, op, canSuspend) {
     // PyObject_RichCompare preserves arbitrary Python results from rich slots.
     Sk.asserts.assert(v.sk$object && w.sk$object, "JS object passed to richCompare");
-    var ret,
-        swapped_shortcut,
-        shortcut;
+    var ret;
 
     const v_type = v.ob$type;
     const w_type = w.ob$type;
@@ -438,123 +436,120 @@ Sk.misceval.richCompare = function (v, w, op, canSuspend) {
         "LtE"  : "ob$le"
     };
 
-    shortcut = op2shortcut[op];
-    // similar rules apply as with binops - prioritize the reflected ops of subtypes
-    // but different to binop - even if the swapped op is the same as the parent still call it
-    if (w_is_subclass) {
-        swapped_shortcut = op2shortcut[Sk.misceval.swappedOp_[op]];
-        if ((ret = w[swapped_shortcut](v)) !== Sk.builtin.NotImplemented.NotImplemented$) {
-            return typeof ret === "boolean" ? new Sk.builtin.bool(ret) : ret;
-        }
+    const comparisons = [];
+    if (w_is_subclass) {comparisons.push([w, v, op2shortcut[Sk.misceval.swappedOp_[op]]]);}
+    comparisons.push([v, w, op2shortcut[op]]);
+    if (!w_is_subclass) {comparisons.push([w, v, op2shortcut[Sk.misceval.swappedOp_[op]]]);}
+    // Resume a suspended slot before deciding whether NotImplemented requires
+    // the reflected comparison. Truth conversion belongs to the caller.
+    function compare(index) {
+        if (index === comparisons.length) {return fallback();}
+        const [object, other, slot] = comparisons[index];
+        return Sk.misceval.chain(object[slot](other, canSuspend), result =>
+            result === Sk.builtin.NotImplemented.NotImplemented$ ? compare(index + 1)
+                : typeof result === "boolean" ? new Sk.builtin.bool(result) : result);
     }
-    if ((ret= v[shortcut](w)) !== Sk.builtin.NotImplemented.NotImplemented$) {
-        return typeof ret === "boolean" ? new Sk.builtin.bool(ret) : ret;
-    }
+    return compare(0);
 
-    if (!w_is_subclass) {
-        swapped_shortcut = op2shortcut[Sk.misceval.swappedOp_[op]];
-        if ((ret = w[swapped_shortcut](v)) !== Sk.builtin.NotImplemented.NotImplemented$) {
-            return typeof ret === "boolean" ? new Sk.builtin.bool(ret) : ret;
-        }
-    }
-
-    if (!Sk.__future__.python3) {
-        const vcmp = Sk.abstr.lookupSpecial(v, Sk.builtin.str.$cmp);
-        if (vcmp) {
-            try {
-                ret = Sk.misceval.callsimArray(vcmp, [w]);
-                if (Sk.builtin.checkNumber(ret)) {
-                    ret = Sk.builtin.asnum$(ret);
-                    if (op === "Eq") {
-                        return new Sk.builtin.bool(ret === 0);
-                    } else if (op === "NotEq") {
-                        return new Sk.builtin.bool(ret !== 0);
-                    } else if (op === "Lt") {
-                        return new Sk.builtin.bool(ret < 0);
-                    } else if (op === "Gt") {
-                        return new Sk.builtin.bool(ret > 0);
-                    } else if (op === "LtE") {
-                        return new Sk.builtin.bool(ret <= 0);
-                    } else if (op === "GtE") {
-                        return new Sk.builtin.bool(ret >= 0);
+    function fallback() {
+        if (!Sk.__future__.python3) {
+            const vcmp = Sk.abstr.lookupSpecial(v, Sk.builtin.str.$cmp);
+            if (vcmp) {
+                try {
+                    ret = Sk.misceval.callsimArray(vcmp, [w]);
+                    if (Sk.builtin.checkNumber(ret)) {
+                        ret = Sk.builtin.asnum$(ret);
+                        if (op === "Eq") {
+                            return new Sk.builtin.bool(ret === 0);
+                        } else if (op === "NotEq") {
+                            return new Sk.builtin.bool(ret !== 0);
+                        } else if (op === "Lt") {
+                            return new Sk.builtin.bool(ret < 0);
+                        } else if (op === "Gt") {
+                            return new Sk.builtin.bool(ret > 0);
+                        } else if (op === "LtE") {
+                            return new Sk.builtin.bool(ret <= 0);
+                        } else if (op === "GtE") {
+                            return new Sk.builtin.bool(ret >= 0);
+                        }
                     }
-                }
 
-                if (ret !== Sk.builtin.NotImplemented.NotImplemented$) {
+                    if (ret !== Sk.builtin.NotImplemented.NotImplemented$) {
+                        throw new Sk.builtin.TypeError("comparison did not return an int");
+                    }
+                } catch (e) {
                     throw new Sk.builtin.TypeError("comparison did not return an int");
                 }
-            } catch (e) {
-                throw new Sk.builtin.TypeError("comparison did not return an int");
             }
-        }
-        const wcmp = Sk.abstr.lookupSpecial(w, Sk.builtin.str.$cmp);
-        if (wcmp) {
-            // note, flipped on return value and call
-            try {
-                ret = Sk.misceval.callsimArray(wcmp, [v]);
-                if (Sk.builtin.checkNumber(ret)) {
-                    ret = Sk.builtin.asnum$(ret);
-                    if (op === "Eq") {
-                        return new Sk.builtin.bool(ret === 0);
-                    } else if (op === "NotEq") {
-                        return new Sk.builtin.bool(ret !== 0);
-                    } else if (op === "Lt") {
-                        return new Sk.builtin.bool(ret > 0);
-                    } else if (op === "Gt") {
-                        return new Sk.builtin.bool(ret < 0);
-                    } else if (op === "LtE") {
-                        return new Sk.builtin.bool(ret >= 0);
-                    } else if (op === "GtE") {
-                        return new Sk.builtin.bool(ret <= 0);
+            const wcmp = Sk.abstr.lookupSpecial(w, Sk.builtin.str.$cmp);
+            if (wcmp) {
+                // note, flipped on return value and call
+                try {
+                    ret = Sk.misceval.callsimArray(wcmp, [v]);
+                    if (Sk.builtin.checkNumber(ret)) {
+                        ret = Sk.builtin.asnum$(ret);
+                        if (op === "Eq") {
+                            return new Sk.builtin.bool(ret === 0);
+                        } else if (op === "NotEq") {
+                            return new Sk.builtin.bool(ret !== 0);
+                        } else if (op === "Lt") {
+                            return new Sk.builtin.bool(ret > 0);
+                        } else if (op === "Gt") {
+                            return new Sk.builtin.bool(ret < 0);
+                        } else if (op === "LtE") {
+                            return new Sk.builtin.bool(ret >= 0);
+                        } else if (op === "GtE") {
+                            return new Sk.builtin.bool(ret <= 0);
+                        }
                     }
-                }
 
-                if (ret !== Sk.builtin.NotImplemented.NotImplemented$) {
+                    if (ret !== Sk.builtin.NotImplemented.NotImplemented$) {
+                        throw new Sk.builtin.TypeError("comparison did not return an int");
+                    }
+                } catch (e) {
                     throw new Sk.builtin.TypeError("comparison did not return an int");
                 }
-            } catch (e) {
-                throw new Sk.builtin.TypeError("comparison did not return an int");
+            }
+            // handle special cases for comparing None with None or Bool with Bool
+            if (v === Sk.builtin.none.none$ && w === Sk.builtin.none.none$) {
+                // Javascript happens to return the same values when comparing null
+                // with null or true/false with true/false as Python does when
+                // comparing None with None or True/False with True/False
+
+                if (op === "Eq") {
+                    return new Sk.builtin.bool(v.v === w.v);
+                }
+                if (op === "NotEq") {
+                    return new Sk.builtin.bool(v.v !== w.v);
+                }
+                if (op === "Gt") {
+                    return new Sk.builtin.bool(v.v > w.v);
+                }
+                if (op === "GtE") {
+                    return new Sk.builtin.bool(v.v >= w.v);
+                }
+                if (op === "Lt") {
+                    return new Sk.builtin.bool(v.v < w.v);
+                }
+                if (op === "LtE") {
+                    return new Sk.builtin.bool(v.v <= w.v);
+                }
             }
         }
-        // handle special cases for comparing None with None or Bool with Bool
-        if (v === Sk.builtin.none.none$ && w === Sk.builtin.none.none$) {
-            // Javascript happens to return the same values when comparing null
-            // with null or true/false with true/false as Python does when
-            // comparing None with None or True/False with True/False
 
-            if (op === "Eq") {
-                return new Sk.builtin.bool(v.v === w.v);
-            }
-            if (op === "NotEq") {
-                return new Sk.builtin.bool(v.v !== w.v);
-            }
-            if (op === "Gt") {
-                return new Sk.builtin.bool(v.v > w.v);
-            }
-            if (op === "GtE") {
-                return new Sk.builtin.bool(v.v >= w.v);
-            }
-            if (op === "Lt") {
-                return new Sk.builtin.bool(v.v < w.v);
-            }
-            if (op === "LtE") {
-                return new Sk.builtin.bool(v.v <= w.v);
-            }
+        // handle equality comparisons for any remaining objects
+        if (op === "Eq") {
+            return new Sk.builtin.bool(v === w);
         }
-    }
+        if (op === "NotEq") {
+            return new Sk.builtin.bool(v !== w);
+        }
 
-    // handle equality comparisons for any remaining objects
-    if (op === "Eq") {
-        return new Sk.builtin.bool(v === w);
+        const vname = Sk.abstr.typeName(v);
+        const wname = Sk.abstr.typeName(w);
+        throw new Sk.builtin.TypeError("'" + Sk.misceval.opSymbols[op] + "' not supported between instances of '" + vname + "' and '" + wname + "'");
+        //throw new Sk.builtin.ValueError("don't know how to compare '" + vname + "' and '" + wname + "'");
     }
-    if (op === "NotEq") {
-        return new Sk.builtin.bool(v !== w);
-    }
-
-    const vname = Sk.abstr.typeName(v);
-    const wname = Sk.abstr.typeName(w);
-    throw new Sk.builtin.TypeError("'" + Sk.misceval.opSymbols[op] + "' not supported between instances of '" + vname + "' and '" + wname + "'");
-    //throw new Sk.builtin.ValueError("don't know how to compare '" + vname + "' and '" + wname + "'");
 };
 Sk.exportSymbol("Sk.misceval.richCompare", Sk.misceval.richCompare);
 
