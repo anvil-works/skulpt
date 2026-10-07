@@ -52,6 +52,12 @@ def _f(): pass
 FunctionType = type(_f)
 LambdaType = type(lambda: None)         # Same as FunctionType
 CodeType = type(_f.__code__)
+def _cell_factory():
+    a = None
+    def f():
+        return a
+    return f.__closure__[0]
+CellType = type(_cell_factory())
 
 def _g():
     yield 1

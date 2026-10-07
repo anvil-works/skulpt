@@ -1771,5 +1771,92 @@ class DynamicClassTests(unittest.TestCase):
         cls = type('C', bases, {})
         self.assertIs(cls.__bases__, bases)
 
+class FunctionTests(unittest.TestCase):
+    # CPython-checked executable-code and shared-cell regressions.
+    def test_function_type_closure_identity(self):
+        value = 1
+        def first(): return value
+        def second(): return value
+        def nested():
+            def inner(): return value
+            return inner
+        self.assertIs(first.__closure__[0], second.__closure__[0])
+        closure = (types.CellType(42),)
+        globals_dict = {'__name__': 'new_module'}
+        func = types.FunctionType(first.__code__, globals_dict, 'renamed', closure=closure)
+        self.assertIs(func.__closure__, closure)
+        self.assertIs(func.__globals__, globals_dict)
+        self.assertEqual(func.__module__, 'new_module')
+        self.assertEqual(func.__name__, 'renamed')
+        self.assertEqual(func.__qualname__, first.__qualname__)
+        self.assertEqual(func(), 42)
+        nested_func = types.FunctionType(nested.__code__, globals_dict, closure=closure)
+        self.assertIs(nested_func().__closure__[0], closure[0])
+        closure[0].cell_contents = 7
+        self.assertEqual(func(), 7)
+        del closure[0].cell_contents
+        with self.assertRaises(NameError): func()
+        with self.assertRaises(TypeError): types.FunctionType(first.__code__, {})
+        with self.assertRaises(ValueError): types.FunctionType(first.__code__, {}, closure=())
+        with self.assertRaises(TypeError): types.FunctionType(first.__code__, {}, closure=(1,))
+
+    def test_function_type_defaults_identity(self):
+        def original(a, *, b): return a + b
+        defaults = (2,)
+        kwdefaults = {'b': 3}
+        func = types.FunctionType(original.__code__, {}, argdefs=defaults, kwdefaults=kwdefaults)
+        self.assertIs(func.__defaults__, defaults)
+        self.assertIs(func.__kwdefaults__, kwdefaults)
+        self.assertEqual(func(), 5)
+        kwdefaults['b'] = 40
+        self.assertEqual(func(), 42)
+        func.__defaults__ = (1,)
+        self.assertIs(func.__defaults__, func.__defaults__)
+        self.assertEqual(func(), 41)
+
+    def test_function_type_module_code(self):
+        namespace = {}
+        code = compile('value = 42', '<function>', 'exec')
+        func = types.FunctionType(code, namespace)
+        self.assertIs(func.__code__, code)
+        expression = compile('42', '<function>', 'eval')
+        self.assertIs(types.FunctionType(expression, {}).__code__, expression)
+        self.assertIsNone(func())
+        self.assertEqual(namespace['value'], 42)
+        self.assertEqual(types.FunctionType(compile('value + 1', '<function>', 'eval'), namespace)(), 43)
+        with self.assertRaises(TypeError): func(1)
+
+    def test_function_type_defaults(self):
+        def ex(a, /, b, *, c):
+            return a + b + c
+
+        func = types.FunctionType(
+            ex.__code__, {}, "func", (1, 2), None, {'c': 3},
+        )
+
+        self.assertEqual(func(), 6)
+        self.assertEqual(func.__defaults__, (1, 2))
+        self.assertEqual(func.__kwdefaults__, {'c': 3})
+
+        func = types.FunctionType(
+            ex.__code__, {}, "func", None, None, None,
+        )
+        self.assertEqual(func.__defaults__, None)
+        self.assertEqual(func.__kwdefaults__, None)
+
+    def test_function_type_wrong_defaults(self):
+        def ex(a, /, b, *, c):
+            return a + b + c
+
+        with self.assertRaisesRegex(TypeError, 'arg 4'):
+            types.FunctionType(
+                ex.__code__, {}, "func", 1, None, {'c': 3},
+            )
+        with self.assertRaisesRegex(TypeError, 'arg 6'):
+            types.FunctionType(
+                ex.__code__, {}, "func", None, None, 3,
+            )
+
+
 if __name__ == '__main__':
     unittest.main()

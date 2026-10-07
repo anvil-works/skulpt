@@ -1417,6 +1417,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
     }
     const metadata = {
         name: unit.name.v,
+        scopeType: unit.scopeType,
         qualname: unit.qualname,
         argcount: unit.argcount,
         posonlyargcount: unit.posonlyargcount,
@@ -1428,6 +1429,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         freevars: freevars.map(Sk.unfixReserved).sort(),
     };
     let code = unit.scopename + ".$metadata=" + JSON.stringify(metadata) + ";";
+    code += unit.scopename + ".co_argcount=" + metadata.argcount + ";";
     code += unit.scopename + ".$metadata.filename=new Sk.builtin.str(" + JSON.stringify(this.filename) + ");";
     code += unit.scopename + ".co_name=new Sk.builtin.str(" + JSON.stringify(unit.name.v) + ");";
     if (Sk.__future__.python3) {
