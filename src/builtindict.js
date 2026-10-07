@@ -4,6 +4,7 @@
 
 Sk.builtins = {
     "NotImplemented": Sk.builtin.NotImplemented.NotImplemented$,
+    "__debug__": Sk.builtin.bool.true$,
     "round"     : null,
     "len"       : null,
     "min"       : null,
@@ -231,7 +232,10 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
 
     compile: {
         $meth: Sk.builtin.compile,
-        $flags: {MinArgs: 3, MaxArgs:6},
+        $flags: {
+            NamedArgs: ["source", "filename", "mode", "flags", "dont_inherit", "optimize"],
+            Defaults: [new Sk.builtin.int_(0), Sk.builtin.bool.false$, new Sk.builtin.int_(-1)],
+        },
         $textsig: "($module, /, source, filename, mode, flags=0,\n        dont_inherit=False, optimize=-1)",
         $doc: "Compile source into a code object that can be executed by exec() or eval().\n\nThe source code may represent a Python module, statement or expression.\nThe filename will be used for run-time error messages.\nThe mode must be 'exec' to compile a module, 'single' to compile a\nsingle (interactive) statement, or 'eval' to compile an expression.\nThe flags argument, if present, controls which future statements influence\nthe compilation of the code.\nThe dont_inherit argument, if true, stops the compilation inheriting\nthe effects of any future statements in effect in the code calling\ncompile; if absent or false these statements do influence the compilation,\nin addition to any features explicitly specified."
     },
@@ -534,24 +538,31 @@ function executionNamespaces(globals, locals) {
 
 
 Sk.setupObjects = function (py3) {
+    // Reconfiguration may remove an already-absent builtin. Python name
+    // deletion is strict; these internal configuration removals are tolerant.
+    const removeBuiltin = name => {
+        if (Sk.builtins[name] !== undefined) {
+            delete Sk.builtins[name];
+        }
+    };
     if (py3) {
         Sk.builtins["filter"] = Sk.builtin.filter_;
         Sk.builtins["map"] = Sk.builtin.map_;
         Sk.builtins["zip"] = Sk.builtin.zip_;
         Sk.builtins["range"] = Sk.builtin.range_;
-        delete Sk.builtins["reduce"];
-        delete Sk.builtins["xrange"];
-        delete Sk.builtins["StandardError"];
-        delete Sk.builtins["unicode"];
-        delete Sk.builtins["basestring"];
-        delete Sk.builtins["long_$rw$"];
+        removeBuiltin("reduce");
+        removeBuiltin("xrange");
+        removeBuiltin("StandardError");
+        removeBuiltin("unicode");
+        removeBuiltin("basestring");
+        removeBuiltin("long_$rw$");
         Sk.builtin.int_.prototype.$r = function () {
             return new Sk.builtin.str(this.v.toString());
         };
         delete Sk.builtin.int_.prototype.tp$str;
         delete Sk.builtin.bool.prototype.tp$str;
-        delete Sk.builtins["raw_input"];
-        delete Sk.builtins["unichr"];
+        removeBuiltin("raw_input");
+        removeBuiltin("unichr");
         delete Sk.builtin.str.prototype.decode;
         Sk.builtins["bytes"] = Sk.builtin.bytes;
         Sk.builtins["ascii"] = new Sk.builtin.sk_method(
@@ -617,9 +628,10 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["raw_input"] = new Sk.builtin.func(Sk.builtin.raw_input);
         Sk.builtins["unichr"] = new Sk.builtin.func(Sk.builtin.unichr);
         Sk.builtin.str.prototype.decode = Sk.builtin.str.$py2decode;
-        delete Sk.builtins["bytes"];
-        delete Sk.builtins["ascii"];
+        removeBuiltin("bytes");
+        removeBuiltin("ascii");
     }
+    Sk.builtins = Sk.misceval.namespaceToJs(Sk.builtins);
 };
 
 Sk.exportSymbol("Sk.setupObjects", Sk.setupObjects);

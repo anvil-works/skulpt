@@ -1,6 +1,7 @@
 # CPython 3.14 Lib/test/test_compile.py at 18ef0f0cb52.
 # Selected method bodies and assertions are unchanged.
 import unittest
+import textwrap
 
 # Global fixture from CPython test_builtin.py.
 A_GLOBAL_VALUE = 123
@@ -141,6 +142,125 @@ class TestSpecifics(unittest.TestCase):
         g = {}
         exec('global z\nz = 1', locals=g)
         self.assertEqual(g, {})
+
+    # Additional unchanged CPython methods; subTest infrastructure adapted.
+    def test_no_ending_newline(self):
+        compile("hi", "<test>", "exec")
+        compile("hi\r", "<test>", "exec")
+
+    def test_empty(self):
+        compile("", "<test>", "exec")
+
+    def test_other_newlines(self):
+        compile("\r\n", "<test>", "exec")
+        compile("\r", "<test>", "exec")
+        compile("hi\r\nstuff\r\ndef f():\n    pass\r", "<test>", "exec")
+        compile("this_is\rreally_old_mac\rdef f():\n    pass", "<test>", "exec")
+
+    def test_debug_assignment(self):
+        # catch assignments to __debug__
+        self.assertRaises(SyntaxError, compile, '__debug__ = 1', '?', 'single')
+        import builtins
+        prev = builtins.__debug__
+        setattr(builtins, '__debug__', 'sure')
+        self.assertEqual(__debug__, prev)
+        setattr(builtins, '__debug__', prev)
+
+    def test_argument_handling(self):
+        # detect duplicate positional and keyword arguments
+        self.assertRaises(SyntaxError, eval, 'lambda a,a:0')
+        self.assertRaises(SyntaxError, eval, 'lambda a,a=1:0')
+        self.assertRaises(SyntaxError, eval, 'lambda a=1,a=1:0')
+        self.assertRaises(SyntaxError, exec, 'def f(a, a): pass')
+        self.assertRaises(SyntaxError, exec, 'def f(a = 0, a = 1): pass')
+        self.assertRaises(SyntaxError, exec, 'def f(a): global a; a = 1')
+
+    def test_syntax_error(self):
+        self.assertRaises(SyntaxError, compile, "1+*3", "filename", "exec")
+
+    def test_none_keyword_arg(self):
+        self.assertRaises(SyntaxError, compile, "f(None=1)", "<string>", "exec")
+
+    def test_duplicate_global_local(self):
+        self.assertRaises(SyntaxError, exec, 'def f(a): global a; a = 1')
+
+    def test_docstring(self):
+        src = textwrap.dedent("""
+            def with_docstring():
+                "docstring"
+
+            def two_strings():
+                "docstring"
+                "not docstring"
+
+            def with_fstring():
+                f"not docstring"
+
+            def with_const_expression():
+                "also" + " not docstring"
+
+            def multiple_const_strings():
+                "not docstring " * 3
+            """)
+
+        for opt in [0, 1, 2]:
+            if True:  # Skulpt unittest has no subTest context.
+                code = compile(src, "<test>", "exec", optimize=opt)
+                ns = {}
+                exec(code, ns)
+
+                if opt < 2:
+                    self.assertEqual(ns['with_docstring'].__doc__, "docstring")
+                    self.assertEqual(ns['two_strings'].__doc__, "docstring")
+                else:
+                    self.assertIsNone(ns['with_docstring'].__doc__)
+                    self.assertIsNone(ns['two_strings'].__doc__)
+                self.assertIsNone(ns['with_fstring'].__doc__)
+                self.assertIsNone(ns['with_const_expression'].__doc__)
+                self.assertIsNone(ns['multiple_const_strings'].__doc__)
+
+    # CPython BuiltinTest.test_compile source optimization cases, same assertions.
+    def test_compile_optimization(self):
+        codestr = '''def f():
+        """doc"""
+        debug_enabled = False
+        if __debug__:
+            debug_enabled = True
+        try:
+            assert False
+        except AssertionError:
+            return (True, f.__doc__, debug_enabled, __debug__)
+        else:
+            return (False, f.__doc__, debug_enabled, __debug__)
+        '''
+        def f(): """doc"""
+        values = [(-1, __debug__, f.__doc__, __debug__, __debug__),
+                  (0, True, 'doc', True, True),
+                  (1, False, 'doc', False, False),
+                  (2, False, None, False, False)]
+        for optval, *expected in values:
+            if True:  # No subTest support in Skulpt unittest.
+            # Preserve upstream source-compilation assertions; AST path deferred.
+                codeobjs = []
+                codeobjs.append(compile(codestr, "<test>", "exec", optimize=optval))
+                # AST-input compilation remains a separate increment.
+                for code in codeobjs:
+                    ns = {}
+                    exec(code, ns)
+                    rv = ns['f']()
+                    self.assertEqual(rv, tuple(expected))
+
+    # Argument/error cases selected from CPython BuiltinTest.test_compile.
+    # Bytes/buffer source and AST cases remain separate increments.
+    def test_compile_option_arguments(self):
+        compile(source='pass', filename='?', mode='exec')
+        compile(dont_inherit=False, filename='tmp', source='0', mode='eval')
+        compile('pass', '?', dont_inherit=True, mode='exec')
+        self.assertRaises(TypeError, compile)
+        self.assertRaises(ValueError, compile, 'print(42)\n', '<string>', 'badmode')
+        self.assertRaises(ValueError, compile, 'print(42)\n', '<string>', 'single', 0xff)
+        self.assertRaises(TypeError, compile, 'pass', '?', 'exec',
+                          mode='eval', source='0', filename='tmp')
 
 if __name__ == "__main__":
     unittest.main()
