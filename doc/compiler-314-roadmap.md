@@ -260,3 +260,13 @@ Coroutine name/qualified-name descriptors also preserve mutable Python strings a
 Eighteen unchanged upstream coroutine methods cover async loops, nested context managers, entry/exit errors, await yields, suppression and invalid protocols. A CPython-checked regression covers invalid iterators, assignment errors and exception-state restoration. All selected cases pass the built CPython interpreter; async-generator/comprehension methods remain for their respective following layers. The test class adapts the teaching unittest harness to raise assertion failures, preserving the upstream method that intentionally asserts inside assertRaises. General implicit exception context across all frames/handlers remains separate work.
 
 The exception-restoration regression also exposed bare raise with no active exception throwing JavaScript undefined. It now raises CPython's RuntimeError explicitly.
+
+The async-with review corrections restore the preceding handled exception after suppression, include exit-result truth conversion in exception chaining, and check the exit lookup before binding the enter descriptor. Three additional CPython-checked regressions pass alongside the upstream methods.
+
+## Generator-based coroutines
+
+`stu-dev/compiler/iterable-coroutines` adds CO_ITERABLE_COROUTINE, following CPython types.coroutine and _PyCoro_GetAwaitableIter. Generator code flags control await eligibility and yield-from-native-coroutine delegation. The compiler retains the invoked function's code identity on its generator; gi_code and gi_suspended are exposed. Code.replace accepts unchanged code or a change to the iterable-coroutine bit; replacements requiring different frame layout or unsupported fields remain explicit guards.
+
+The types decorator and _GeneratorWrapper come from CPython 3.14. Structural Generator/Coroutine checks use the upstream _check_methods algorithm because collections.abc/ABC registration is not yet available; registered virtual ABCs and generator frame introspection remain stdlib/introspection debt. Nine unchanged types.CoroutineTests methods and seven additional unchanged coroutine methods cover wrapping, duck generators, flags, native delegation, send/throw/close and concurrent await rejection. A CPython-checked regression covers code replacement validation and generator code/suspension identity.
+
+The iterable-coroutine review follow-up retains native coroutine identity through gi_yieldfrom while preserving explicit wrapper identity, and recomputes types.__all__ after defining coroutine. A CPython-checked regression covers both delegate forms and star import.
