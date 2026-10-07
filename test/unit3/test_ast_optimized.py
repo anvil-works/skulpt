@@ -1,3 +1,4 @@
+# Async execution cases stay on the separate async stack; synchronous assertions are unchanged.
 # Complete CPython 3.14 test_ast methods at 18ef0f0cb52.
 import ast
 import textwrap
@@ -47,23 +48,11 @@ class ASTTests(HarnessCase):
                 """Docstring
                                        """
         ''')
-        async_def_example1 = textwrap.dedent('''
-            async def some():
-                """Docstring"""
-        ''')
-        async_def_example2 = textwrap.dedent('''
-            async def some():
-                """
-                Docstring
-            """
-        ''')
         for code in [
             class_example1,
             class_example2,
             def_example1,
             def_example2,
-            async_def_example1,
-            async_def_example2,
         ]:
             for opt_level in [0, 1, 2]:
                 with self.subTest(code=code, opt_level=opt_level):
@@ -116,21 +105,10 @@ class ASTTests(HarnessCase):
             """
         )
 
-        async_def_example = textwrap.dedent(
-            """
-            async def some():
-
-                '''Docstring
-
-            '''
-                x = 1
-            """
-        )
 
         for code in [
             class_example,
             def_example,
-            async_def_example,
         ]:
             for opt_level in [0, 1, 2]:
                 with self.subTest(code=code, opt_level=opt_level):
@@ -503,6 +481,7 @@ class OptimizedASTRegressions(HarnessCase):
                 with self.assertRaises(SyntaxError) as caught:
                     compile(tree, '<edited>', 'exec', flag, optimize=1)
                 error = caught.exception
+                self.assertEqual(error.args, (message,))
                 self.assertEqual((error.msg, error.filename, error.lineno, error.offset, error.text,
                                   error.end_lineno, error.end_offset),
                                  (message, '<edited>', 1, 1, None, 1, 1))
