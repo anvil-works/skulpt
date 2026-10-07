@@ -72,6 +72,7 @@ switch (process.argv[2] || "all") {
         runJSBITests();
         run("test/configure_builtins.js");
         run("test/generator_suspensions.js");
+        run("test/pattern_suspensions.js");
         run("test/testwrapper.js");
         run("test/testunit.js");
         run("test/testunit.js", "--python3");
