@@ -681,7 +681,7 @@ Compiler.prototype.cyield = function(e) {
     return this._gr("yield", "$ret");
 };
 
-Compiler.prototype.cyieldfrom = function (e) {
+Compiler.prototype.cyieldfrom = function (e, awaitable) {
     if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
         throw new Sk.builtin.SyntaxError("'yield' outside function", this.filename, e.lineno);
     }
@@ -689,7 +689,13 @@ Compiler.prototype.cyieldfrom = function (e) {
     var afterBlock = this.newBlock("after yield from");
     // get the iterator we are yielding from and store it
     var iterable = this.vexpr(e.value);
-    out("$gen.gi$startYieldFrom(", iterable, ");");
+    if (awaitable) {
+        out("$gen.gi$awaited=", iterable, ";$ret=Sk.builtin.getAwaitable(", iterable, ");");
+        this._checkSuspension(e);
+        iterable = this._gr("awaititer", "$ret");
+        out("if(!($gen.gi$awaited instanceof Sk.builtin.coroutine)){$gen.gi$awaited=", iterable, ";}");
+    }
+    out("$gen.gi$startYieldFrom(", iterable, ",", !!awaitable, ");");
     this._jump(afterIter);
     this.setBlock(afterIter);
     out("$ret = $gen.gi$stepYieldFrom();");
@@ -986,6 +992,8 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
             return this.cyield(e);
         case "YieldFrom":
             return this.cyieldfrom(e);
+        case "Await":
+            return this.cyieldfrom(e, true);
         case "Compare":
             return this.ccompare(e);
         case "Call":
@@ -1297,11 +1305,11 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
     output +=  "try { $ret=susp.child.resume(); } catch(err) { $localsScope=0; if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: "+JSON.stringify(this.filename)+"}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
                 "};";
     output += "var $self = this;";
-    output += unit.ste.generator?"var $gen = $self;":"";
+    output += (unit.ste.generator || unit.ste.coroutine)?"var $gen = $self;":"";
 
     output += "var $saveSuspension = function($child, $filename, $lineno, $colno) {" +
                 "var susp = new Sk.misceval.Suspension(); susp.child=$child;" +
-                "susp.resume=function(){"+unit.scopename+".$wakingSuspension=susp; return "+unit.scopename+".call("+(unit.ste.generator?"$gen":"$self")+"); };" +
+                "susp.resume=function(){"+unit.scopename+".$wakingSuspension=susp; return "+unit.scopename+".call("+((unit.ste.generator || unit.ste.coroutine)?"$gen":"$self")+"); };" +
                 "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$builtins=$builtins;susp.$exc=$exc;susp.$err=$err;susp.$postfinally=$postfinally;" +
                 "susp.$filename=$filename;susp.$lineno=$lineno;susp.$colno=$colno;" +
                 "susp.optional=susp.child.optional;" +
@@ -1334,7 +1342,7 @@ Compiler.prototype.outputAllUnits = function () {
         unit = this.allUnits[j];
         ret += unit.prefixCode;
         ret += this.outputLocals(unit);
-        if (unit.doesSuspend || unit.ste.generator) {
+        if (unit.doesSuspend || unit.ste.generator || unit.ste.coroutine) {
             ret += this.outputSuspensionHelpers(unit);
         }
         const frame = this.outputFrame(unit);
@@ -1409,7 +1417,8 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
     let flags = (optimized ? 3 : 0) | (this.flags & 0x1fe0000); // CO_OPTIMIZED | CO_NEWLOCALS
     if (optimized) {
         if (unit.ste.isNested) flags |= 0x10;
-        if (unit.ste.generator) flags |= 0x20;
+        if (unit.ste.coroutine) flags |= 0x80;
+        else if (unit.ste.generator) flags |= 0x20;
         if (unit.ste.varargs) flags |= 0x04;
         if (unit.ste.varkeywords) flags |= 0x08;
         if (unit.hasDocstring) flags |= 0x4000000;
@@ -2124,7 +2133,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     //
     scopename = this.enterScope(coname, n, n.lineno, this.canSuspend);
 
-    isGenerator = this.u.ste.generator;
+    isGenerator = this.u.ste.generator || this.u.ste.coroutine;
     hasFree = this.u.ste.hasFree;
     hasCell = this.u.ste.childHasFree;
     const cellNames = Object.keys(this.u.ste.symFlags).filter(name =>
@@ -2251,9 +2260,9 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // we've resolved the arguments now so we return a generator
     // call new generator and then save the suspension
     if (isGenerator) {
-        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(${scopename}, this.$name, this.$qualname);
+        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(${scopename}, this.$name, this.$qualname, ${JSON.stringify(this.u.ste.coroutine ? "coroutine" : "generator")});
         $gen.gi$setInitialSuspension((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo));
-        return $gen;`
+        return ${this.u.ste.coroutine ? "new Sk.builtin.coroutine($gen)" : "$gen"};`
     }
 
     //
@@ -2476,7 +2485,7 @@ Compiler.prototype.cDocstringOfCode = function(node) {
 
 Compiler.prototype.cfunction = function (s, class_for_super) {
     var funcorgen;
-    Sk.asserts.assert(s._type === "FunctionDef");
+    Sk.asserts.assert(s._type === "FunctionDef" || s._type === "AsyncFunctionDef");
     funcorgen = this.buildcodeobj(s, s.name, s.decorator_list, s.args, function (scopename) {
         this.vseqstmt(s.body);
         out("return Sk.builtin.none.none$;"); // if we fall off the bottom, we want the ret to be None
@@ -2731,6 +2740,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
     this.annotateSource(s);
 
     switch (s._type) {
+        case "AsyncFunctionDef":
         case "FunctionDef":
             this.cfunction(s, class_for_super);
             break;
