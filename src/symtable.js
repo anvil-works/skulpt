@@ -404,6 +404,17 @@ SymbolTable.prototype.visitParams = function (args, toplevel) {
     }
 };
 
+// symtable.c: future AnnotationBlock names have no effect on enclosing scopes.
+// Visit its expressions for syntax validation, then omit this block from analysis.
+SymbolTable.prototype.visitAnnotation = function (annotation) {
+    if (!(this.flags & 0x1000000)) return this.visitExpr(annotation);
+    this.enterBlock("__annotate__", FunctionBlock, {}, annotation.lineno);
+    this.cur.annotationScope = true;
+    this.visitExpr(annotation);
+    this.exitBlock();
+    this.cur.children.pop();
+};
+
 SymbolTable.prototype.visitAnnotations = function (a, returns) {
     if (a.posonlyargs) {
         this.visitArgAnnotations(a.posonlyargs);
@@ -412,16 +423,16 @@ SymbolTable.prototype.visitAnnotations = function (a, returns) {
         this.visitArgAnnotations(a.args);
     }
     if (a.vararg && a.vararg.annotation) {
-        this.visitExpr(a.vararg.annotation);
+        this.visitAnnotation(a.vararg.annotation);
     }
     if (a.kwarg && a.kwarg.annotation) {
-        this.visitExpr(a.kwarg.annotation);
+        this.visitAnnotation(a.kwarg.annotation);
     }
     if (a.kwonlyargs) {
         this.visitArgAnnotations(a.kwonlyargs);
     }
     if (returns) {
-        this.visitExpr(returns);
+        this.visitAnnotation(returns);
     }
 };
 
@@ -429,7 +440,7 @@ SymbolTable.prototype.visitArgAnnotations = function (args) {
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg.annotation) {
-            this.visitExpr(arg.annotation);
+            this.visitAnnotation(arg.annotation);
         }
     }
 };
@@ -590,7 +601,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             } else {
                 this.visitExpr(s.target);
             }
-            this.visitExpr(s.annotation);
+            this.visitAnnotation(s.annotation);
             if (s.value) {
                 this.visitExpr(s.value);
             }
@@ -754,6 +765,10 @@ function VISIT_SEQ(visitFunc, seq) {
 SymbolTable.prototype.visitExpr = function (e) {
     var i;
     Sk.asserts.assert(e !== undefined, "visitExpr called with undefined");
+    if (this.cur.annotationScope && ["Yield", "YieldFrom", "Await", "NamedExpr"].includes(e._type)) {
+        const name = { Yield: "yield expression", YieldFrom: "yield expression", Await: "await expression", NamedExpr: "named expression" }[e._type];
+        throw new Sk.builtin.SyntaxError(name + " cannot be used within an annotation", this.filename, e.lineno);
+    }
     // console.log("  e: ", e._type);
     switch (e._type) {
         case "NamedExpr":
@@ -838,11 +853,14 @@ SymbolTable.prototype.visitExpr = function (e) {
             break;
         case "Constant":
             break;
+        case "TemplateStr":
+            if (!(this.flags & 0x1000000)) throw new Sk.builtin.SyntaxError("TemplateStr is not supported by the Skulpt compiler", this.filename, e.lineno);
         case "JoinedStr":
             for (let s of e.values) {
                 this.visitExpr(s);
             }
             break;
+        case "Interpolation":
         case "FormattedValue":
             this.visitExpr(e.value);
             if (e.format_spec) {
@@ -946,6 +964,7 @@ SymbolTable.prototype.visitNamedExpr = function (e) {
         const name = e.target.id;
         const mangled = Sk.fixReserved(Sk.mangleName(this.curClass, name).v);
         for (const scope of [this.cur].concat(this.stack.slice().reverse())) {
+            if (scope.annotationScope) continue;
             const flags = scope.symFlags[mangled] || 0;
             if (scope.comprehension) {
                 if ((flags & DEF_COMP_ITER) && (flags & DEF_LOCAL)) {
