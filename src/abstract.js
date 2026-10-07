@@ -856,7 +856,7 @@ Sk.abstr.gattr = function (obj, pyName, canSuspend) {
             return ret;
         }),
         (error) => {
-            throw Sk.builtin.setAttributeErrorContext(error, obj, pyName);
+            return Sk.builtin.raiseAttributeErrorWithContext(error, obj, pyName);
         }
     );
 };
