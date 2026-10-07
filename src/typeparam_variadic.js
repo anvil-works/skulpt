@@ -148,10 +148,10 @@ Sk.builtin.UnpackType = Sk.abstr.buildNativeClass("typing._UnpackSpecialForm", {
         $r() { return new Sk.builtin.str("typing.Unpack"); },
         tp$as_sequence_or_mapping: true,
         mp$subscript(value) {
-            if (value.ob$type === Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Unpack accepts only a single type.");}
-            if (Sk.builtin.checkNone(value)) {value = Sk.builtin.none;}
-            if (Sk.builtin.checkString(value)) {throw new Sk.builtin.NotImplementedError("string type arguments require ForwardRef support");}
-            return new Sk.builtin.UnpackAlias(value);
+            return Sk.misceval.chain(
+                Sk.builtin.callTypingFunction("_type_check", [value, new Sk.builtin.str("typing.Unpack accepts only single type.")]),
+                checked => new Sk.builtin.UnpackAlias(checked)
+            );
         },
     },
     flags: { sk$unacceptableBase: true },
