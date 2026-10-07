@@ -27,6 +27,7 @@ function Compiler (filename, st, flags, canSuspend, sourceCodeForAnnotation, opt
     this.stack = [];
 
     this.result = [];
+    this.literalObjects = [];
 
     // this.gensymcount = 0;
 
@@ -921,11 +922,19 @@ function getJsLiteralForString(s) {
 }
 
 Compiler.prototype.cconstant = function (value) {
+    if (value.$pyValue !== undefined) {
+        let index = this.literalObjects.indexOf(value.$pyValue);
+        if (index === -1) {index = this.literalObjects.push(value.$pyValue) - 1;}
+        return this.makeConstant("$astConstants[", index, "]");
+    }
     const number = n => Object.is(n, -0) ? "-0" : String(n);
     switch (value.type) {
         case "int":
             return this.makeConstant("new Sk.builtin.", value.legacyLong ? "lng" : "int_", "(",
                 typeof value.value === "number" ? value.value : JSON.stringify(String(value.value)), ")");
+        case "tuple": case "frozenset":
+            return this.makeConstant("new Sk.builtin.", value.type, "([",
+                value.value.map(item => this.cconstant(item)).join(","), "])");
         case "float": return this.makeConstant("new Sk.builtin.float_(", number(value.value), ")");
         case "complex": return this.makeConstant("new Sk.builtin.complex(", number(value.real), ",", number(value.imag), ")");
         case "str": return this.makeConstant("new Sk.builtin.str(", getJsLiteralForString(value.value), ",true)");
@@ -3595,7 +3604,7 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
     var c;
     var funcname;
     try {
-        const ast = mode === "eval" ? Sk.parseExpression(source, filename)
+        const ast = typeof source !== "string" ? source : mode === "eval" ? Sk.parseExpression(source, filename)
             : mode === "single" ? Sk.parseInteractive(source, filename) : Sk.parseModule(source, filename);
         const future = futureFromAst(ast);
         flags = (flags || 0) | future.flags;
@@ -3603,7 +3612,7 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
             throw new Sk.builtin.NotImplementedError("Barry syntax is not yet supported");
         }
         const st = Sk.symboltable(ast, filename, flags);
-        c = new Compiler(filename, st, flags || 0, canSuspend, source, optimize);
+        c = new Compiler(filename, st, flags || 0, canSuspend, typeof source === "string" ? source : "", optimize);
         c.futureImports = future.imports;
         c.interactive = mode === "single";
         funcname = c.cmod(ast);
@@ -3618,6 +3627,7 @@ Sk.compile = function (source, filename, mode, canSuspend, optimize, flags) {
         code    : ret,
         filename: filename,
         mode: mode,
+        literalObjects: c.literalObjects,
     };
 };
 
