@@ -494,6 +494,7 @@ function collections_mod(collections) {
 
 
     collections.deque = Sk.abstr.buildNativeClass("collections.deque", {
+        flags: { sk$patternKind: 32 },
         constructor: function deque(D, maxlen, head, tail, mask) {
             this.head = head || 0;
             this.tail = tail || 0;

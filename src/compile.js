@@ -1575,7 +1575,7 @@ Compiler.prototype.outputFrame = function (unit) {
     if (unit.ste.blockType === constants.ClassBlock) {
         code += "$loc=Sk.misceval.namespaceToJs($loc);";
     }
-    code += "var $frame=Sk.misceval.currentFrame={active:true,getBack:function(){return " + (unit.ste.generator || unit.ste.coroutine ? "$frame.active?$prevFrame:undefined" : "$prevFrame") + ";},getCode:function(){return " + unit.scopename + ".$code || (" + unit.scopename + ".$code=new Sk.builtin.code(" + unit.scopename + ".$metadata.filename,null," + unit.scopename + "));},getLine:function(){return $currLineNo===undefined?" + unit.scopename + ".$metadata.firstlineno:$currLineNo;},getException:function(){return $handled===undefined?($prevFrame?$prevFrame.getException():undefined):$handled;},getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
+    code += "var $frame=Sk.misceval.currentFrame={active:true,getBack:function(){return " + (unit.ste.generator ? "$frame.active?$prevFrame:undefined" : "$prevFrame") + ";},getCode:function(){return " + unit.scopename + ".$code || (" + unit.scopename + ".$code=new Sk.builtin.code(" + unit.scopename + ".$metadata.filename,null," + unit.scopename + "));},getLine:function(){return $currLineNo===undefined?" + unit.scopename + ".$metadata.firstlineno:$currLineNo;},getException:function(){return $handled===undefined?($prevFrame?$prevFrame.getException():undefined):$handled;},getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
     for (const scope of unit.comprehensions) {
         code += "case " + scope.id + ":return " + snapshot(scopeBindings(scope)) + ";";
     }
@@ -3028,6 +3028,132 @@ Compiler.prototype.cbreak = function (s) {
     }
 };
 
+// CPython codegen_match: keep the subject, try cases in order, then store
+// captures before evaluating a guard. Failed patterns never store captures.
+Compiler.prototype.cmatch = function (s) {
+    const subject = this._gr("subject", this.vexpr(s.subject));
+    // Case bodies reset localtemps; later cases still need the subject on resume.
+    this.u.tempsToSave.push(subject);
+    const end = this.newBlock("match end");
+    for (const matchCase of s.cases) {
+        const pc = { fail: this.newBlock("next case"), captures: new Map() };
+        this.cpattern(matchCase.pattern, subject, pc);
+        for (const [name, value] of pc.captures) {this.nameop(name, "Store", value);}
+        if (matchCase.guard) {this._jumpfalse(this.vexpr(matchCase.guard), pc.fail);}
+        this.vseqstmt(matchCase.body);
+        this._jump(end);
+        this.setBlock(pc.fail);
+    }
+    this._jump(end);
+    this.setBlock(end);
+};
+
+Compiler.prototype.cpattern = function (p, subject, pc) {
+    const capture = name => {if (name) {pc.captures.set(name, this._gr("capture", subject));}};
+    switch (p._type) {
+        case "MatchValue":
+            out("$ret=Sk.misceval.richCompare(", subject, ",", this.vexpr(p.value), ",'Eq',true);");
+            this._checkSuspension(p);
+            this._jumpfalse("$ret", pc.fail);
+            break;
+        case "MatchSingleton": this._jumpfalse(subject + "===" + this.cconstant(p.value), pc.fail); break;
+        case "MatchAs":
+            if (p.pattern) {this.cpattern(p.pattern, subject, pc);}
+            capture(p.name);
+            break;
+        case "MatchStar": capture(p.name); break;
+        case "MatchSequence": this.cpatternSequence(p, subject, pc); break;
+        case "MatchMapping": this.cpatternMapping(p, subject, pc); break;
+        case "MatchClass": this.cpatternClass(p, subject, pc); break;
+        case "MatchOr": this.cpatternOr(p, subject, pc); break;
+        default: Sk.asserts.fail("unknown pattern " + p._type);
+    }
+};
+
+Compiler.prototype.cpatternSequence = function (p, subject, pc) {
+    const patterns = p.patterns, size = patterns.length;
+    const star = patterns.findIndex(child => child._type === "MatchStar");
+    const wildcard = child => (child._type === "MatchAs" && !child.pattern && !child.name) || (child._type === "MatchStar" && !child.name);
+    this._jumpfalse("Sk.abstr.patternKind(" + subject + ".ob$type)===32", pc.fail);
+    if (star < 0 || size > 1) {
+        out("$ret=Sk.builtin.len(", subject, ");");
+        this._checkSuspension(p);
+        this._jumpfalse("Sk.builtin.asnum$($ret)" + (star < 0 ? "===" + size : ">=" + (size - 1)), pc.fail);
+    }
+    if (patterns.every(wildcard)) {return;}
+    if (star >= 0 && !patterns[star].name) {
+        // CPython codegen_pattern_subpattern_seq_subscr avoids allocating a
+        // starred wildcard. Recompute length for each trailing subscription.
+        patterns.forEach((child, i) => {
+            if (wildcard(child)) {return;}
+            let index = String(i);
+            if (i > star) {
+                out("$ret=Sk.builtin.len(", subject, ");");
+                this._checkSuspension(child);
+                index = "Sk.builtin.asnum$($ret)-" + (size - i);
+            }
+            out("$ret=Sk.abstr.objectGetItem(", subject, ",new Sk.builtin.int_(", index, "),true);");
+            this._checkSuspension(child);
+            this.cpattern(child, this._gr("element", "$ret"), pc);
+        });
+    } else {
+        out("$ret=Sk.abstr.sequenceUnpack(", subject, ",", star < 0 ? size : star, ",", star < 0 ? size : size - 1, ",", star >= 0, ");");
+        this._checkSuspension(p);
+        const values = this._gr("unpacked", "$ret");
+        patterns.forEach((child, i) => this.cpattern(child, this._gr("element", values, "[", i, "]"), pc));
+    }
+};
+
+Compiler.prototype.cpatternMapping = function (p, subject, pc) {
+    this._jumpfalse("Sk.abstr.patternKind(" + subject + ".ob$type)===64", pc.fail);
+    if (p.keys.length) {
+        out("$ret=Sk.builtin.len(", subject, ");");
+        this._checkSuspension(p);
+        this._jumpfalse("Sk.builtin.asnum$($ret)>=" + p.keys.length, pc.fail);
+    }
+    const keys = this._gr("keys", "[", p.keys.map(key => this._gr("key", this.vexpr(key))).join(","), "]");
+    if (p.keys.length) {
+        out("$ret=Sk.abstr.matchKeys(", subject, ",", keys, ");");
+        this._checkSuspension(p);
+        const values = this._gr("values", "$ret");
+        this._jumpfalse(values + "!==null", pc.fail);
+        p.patterns.forEach((child, i) => this.cpattern(child, this._gr("value", values, "[", i, "]"), pc));
+    }
+    if (p.rest) {
+        out("$ret=Sk.abstr.matchMappingRest(", subject, ",", keys, ");");
+        this._checkSuspension(p);
+        pc.captures.set(p.rest, this._gr("rest", "$ret"));
+    }
+};
+
+Compiler.prototype.cpatternClass = function (p, subject, pc) {
+    const type = this.vexpr(p.cls);
+    out("$ret=Sk.abstr.matchClass(", subject, ",", type, ",", p.patterns.length, ",", JSON.stringify(p.kwd_attrs), ");");
+    this._checkSuspension(p);
+    const values = this._gr("attributes", "$ret");
+    this._jumpfalse(values + "!==null", pc.fail);
+    [...p.patterns, ...p.kwd_patterns].forEach((child, i) => this.cpattern(child, this._gr("attribute", values, "[", i, "]"), pc));
+};
+
+Compiler.prototype.cpatternOr = function (p, subject, pc) {
+    const end = this.newBlock("or pattern end"), captures = new Map();
+    p.patterns.forEach((child, i) => {
+        const alternative = { fail: this.newBlock("next alternative"), captures: new Map() };
+        this.cpattern(child, subject, alternative);
+        for (const [name, value] of alternative.captures) {
+            // Registers are hoisted in generated JS. Later alternatives write
+            // the same capture registers, regardless of their binding order.
+            if (i === 0) {captures.set(name, this._gr("orCapture", value));}
+            else {out(captures.get(name), "=", value, ";");}
+        }
+        this._jump(end);
+        this.setBlock(alternative.fail);
+    });
+    this._jump(pc.fail);
+    this.setBlock(end);
+    for (const [name, value] of captures) {pc.captures.set(name, value);}
+};
+
 /**
  * compiles a statement
  * @param {Object} s
@@ -3109,6 +3235,8 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
         case "TryStar":
         case "Try":
             return this.ctry(s);
+        case "Match":
+            return this.cmatch(s);
         case "With":
             return this.cwith(s, 0);
         case "Assert":

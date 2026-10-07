@@ -75,6 +75,7 @@ require("./token.js");
 require("./tokenize.js");
 require("./structural_ast.js");
 require("./symtable.js");
+require("./pattern.js");
 require("./compile.js");
 require("./import.js");
 require("./timsort.js");

@@ -463,6 +463,8 @@ function setUpKlass(pyName, klass, bases, meta) {
         ht$qualname: { value: pyName, writable: true},
     });
     klass_proto.tp$mro = klass.$buildMRO();
+    // CPython inherit_patma_flags selects the first flagged MRO base.
+    klass.sk$patternKind = Sk.abstr.patternKind(klass);
     for (const base of bases) {
         Sk.abstr.registerSubclass(base, klass);
     }
