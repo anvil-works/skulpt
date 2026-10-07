@@ -750,7 +750,6 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
 });
 
 Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, optimize) {
-    Sk.builtin.pyCheckType("source", "str", Sk.builtin.checkString(source));
     Sk.builtin.pyCheckType("filename", "str", Sk.builtin.checkString(filename));
     Sk.builtin.pyCheckType("mode", "str", Sk.builtin.checkString(mode));
     // Python/bltinmodule.c: builtin_compile_impl validates integer options
@@ -775,8 +774,8 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (flags & ~mandatoryMask) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
-    source = source.$jsstr();
     filename = filename.$jsstr();
+    source = compilerSource(source, filename, "compile");
     mode = mode.$jsstr();
     return new pyCode(filename, Sk.compile(source, filename, mode, true, Math.max(optimize, 0)));
 };
@@ -790,6 +789,68 @@ function compileIntOption(value, fallback) {
         throw new Sk.builtin.OverflowError("Python int too large to convert to C int");
     }
     return index;
+}
+
+// Parser/tokenizer/helpers.c: check_bom, get_coding_spec, get_normal_name.
+// Unicode sources ignore cookies; bytes are decoded before AST parsing.
+function compilerSource(source, filename, caller) {
+    if (Sk.builtin.checkString(source)) {return source.$jsstr();}
+    if (typeof source === "string") {return source;}
+    if (!Sk.builtin.checkBytes(source)) {
+        throw new Sk.builtin.TypeError(caller + "() arg 1 must be a string, bytes or code object");
+    }
+    let bytes = source.v;
+    const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+    if (bom) {bytes = bytes.subarray(3);}
+    let end = 0;
+    let lines = 0;
+    while (end < bytes.length && lines < 2) {
+        const byte = bytes[end++];
+        if (byte === 13) {
+            if (bytes[end] === 10) {end++;}
+            lines++;
+        } else if (byte === 10) {
+            lines++;
+        }
+    }
+    const header = new TextDecoder("latin1").decode(bytes.subarray(0, end)).split(/\r\n|\r|\n/);
+    let encoding = "utf-8";
+    for (let i = 0; i < Math.min(header.length, 2); i++) {
+        const cookie = /^[ \t\f]*#.*?coding[:=][ \t]*([-_.a-zA-Z0-9]+)/.exec(header[i]);
+        if (cookie) {
+            encoding = cookie[1];
+            const normal = encoding.slice(0, 12).toLowerCase().replace(/_/g, "-");
+            if (normal === "utf-8" || normal.startsWith("utf-8-")) {
+                encoding = "utf-8";
+            } else if (/^(latin-1|iso-8859-1|iso-latin-1)(-|$)/.test(normal)) {
+                encoding = "iso-8859-1";
+            }
+            if (bom && encoding !== "utf-8") {
+                throw new Sk.builtin.SyntaxError("encoding problem: " + encoding + " with BOM", filename, i + 1);
+            }
+            break;
+        }
+        if (!/^[ \t\f]*(#.*)?$/.test(header[i])) {break;}
+    }
+    const codec = encoding.toLowerCase().replace(/_/g, "-");
+    if (["latin1", "latin-1", "iso8859-1", "iso-8859-1", "l1", "cp819"].includes(codec)) {
+        return Array.from(bytes, byte => String.fromCharCode(byte)).join("");
+    }
+    if (["ascii", "us-ascii", "ansi-x3.4-1968"].includes(codec) && bytes.some(byte => byte > 127)) {
+        throw new Sk.builtin.SyntaxError("(unicode error) 'ascii' codec can't decode byte", filename);
+    }
+    const labels = { "cp932": "shift-jis", "cp949": "euc-kr" };
+    let decoder;
+    try {
+        decoder = new TextDecoder(labels[codec] || codec, { fatal: true, ignoreBOM: true });
+    } catch (err) {
+        throw new Sk.builtin.SyntaxError("unknown encoding: " + encoding, filename);
+    }
+    try {
+        return decoder.decode(bytes);
+    } catch (err) {
+        throw new Sk.builtin.SyntaxError("(unicode error) '" + encoding + "' codec can't decode byte", filename);
+    }
 }
 
 /**
@@ -807,12 +868,8 @@ Sk.builtin.exec = function (code, globals, locals) {
     } else {
         filename = "<string>";
     }
-    if (Sk.builtin.checkString(code)) {
-        code = Sk.compile(code.$jsstr(), filename, "exec", true);
-    } else if (typeof code === "string") {
-        code = Sk.compile(code, filename, "exec", true);
-    } else if (!(code instanceof pyCode)) {
-        throw new Sk.builtin.TypeError("exec() arg 1 must be a string, bytes or code object");
+    if (!(code instanceof pyCode)) {
+        code = Sk.compile(compilerSource(code, filename, "exec"), filename, "exec", true);
     }
     Sk.asserts.assert(
         globals === undefined || globals.constructor === Object,
@@ -842,15 +899,19 @@ Sk.builtin.exec = function (code, globals, locals) {
 
 
 Sk.builtin.eval = function (source, globals, locals) {
-    if (Sk.builtin.checkString(source)) {
-        source = source.$jsstr();
-    } else if (Sk.builtin.checkBytes(source)) {
-        throw new Sk.builtin.NotImplementedError("bytes for eval is not yet implemented in skulpt");
-    }
-    if (typeof source === "string") {
-        source = new pyCode("<string>", Sk.compile(source.trim(), "<string>", "eval", true));
-    } else if (!(source instanceof pyCode)) {
-        throw new Sk.builtin.TypeError("eval() arg 1 must be a string, bytes or code object");
+    if (!(source instanceof pyCode)) {
+        // builtin_eval_impl strips leading byte whitespace before tokenization,
+        // allowing a UTF-8 BOM immediately after those spaces/tabs.
+        const bytesSource = Sk.builtin.checkBytes(source);
+        if (bytesSource) {
+            let start = 0;
+            while (source.v[start] === 32 || source.v[start] === 9) {start++;}
+            source = new Sk.builtin.bytes(source.v.subarray(start));
+        }
+        // Unicode eval sources also strip only ASCII spaces/tabs.
+        let text = compilerSource(source, "<string>", "eval");
+        if (!bytesSource) {text = text.replace(/^[ \t]+/, "");}
+        source = new pyCode("<string>", Sk.compile(text, "<string>", "eval", true));
     }
     return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);
 };

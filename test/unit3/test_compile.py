@@ -318,5 +318,27 @@ class TestSpecifics(unittest.TestCase):
                     else:
                         self.assertIsNone(ns['with_docstring'].__doc__)
 
+    # CPython encoding method, unchanged.
+    def test_encoding(self):
+        code = b'# -*- coding: badencoding -*-\npass\n'
+        self.assertRaises(SyntaxError, compile, code, 'tmp', 'exec')
+        code = '# -*- coding: badencoding -*-\n"\xc2\xa4"\n'
+        compile(code, 'tmp', 'exec')
+        self.assertEqual(eval(code), '\xc2\xa4')
+        code = '"\xc2\xa4"\n'
+        self.assertEqual(eval(code), '\xc2\xa4')
+        code = b'"\xc2\xa4"\n'
+        self.assertEqual(eval(code), '\xa4')
+        code = b'# -*- coding: latin1 -*-\n"\xc2\xa4"\n'
+        self.assertEqual(eval(code), '\xc2\xa4')
+        code = b'# -*- coding: utf-8 -*-\n"\xc2\xa4"\n'
+        self.assertEqual(eval(code), '\xa4')
+        code = b'# -*- coding: iso8859-15 -*-\n"\xc2\xa4"\n'
+        self.assertEqual(eval(code), '\xc2\u20ac')
+        code = '"""\\\n# -*- coding: iso8859-15 -*-\n\xc2\xa4"""\n'
+        self.assertEqual(eval(code), '# -*- coding: iso8859-15 -*-\n\xc2\xa4')
+        code = b'"""\\\n# -*- coding: iso8859-15 -*-\n\xc2\xa4"""\n'
+        self.assertEqual(eval(code), '# -*- coding: iso8859-15 -*-\n\xa4')
+
 if __name__ == "__main__":
     unittest.main()
