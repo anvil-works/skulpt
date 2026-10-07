@@ -2558,18 +2558,18 @@ Compiler.prototype.cclass = function (s) {
 
     decos = this.vseqexpr(s.decorator_list);
 
-    bases = this.vseqexpr(s.bases);
-
-    let keywordArgs = this.cunpackkwstoarray(s.keywords);
+    // codegen_class: load the builder and create the body function before
+    // evaluating bases/keywords, which can mutate the builtin namespace.
+    const builder = this._gr("builder", "Sk.misceval.loadBuildClass($builtins)");
     scopename = this.enterScope(s.name, s, s.lineno);
     entryBlock = this.newBlock("class entry");
 
-    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($globals,$locals,$cell){var $gbl=$globals,$loc=$locals,$free=$cell,$builtins=Sk.misceval.currentFrame.getBuiltins();";
+    this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||this.func_globals,$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
     const needsClassClosure = this.u.ste.needsClassClosure;
     if (needsClassClosure) {
         this.u.prefixCode += "var $classcell={__class__:undefined};";
     }
-    this.u.switchCode += "(function $" + s.name + "$_closure($cell){";
+    this.u.switchCode += "return (function $" + s.name + "$_closure($cell){";
     this.u.switchCode += "var $blk=" + entryBlock + ",$exc=[],$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
 
     if (Sk.execLimit !== null) {
@@ -2587,22 +2587,24 @@ Compiler.prototype.cclass = function (s) {
 
     this.u.private_ = s.name;
 
-    out("$loc.__module__=$gbl.__name__===undefined?new Sk.builtin.str('builtins'):$gbl.__name__;");
+    out("$loc.__module__=", this.nameop("__name__", "Load"), ";");
     this.cbody(s.body, s.name);
     if (needsClassClosure) {
-        out("$loc.__classcell__=new Sk.builtin.cell($classcell);");
+        const classcell = this._gr("classcell", "new Sk.builtin.cell($classcell)");
+        out("$loc.__classcell__=", classcell, ";return ", classcell, ";");
+    } else {
+        out("return Sk.builtin.none.none$;");
     }
-    out("return;");
 
     // build class
 
     this.exitScope();
 
-    // If the enclosing scope has free variables of its own, they are held in
-    // $free (not $cell) and must be threaded into the class so its body and
-    // methods can close over names bound more than one level out.
-    const enclosingFree = this.u.ste.hasFree ? ", $free" : "";
-    out("$ret = Sk.misceval.buildClass($gbl,", scopename, ",", JSON.stringify(s.name), ",[", bases, "], $cell, ", keywordArgs, enclosingFree, ");");
+    out(scopename, ".co_fastcall=1;", scopename, ".co_varnames=[];");
+    const body = this._gr("classbody", "new Sk.builtin.func(", scopename, ",$gbl,$cell", this.u.ste.hasFree ? ",$free" : "", ")");
+    bases = this.vseqexpr(s.bases);
+    const keywordArgs = this.cunpackkwstoarray(s.keywords);
+    out("$ret=Sk.misceval.callsimOrSuspendArray(", builder, ", [", body, ",new Sk.builtin.str(", JSON.stringify(s.name), ")", bases.length ? "," + bases.join(",") : "", "],", keywordArgs, ");");
     this._checkSuspension();
 
     // apply decorators
