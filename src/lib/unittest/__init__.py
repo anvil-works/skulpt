@@ -313,7 +313,8 @@ class TestCase(object):
 def main(verbosity=1, module="__main__"):
     import sys
     glob = vars(sys.modules[module])
-    for name in glob:
+    # Test methods may add module globals; discover names before running them.
+    for name in list(glob):
         if type(glob[name]) == type and issubclass(glob[name], TestCase):
             try:
                 tc = glob[name]()
