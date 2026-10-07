@@ -417,14 +417,18 @@ SymbolTable.prototype.visitAnnotation = function (annotation) {
 
 SymbolTable.prototype.visitAnnotations = function (a, returns, owner) {
     const annotations = a.args.concat(a.posonlyargs, a.vararg ? [a.vararg] : [], a.kwonlyargs, a.kwarg ? [a.kwarg] : []).filter(arg => arg.annotation);
-    if (Sk.__future__.python3 && annotations.length + Number(!!returns) &&
-            (this.flags & 0x1000000 || this.cur.blockType !== ClassBlock)) {
+    if (Sk.__future__.python3 && annotations.length + Number(!!returns)) {
         const key = { _type: "Annotation", owner, lineno: owner.lineno,
             args: { posonlyargs: [{ _type: "arg", arg: "$annotationFormat", annotation: null }], args: [],
                 defaults: [], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null } };
         a.annotationScope = key;
+        const classScope = this.cur.blockType === ClassBlock ? this.cur : null;
         this.enterBlock("__annotate__", FunctionBlock, key, owner.lineno);
         this.cur.annotationScope = true;
+        if (classScope && !(this.flags & 0x1000000)) {
+            this.cur.classScope = classScope;
+            this.addDef("__classdict__", USE, owner.lineno);
+        }
         this.visitArguments(key.args, owner.lineno);
         for (const arg of annotations) this.visitExpr(arg.annotation);
         if (returns) this.visitExpr(returns);
@@ -1078,6 +1082,7 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
             _dictUpdate(newbound, bound);
         }
         newbound.__class__ = null;
+        newbound.__classdict__ = null;
     }
 
     for (name in ste.symFlags) {
@@ -1112,6 +1117,10 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
     if (ste.blockType === ClassBlock && newfree.__class__ !== undefined) {
         delete newfree.__class__;
         ste.needsClassClosure = true;
+    }
+    if (ste.blockType === ClassBlock && newfree.__classdict__ !== undefined) {
+        delete newfree.__classdict__;
+        ste.needsClassdict = true;
     }
     this.updateSymbols(ste, ste.symFlags, scope, bound, newfree, ste.blockType === ClassBlock);
 
@@ -1230,6 +1239,20 @@ SymbolTable.prototype.analyzeName = function (ste, dict, name, flags, bound, loc
         local[name] = null;
         delete global[name];
         return;
+    }
+
+    // analyze_name: class annotation scopes use class/globals for a class-bound
+    // name, even if an enclosing function binds the same name.
+    if (ste.classScope) {
+        const classFlags = ste.classScope.symFlags[name] || 0;
+        if (classFlags & DEF_GLOBAL) {
+            dict[name] = GLOBAL_EXPLICIT;
+            return;
+        }
+        if (classFlags & DEF_BOUND && !(classFlags & DEF_NONLOCAL)) {
+            dict[name] = GLOBAL_IMPLICIT;
+            return;
+        }
     }
 
     if (bound && bound[name] !== undefined) {

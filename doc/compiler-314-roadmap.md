@@ -278,3 +278,9 @@ An unchanged upstream metaclass dictionary-proxy method and three CPython-checke
 Full validation found the heap namespace field collided with Sk.builtin.str.$dict, the existing __dict__ name constant. The follow-up uses a distinct $classDict field; a CPython-checked regression covers native str dictionaries/dir/module and string-subclass lookup/metadata.
 
 The Spec review corrections also use the native hash-preserving dictionary copy and call descriptor __set_name__ with each original key from a namespace snapshot. A CPython-checked regression covers a key that rejects rehashing, a string-subclass descriptor name and a nonstring descriptor name.
+
+## Class dictionary cells for method annotations
+
+`stu-dev/compiler/class-annotation-scopes` emits __classdictcell__ alongside __classcell__ when method annotation functions need class scope. Type construction validates and fills that cell with its retained dictionary before descriptor naming and __init_subclass__. Annotation lookup follows codegen_nameop's LOAD_FROM_DICT_OR_DEREF/GLOBALS: actual class members precede outer cells or globals, class-bound names exclude same-named outer bindings, and explicit class globals bypass class lookup. The cell initially holds the class body mapping, then type construction replaces it with the retained dictionary. Nested lambda/comprehension bodies retain ordinary scope rules.
+
+One unchanged upstream format-name collision method and five CPython-checked regressions cover late nested classes, live updates, cache isolation, construction callback timing, global/free/class precedence, nested scope rules and annotation access during the class body. Module/class variable annotation functions remain the next layer.

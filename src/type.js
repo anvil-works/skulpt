@@ -212,7 +212,7 @@ function tp$new(args, kwargs) {
 
 
     dict.$items().forEach(([key, val]) => {
-        if (!Sk.builtin.checkString(key) || key.v === "__classcell__") {
+        if (!Sk.builtin.checkString(key) || ["__classcell__", "__classdictcell__"].includes(key.v)) {
             return;
         }
         if (slotSet && slotSet.has(key.v)) {
@@ -254,7 +254,16 @@ function tp$new(args, kwargs) {
     // typeobject.c: heap types retain their own dictionary. Annotation scopes
     // will capture this dictionary through __classdictcell__, not a body copy.
     klass.$classDict = Sk.builtin.dict.prototype.dict$copy.call(dict);
-    for (const name of ["__classcell__", "__qualname__"]) {
+    // type_new_set_classdictcell: fill the cell with the retained dictionary
+    // before descriptor naming and __init_subclass__ can inspect annotations.
+    const classdictcell = dict.quick$lookup(new Sk.builtin.str("__classdictcell__"));
+    if (classdictcell !== undefined) {
+        if (!(classdictcell instanceof Sk.builtin.cell)) {
+            throw new Sk.builtin.TypeError("__classdictcell__ must be a nonlocal cell, not " + Sk.misceval.objectRepr(classdictcell.ob$type));
+        }
+        classdictcell.$closure[classdictcell.$key] = klass.$classDict;
+    }
+    for (const name of ["__classcell__", "__classdictcell__", "__qualname__"]) {
         klass.$classDict.dict$delItem(new Sk.builtin.str(name));
     }
     for (const [key, value] of Object.entries(klassProto)) {
