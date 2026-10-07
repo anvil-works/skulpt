@@ -59,6 +59,7 @@ Sk.builtins = {
     "UnboundLocalError"  : Sk.builtin.UnboundLocalError,
     "IOError"            : Sk.builtin.IOError,
     "OSError"            : Sk.builtin.OSError,
+    "EOFError"           : Sk.builtin.EOFError,
     "MemoryError"        : Sk.builtin.MemoryError,
     "NotImplementedError": Sk.builtin.NotImplementedError,
     "SystemExit"         : Sk.builtin.SystemExit,
@@ -561,6 +562,7 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["filter"] = Sk.builtin.filter_;
         Sk.builtins["map"] = Sk.builtin.map_;
         Sk.builtins["zip"] = Sk.builtin.zip_;
+        Sk.builtins["BlockingIOError"] = Sk.builtin.BlockingIOError;
         Sk.builtins["BaseExceptionGroup"] = Sk.builtin.BaseExceptionGroup;
         Sk.builtins["ExceptionGroup"] = Sk.builtin.ExceptionGroup;
         Sk.builtins["range"] = Sk.builtin.range_;
@@ -591,6 +593,7 @@ Sk.setupObjects = function (py3) {
             "builtins"
         );
     } else {
+        removeBuiltin("BlockingIOError");
         removeBuiltin("BaseExceptionGroup");
         removeBuiltin("ExceptionGroup");
         Sk.builtins["range"] = new Sk.builtin.sk_method(

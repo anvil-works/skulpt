@@ -81,6 +81,7 @@ function CompilerUnit () {
     // stack of where to go on a continue
     this.continueBlocks = [];
     this.exceptBlocks = [];
+    this.exceptStarBlocks = [];
     // state of where to go on a return
     this.finallyBlocks = [];
 }
@@ -1698,7 +1699,7 @@ Compiler.prototype.craise = function (s) {
         // for the Python version you're using.
 
         var instantiatedException = this.newBlock("exception now instantiated");
-        var isClass = this._gr("isclass", exc + ".prototype instanceof Sk.builtin.BaseException");
+        var isClass = this._gr("isclass", exc + "===Sk.builtin.BaseException || " + exc + ".prototype instanceof Sk.builtin.BaseException");
         this._jumpfalse(isClass, instantiatedException);
         //this._jumpfalse(instantiatedException, isClass);
 
@@ -1787,137 +1788,177 @@ Compiler.prototype.outputFinallyCascade = function (thisFinally) {
     }
 };
 
-Compiler.prototype.ctry = function (s, cleanup) {
-    var check;
-    var next;
-    var handlertype;
-    var handler;
-    var end;
-    var orelse;
-    var unhandled;
-    var i;
-    var n = s.handlers.length;
+// Compiler cleanup corresponds to handler/fblock unwinding in codegen.c.
+Compiler.prototype.cprotected = function (body, cleanup) {
+    const finalBody = this.newBlock("cleanup");
+    const failure = this.newBlock("cleanup error");
+    const pending = this._gr("cleanup_reraise", "undefined");
+    const depth = this._gr("cleanup_depth", "$exc.length");
+    this.u.tempsToSave.push(pending, depth);
+    this.pushFinallyBlock(finalBody);
+    const block = this.peekFinallyBlock();
+    this.setupExcept(failure);
+    body();
+    this.endExcept();
+    this._jump(finalBody);
+    this.setBlock(failure);
+    out(pending, "=$err;$postfinally=undefined;");
+    this._jump(finalBody);
+    this.setBlock(finalBody);
+    this.popFinallyBlock();
+    out("$exc.length=", depth, ";");
+    cleanup(pending);
+    out("if(", pending, "!==undefined){throw ", pending, ";}");
+    this.outputFinallyCascade(block);
+};
 
-    var finalBody, finalExceptionHandler, finalExceptionToReRaise;
-    var thisFinally;
+Compiler.prototype.ctrybody = function (body, handler) {
+    const depth = this._gr("trydepth", "$exc.length");
+    this.u.tempsToSave.push(depth);
+    this.setupExcept(handler);
+    // POP_BLOCK on normal/nonlocal exits; retain the handler on an error.
+    this.cprotected(() => this.vseqstmt(body), pending => {
+        out("$exc.length=", depth, "+(", pending, "!==undefined?1:0);");
+    });
+};
 
-    const hasFinally = s.finalbody.length || cleanup;
+Compiler.prototype.ctryexcept = function (s) {
     const previousHandled = this._gr("prevhandled", "$handled");
     this.u.tempsToSave.push(previousHandled);
-    const exceptionDepth = hasFinally ? this._gr("excdepth", "$exc.length") : null;
-    if (hasFinally) {
-        this.u.tempsToSave.push(exceptionDepth);
-        finalBody = this.newBlock("finalbody");
-        finalExceptionHandler = this.newBlock("finalexh");
-        finalExceptionToReRaise = this._gr("finally_reraise", "undefined");
-
-        this.u.tempsToSave.push(finalExceptionToReRaise);
-        this.pushFinallyBlock(finalBody);
-        thisFinally = this.peekFinallyBlock();
-        this.setupExcept(finalExceptionHandler);
-    }
-
-    // Create a block for each except clause
-    var handlers = [];
-    for (i = 0; i < n; ++i) {
-        handlers.push(this.newBlock("except_" + i + "_"));
-    }
-
-    unhandled = this.newBlock("unhandled");
-    orelse = this.newBlock("orelse");
-    end = this.newBlock("end");
-
-    if (handlers.length != 0) {
-        this.setupExcept(handlers[0]);
-    }
-    this.vseqstmt(s.body);
-    if (handlers.length != 0) {
-        this.endExcept();
-    }
+    const handlers = s.handlers.map(() => this.newBlock("except"));
+    const unhandled = this.newBlock("unhandled");
+    const orelse = this.newBlock("orelse");
+    const end = this.newBlock("end try except");
+    this.ctrybody(s.body, handlers[0]);
     this._jump(orelse);
-
-    for (i = 0; i < n; ++i) {
+    s.handlers.forEach((handler, i) => {
         this.setBlock(handlers[i]);
-        handler = s.handlers[i];
         if (i === 0) out("$handled=$err;");
-        if (!handler.type && i < n - 1) {
+        if (!handler.type && i < handlers.length - 1) {
             throw new Sk.builtin.SyntaxError("default 'except:' must be last", this.filename, handler.lineno);
         }
-
         if (handler.type) {
-            // should jump to next handler if err not isinstance of handler.type
-            handlertype = this.vexpr(handler.type);
-            next = (i == n - 1) ? unhandled : handlers[i + 1];
-
-            // var isinstance = this.nameop(new Sk.builtin.str("isinstance"), Load));
-            // var check = this._gr('call', "Sk.misceval.callsimArray(", isinstance, ", [$err, ", handlertype, "])");
-
-            check = this._gr("instance", "Sk.misceval.isTrue(Sk.builtin.isinstance($err, ", handlertype, "))");
-            this._jumpfalse(check, next);
+            const type = this.vexpr(handler.type);
+            const matched = this._gr("instance", "Sk.builtin.exceptionMatches($err,", type, ")");
+            this._jumpfalse(matched, i === handlers.length - 1 ? unhandled : handlers[i + 1]);
         }
-
         out("$err.$propagating=false;");
-        if (handler.name) {
-            this.nameop(handler.name, "Store", "$err");
-        } else if (handler.target) {
-            this.vexpr(handler.target, "$err");
-        }
-
-        // codegen_try_except: every exit pops the handled exception and,
-        // in Python 3, clears the exception target (including explicit del).
-        this.ctry({body: handler.body, handlers: [], orelse: [], finalbody: []}, () => {
+        if (handler.name) this.nameop(handler.name, "Store", "$err");
+        else if (handler.target) this.vexpr(handler.target, "$err");
+        this.cprotected(() => this.vseqstmt(handler.body), () => {
             if (Sk.__future__.python3 && handler.name) {
                 this.nameop(handler.name, "Store", "Sk.builtin.none.none$");
                 this.nameop(handler.name, "Del");
             }
             out("$handled=", previousHandled, ";");
         });
-
         this._jump(end);
-    }
-
-    // If no except clause catches exception, throw it again
+    });
     this.setBlock(unhandled);
     out("throw $err;");
-
     this.setBlock(orelse);
     this.vseqstmt(s.orelse);
     this._jump(end);
-
     this.setBlock(end);
-    // End of the try/catch/else segment
-    if (hasFinally) {
-        this.endExcept();
+};
 
-        this._jump(finalBody);
-
-        this.setBlock(finalExceptionHandler);
-        // Exception handling also goes to the finally body,
-        // stashing the original exception to re-raise
-        out(finalExceptionToReRaise,"=$err;$postfinally=undefined;");
-        if (!cleanup) out("$handled=$err;");
-        this._jump(finalBody);
-
-        this.setBlock(finalBody);
-        this.popFinallyBlock();
-        out("$exc.length=", exceptionDepth, ";");
-        if (cleanup) {
-            cleanup();
-        } else {
-            const pendingControl = this._gr("finallycontrol", "$postfinally");
-            this.u.tempsToSave.push(pendingControl);
-            out("$postfinally=undefined;");
-            this.ctry({body: s.finalbody, handlers: [], orelse: [], finalbody: []}, () => {
-                out("$handled=", previousHandled, ";");
+Compiler.prototype.ctrystarexcept = function (s) {
+    const handlerEntry = this.newBlock("except star");
+    const orelse = this.newBlock("except star else");
+    const end = this.newBlock("end except star");
+    const previousHandled = this._gr("starhandled", "$handled");
+    this.u.tempsToSave.push(previousHandled);
+    this.ctrybody(s.body, handlerEntry);
+    this._jump(orelse);
+    this.setBlock(handlerEntry);
+    out("$handled=$err;");
+    const original = this._gr("staroriginal", "$err");
+    const rest = this._gr("starrest", original);
+    const raised = this._gr("starraised", "[]");
+    const merged = this._gr("starmerged", "undefined");
+    this.u.tempsToSave.push(original, rest, raised, merged);
+    this.cprotected(() => {
+        for (const handler of s.handlers) {
+            const next = this.newBlock("next except star");
+            const bodyFailure = this.newBlock("except star body error");
+            const type = this.vexpr(handler.type);
+            out("$ret=Sk.builtin.matchExceptionGroup(", rest, ",", type, ",$frame,", handler.lineno, ");");
+            this._checkSuspension(handler);
+            const match = this._gr("starmatch", "$ret[0]");
+            out(rest, "=$ret[1];");
+            this._jumptrue(match + "===Sk.builtin.none.none$", next);
+            out("$handled=", match, ";", match, ".$propagating=false;");
+            if (handler.name) this.nameop(handler.name, "Store", match);
+            this.setupExcept(bodyFailure);
+            this.u.exceptStarBlocks.push(this.u.breakBlocks.length);
+            this.cprotected(() => this.vseqstmt(handler.body), () => {
+                if (handler.name) {
+                    this.nameop(handler.name, "Store", "Sk.builtin.none.none$");
+                    this.nameop(handler.name, "Del");
+                }
             });
-            out("$postfinally=", pendingControl, ";");
+            this.u.exceptStarBlocks.pop();
+            this.endExcept();
+            this._jump(next);
+            this.setBlock(bodyFailure);
+            out(raised, ".push($err);");
+            this._jump(next);
+            this.setBlock(next);
         }
-        // If finalbody executes normally, AND we have an exception
-        // to re-raise, we raise it.
-        out("if(",finalExceptionToReRaise,"!==undefined) { throw ",finalExceptionToReRaise,";}");
+        out(raised, ".push(", rest, ");$ret=Sk.builtin.prepReraiseStar(", original, ",", raised, ");");
+        this._checkSuspension(s);
+        out(merged, "=$ret;");
+    }, () => out("$handled=", previousHandled, ";"));
+    out("if(", merged, "!==Sk.builtin.none.none$){", merged, ".$propagating=true;", merged,
+        ".$tracebackFrame=Sk.builtin.getFrame($frame);throw ", merged, ";}");
+    this._jump(end);
+    this.setBlock(orelse);
+    this.vseqstmt(s.orelse);
+    this._jump(end);
+    this.setBlock(end);
+};
 
-        this.outputFinallyCascade(thisFinally);
-        // Else, we continue from here.
+Compiler.prototype.ctryfinally = function (s, body) {
+    const finalBody = this.newBlock("finalbody");
+    const failure = this.newBlock("finalbody error");
+    const pending = this._gr("finally_reraise", "undefined");
+    const previousHandled = this._gr("finally_handled", "$handled");
+    const depth = this._gr("finally_depth", "$exc.length");
+    this.u.tempsToSave.push(pending, previousHandled, depth);
+    this.pushFinallyBlock(finalBody);
+    const block = this.peekFinallyBlock();
+    this.setupExcept(failure);
+    body();
+    this.endExcept();
+    this._jump(finalBody);
+    this.setBlock(failure);
+    out(pending, "=$err;$handled=$err;$postfinally=undefined;");
+    this._jump(finalBody);
+    this.setBlock(finalBody);
+    this.popFinallyBlock();
+    out("$exc.length=", depth, ";");
+    const control = this._gr("finally_control", "$postfinally");
+    this.u.tempsToSave.push(control);
+    out("$postfinally=undefined;");
+    this.cprotected(() => this.vseqstmt(s.finalbody), () => out("$handled=", previousHandled, ";"));
+    out("$postfinally=", control, ";if(", pending, "!==undefined){throw ", pending, ";}");
+    this.outputFinallyCascade(block);
+};
+
+Compiler.prototype.ctry = function (s) {
+    const body = () => {
+        if (s._type === "TryStar") this.ctrystarexcept(s);
+        else if (s.handlers.length) this.ctryexcept(s);
+        else this.vseqstmt(s.body);
+    };
+    if (s.finalbody.length) this.ctryfinally(s, body);
+    else body();
+};
+
+Compiler.prototype.checkExceptStarExit = function (s) {
+    const depths = this.u.exceptStarBlocks;
+    if (depths.length && (s._type === "Return" || this.u.breakBlocks.length <= depths[depths.length - 1])) {
+        throw new Sk.builtin.SyntaxError("'break', 'continue' and 'return' cannot appear in an except* block", this.filename, s.lineno);
     }
 };
 
@@ -2790,6 +2831,7 @@ Compiler.prototype.cclass = function (s) {
 };
 
 Compiler.prototype.ccontinue = function (s) {
+    this.checkExceptStarExit(s);
     var nextFinally = this.peekFinallyBlock(), gotoBlock;
     if (this.u.continueBlocks.length == 0) {
         throw new Sk.builtin.SyntaxError("'continue' not properly in loop", this.filename, s.lineno);
@@ -2806,6 +2848,7 @@ Compiler.prototype.ccontinue = function (s) {
 };
 
 Compiler.prototype.cbreak = function (s) {
+    this.checkExceptStarExit(s);
     var nextFinally = this.peekFinallyBlock(), gotoBlock;
 
     if (this.u.breakBlocks.length === 0) {
@@ -2858,6 +2901,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
             this.cclass(s);
             break;
         case "Return":
+            this.checkExceptStarExit(s);
             if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
                 throw new Sk.builtin.SyntaxError("'return' outside function", this.filename, s.lineno);
             }
@@ -2895,6 +2939,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
         case "LegacyRaise":
         case "Raise":
             return this.craise(s);
+        case "TryStar":
         case "Try":
             return this.ctry(s);
         case "With":
