@@ -1,10 +1,21 @@
 """Compiler-created typing objects; further typing APIs remain unimplemented."""
 from _typing import TypeAliasType, TypeVar, NoDefault, ParamSpec, ParamSpecArgs, ParamSpecKwargs, TypeVarTuple, Unpack, _UnpackGenericAlias
 from types import GenericAlias, UnionType
+import sys
 import functools
 import operator
 import collections.abc
 import types
+class _LazyAnnotationLib:
+    def __getattr__(self, attr):
+        global _lazy_annotationlib
+        import annotationlib
+        _lazy_annotationlib = annotationlib
+        return getattr(annotationlib, attr)
+
+
+_lazy_annotationlib = _LazyAnnotationLib()
+
 Union = UnionType
 
 def get_args(tp):
@@ -131,11 +142,8 @@ class _SpecialForm(_Final, _NotIterable, _root=True):
 
 
 # Helpers invoked by native parameters, following CPython Lib/typing.py.
-def _type_check(arg, message):
-    if arg is None:
-        return type(None)
-    if isinstance(arg, str):
-        raise NotImplementedError("string type arguments require ForwardRef support")
+def _type_check(arg, message, is_argument=True, module=None, *, allow_special_forms=False, owner=None):
+    arg = _type_convert(arg, module=module, allow_special_forms=allow_special_forms, owner=owner)
     if isinstance(arg, _GenericAlias) and arg.__origin__ in (Generic,):
         raise TypeError(f"{arg} is not valid as type argument")
     if arg in (Any, NoReturn):
@@ -240,13 +248,14 @@ def _is_typevar_like(x):
 def _is_unpacked_typevartuple(x):
     return not isinstance(x, type) and getattr(x, '__typing_is_unpacked_typevartuple__', False) is True
 
-def _type_convert(arg):
-    # CPython converts forward references here without validating parameter expressions.
+def _type_convert(arg, module=None, *, allow_special_forms=False, owner=None):
+    """For converting None to type(None), and strings to ForwardRef."""
     if arg is None:
         return type(None)
     if isinstance(arg, str):
-        raise NotImplementedError("string type arguments require ForwardRef support")
+        return _make_forward_ref(arg, module=module, is_class=allow_special_forms, owner=owner)
     return arg
+
 
 def _generic_alias_mro_entries(alias, bases):
     if isinstance(alias.__origin__, _SpecialForm):
@@ -892,7 +901,10 @@ class _CallableType(_SpecialGenericAlias, _root=True):
 
 
 Callable = _CallableType(collections.abc.Callable, 2)
-List = _SpecialGenericAlias(list, 1, inst=False)
+List = _SpecialGenericAlias(list, 1, inst=False, name="List")
+Set = _SpecialGenericAlias(set, 1, inst=False, name="Set")
+Type = _SpecialGenericAlias(type, 1, inst=False, name="Type")
+Deque = _SpecialGenericAlias(collections.deque, 1, name="Deque")
 
 
 class _TupleType(_SpecialGenericAlias, _root=True):
@@ -910,3 +922,311 @@ class _TupleType(_SpecialGenericAlias, _root=True):
 
 
 Tuple = _TupleType(tuple, -1, inst=False, name="Tuple")
+
+
+# Forward-reference and type-hint evaluation from CPython 3.14 at 18ef0f0cb52.
+def _make_forward_ref(code, *, parent_fwdref=None, **kwargs):
+    if parent_fwdref is not None:
+        if parent_fwdref.__forward_module__ is not None:
+            kwargs['module'] = parent_fwdref.__forward_module__
+        if parent_fwdref.__owner__ is not None:
+            kwargs['owner'] = parent_fwdref.__owner__
+    forward_ref = _lazy_annotationlib.ForwardRef(code, **kwargs)
+    # For compatibility, eagerly compile the forwardref's code.
+    forward_ref.__forward_code__
+    return forward_ref
+
+
+def evaluate_forward_ref(
+    forward_ref,
+    *,
+    owner=None,
+    globals=None,
+    locals=None,
+    type_params=None,
+    format=None,
+    _recursive_guard=frozenset(),
+):
+    """Evaluate a forward reference as a type hint.
+
+    This is similar to calling the ForwardRef.evaluate() method,
+    but unlike that method, evaluate_forward_ref() also
+    recursively evaluates forward references nested within the type hint.
+
+    *forward_ref* must be an instance of ForwardRef. *owner*, if given,
+    should be the object that holds the annotations that the forward reference
+    derived from, such as a module, class object, or function. It is used to
+    infer the namespaces to use for looking up names. *globals* and *locals*
+    can also be explicitly given to provide the global and local namespaces.
+    *type_params* is a tuple of type parameters that are in scope when
+    evaluating the forward reference. This parameter should be provided (though
+    it may be an empty tuple) if *owner* is not given and the forward reference
+    does not already have an owner set. *format* specifies the format of the
+    annotation and is a member of the annotationlib.Format enum, defaulting to
+    VALUE.
+
+    """
+    if format == _lazy_annotationlib.Format.STRING:
+        return forward_ref.__resolved_str__
+    if forward_ref.__forward_arg__ in _recursive_guard:
+        return forward_ref
+
+    if format is None:
+        format = _lazy_annotationlib.Format.VALUE
+    value = forward_ref.evaluate(globals=globals, locals=locals,
+                                 type_params=type_params, owner=owner, format=format)
+
+    if (isinstance(value, _lazy_annotationlib.ForwardRef)
+            and format == _lazy_annotationlib.Format.FORWARDREF):
+        return value
+
+    if isinstance(value, str):
+        value = _make_forward_ref(value, module=forward_ref.__forward_module__,
+                                  owner=owner or forward_ref.__owner__,
+                                  is_argument=forward_ref.__forward_is_argument__,
+                                  is_class=forward_ref.__forward_is_class__)
+    if owner is None:
+        owner = forward_ref.__owner__
+    return _eval_type(
+        value,
+        globals,
+        locals,
+        type_params,
+        recursive_guard=_recursive_guard | {forward_ref.__forward_arg__},
+        format=format,
+        owner=owner,
+        parent_fwdref=forward_ref,
+    )
+
+
+def _eval_type(t, globalns, localns, type_params=(), *, recursive_guard=frozenset(),
+               format=None, owner=None, parent_fwdref=None, prefer_fwd_module=False):
+    """Evaluate all forward references in the given type t.
+
+    For use of globalns and localns see the docstring for get_type_hints().
+    recursive_guard is used to prevent infinite recursion with a recursive
+    ForwardRef.
+    """
+    if isinstance(t, _lazy_annotationlib.ForwardRef):
+        # If the forward_ref has __forward_module__ set, evaluate() infers the globals
+        # from the module, and it will probably pick better than the globals we have here.
+        # We do this only for calls from get_type_hints() (which opts in through the
+        # prefer_fwd_module flag), so that the default behavior remains more straightforward.
+        if prefer_fwd_module and t.__forward_module__ is not None:
+            globalns = None
+            # If there are type params on the owner, we need to add them back, because
+            # annotationlib won't.
+            if owner_type_params := getattr(owner, "__type_params__", None):
+                globalns = getattr(
+                    sys.modules.get(t.__forward_module__, None), "__dict__", None
+                )
+                if globalns is not None:
+                    globalns = dict(globalns)
+                    for type_param in owner_type_params:
+                        globalns[type_param.__name__] = type_param
+        return evaluate_forward_ref(t, globals=globalns, locals=localns,
+                                    type_params=type_params, owner=owner,
+                                    _recursive_guard=recursive_guard, format=format)
+    if isinstance(t, (_GenericAlias, GenericAlias, Union)):
+        if isinstance(t, GenericAlias):
+            args = tuple(
+                _make_forward_ref(arg, parent_fwdref=parent_fwdref) if isinstance(arg, str) else arg
+                for arg in t.__args__
+            )
+            is_unpacked = t.__unpacked__
+            if _should_unflatten_callable_args(t, args):
+                t = t.__origin__[(args[:-1], args[-1])]
+            else:
+                t = t.__origin__[args]
+            if is_unpacked:
+                t = Unpack[t]
+
+        ev_args = tuple(
+            _eval_type(
+                a, globalns, localns, type_params, recursive_guard=recursive_guard,
+                format=format, owner=owner, prefer_fwd_module=prefer_fwd_module,
+            )
+            for a in t.__args__
+        )
+        if ev_args == t.__args__:
+            return t
+        if isinstance(t, GenericAlias):
+            return GenericAlias(t.__origin__, ev_args)
+        if isinstance(t, Union):
+            return functools.reduce(operator.or_, ev_args)
+        else:
+            return t.copy_with(ev_args)
+    return t
+
+
+def get_type_hints(obj, globalns=None, localns=None, include_extras=False,
+                   *, format=None):
+    """Return type hints for an object.
+
+    This is often the same as annotationlib.get_annotations(obj) or obj.__annotations__,
+    but it handles forward references encoded as string literals and recursively replaces all
+    'Annotated[T, ...]' with 'T' (unless 'include_extras=True').
+
+    The argument may be a module, class, method, or function. The annotations
+    are returned as a dictionary. For classes, annotations include also
+    inherited members.
+
+    TypeError is raised if the argument is not of a type that can contain
+    annotations, and an empty dictionary is returned if no annotations are
+    present.
+
+    BEWARE -- the behavior of globalns and localns is counterintuitive
+    (unless you are familiar with how eval() and exec() work).  The
+    search order is locals first, then globals.
+
+    - If no dict arguments are passed, an attempt is made to use the
+      globals from obj (or the respective module's globals for classes),
+      and these are also used as the locals.  If the object does not appear
+      to have globals, an empty dictionary is used.  For classes, the search
+      order is globals first then locals.
+
+    - If one dict argument is passed, it is used for both globals and
+      locals.
+
+    - If two dict arguments are passed, they specify globals and
+      locals, respectively.
+    """
+    if getattr(obj, '__no_type_check__', None):
+        return {}
+    Format = _lazy_annotationlib.Format
+    if format is None:
+        format = Format.VALUE
+    # Classes require a special treatment.
+    if isinstance(obj, type):
+        hints = {}
+        for base in reversed(obj.__mro__):
+            ann = _lazy_annotationlib.get_annotations(base, format=format)
+            if format == Format.STRING:
+                hints.update(ann)
+                continue
+            if globalns is None:
+                base_globals = getattr(sys.modules.get(base.__module__, None), '__dict__', {})
+            else:
+                base_globals = globalns
+            base_locals = dict(vars(base)) if localns is None else localns
+            if localns is None and globalns is None:
+                # This is surprising, but required.  Before Python 3.10,
+                # get_type_hints only evaluated the globalns of
+                # a class.  To maintain backwards compatibility, we reverse
+                # the globalns and localns order so that eval() looks into
+                # *base_globals* first rather than *base_locals*.
+                # This only affects ForwardRefs.
+                base_globals, base_locals = base_locals, base_globals
+            type_params = base.__type_params__
+            base_globals, base_locals = _add_type_params_to_scope(
+                type_params, base_globals, base_locals, True)
+            for name, value in ann.items():
+                if isinstance(value, str):
+                    value = _make_forward_ref(value, is_argument=False, is_class=True)
+                value = _eval_type(value, base_globals, base_locals, (),
+                                   format=format, owner=obj, prefer_fwd_module=True)
+                if value is None:
+                    value = type(None)
+                hints[name] = value
+        if include_extras or format == Format.STRING:
+            return hints
+        else:
+            return {k: _strip_annotations(t) for k, t in hints.items()}
+
+    hints = _lazy_annotationlib.get_annotations(obj, format=format)
+    if (
+        not hints
+        and not isinstance(obj, types.ModuleType)
+        and not callable(obj)
+        and not hasattr(obj, '__annotations__')
+        and not hasattr(obj, '__annotate__')
+    ):
+        raise TypeError(f"{obj!r} is not a module, class, or callable.")
+    if format == Format.STRING:
+        return hints
+
+    if globalns is None:
+        if isinstance(obj, types.ModuleType):
+            globalns = obj.__dict__
+        else:
+            nsobj = obj
+            # Find globalns for the unwrapped object.
+            seen = {id(nsobj)}
+            while hasattr(nsobj, '__wrapped__'):
+                nsobj = nsobj.__wrapped__
+                if id(nsobj) in seen:
+                    raise ValueError(f'wrapper loop when unwrapping {obj!r}')
+                seen.add(id(nsobj))
+            globalns = getattr(nsobj, '__globals__', {})
+        if localns is None:
+            localns = globalns
+    elif localns is None:
+        localns = globalns
+    type_params = getattr(obj, "__type_params__", ())
+    globalns, localns = _add_type_params_to_scope(type_params, globalns, localns, False)
+    for name, value in hints.items():
+        if isinstance(value, str):
+            # class-level forward refs were handled above, this must be either
+            # a module-level annotation or a function argument annotation
+            value = _make_forward_ref(
+                value,
+                is_argument=not isinstance(obj, types.ModuleType),
+                is_class=False,
+            )
+        value = _eval_type(value, globalns, localns, (), format=format, owner=obj, prefer_fwd_module=True)
+        if value is None:
+            value = type(None)
+        hints[name] = value
+    return hints if include_extras else {k: _strip_annotations(t) for k, t in hints.items()}
+
+
+def _add_type_params_to_scope(type_params, globalns, localns, is_class):
+    if not type_params:
+        return globalns, localns
+    globalns = dict(globalns)
+    localns = dict(localns)
+    for param in type_params:
+        if not is_class or param.__name__ not in globalns:
+            globalns[param.__name__] = param
+            localns.pop(param.__name__, None)
+    return globalns, localns
+
+
+def _strip_annotations(t):
+    """Strip the annotations from a given type."""
+    if isinstance(t, _GenericAlias):
+        stripped_args = tuple(_strip_annotations(a) for a in t.__args__)
+        if stripped_args == t.__args__:
+            return t
+        return t.copy_with(stripped_args)
+    if isinstance(t, GenericAlias):
+        stripped_args = tuple(_strip_annotations(a) for a in t.__args__)
+        if stripped_args == t.__args__:
+            return t
+        return GenericAlias(t.__origin__, stripped_args)
+    if isinstance(t, Union):
+        stripped_args = tuple(_strip_annotations(a) for a in t.__args__)
+        if stripped_args == t.__args__:
+            return t
+        return functools.reduce(operator.or_, stripped_args)
+
+    return t
+
+
+def __getattr__(attr):
+    # CPython lazily exports the annotationlib class under its historical name.
+    if attr == "ForwardRef":
+        obj = _lazy_annotationlib.ForwardRef
+        globals()[attr] = obj
+        return obj
+    raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
+
+
+
+def _typevar_subst(self, arg):
+    msg = "Parameters to generic types must be types."
+    arg = _type_check(arg, msg, is_argument=True)
+    if ((isinstance(arg, _GenericAlias) and arg.__origin__ is Unpack) or
+        (isinstance(arg, GenericAlias) and getattr(arg, '__unpacked__', False))):
+        raise TypeError(f"{arg} is not valid as type argument")
+    return arg
