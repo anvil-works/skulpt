@@ -38,7 +38,7 @@ Sk.builtins = {
     "reversed"  : Sk.builtin.reversed,
     "zip"       : Sk.builtin.zip_,
 
-    "BaseException"      : Sk.builtin.BaseException, 
+    "BaseException"      : Sk.builtin.BaseException,
     "AttributeError"     : Sk.builtin.AttributeError,
     "ArithmeticError"    : Sk.builtin.ArithmeticError,
     "ValueError"         : Sk.builtin.ValueError,
@@ -59,6 +59,7 @@ Sk.builtins = {
     "UnboundLocalError"  : Sk.builtin.UnboundLocalError,
     "IOError"            : Sk.builtin.IOError,
     "OSError"            : Sk.builtin.OSError,
+    "MemoryError"        : Sk.builtin.MemoryError,
     "NotImplementedError": Sk.builtin.NotImplementedError,
     "SystemExit"         : Sk.builtin.SystemExit,
     "OverflowError"      : Sk.builtin.OverflowError,
@@ -560,6 +561,8 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["filter"] = Sk.builtin.filter_;
         Sk.builtins["map"] = Sk.builtin.map_;
         Sk.builtins["zip"] = Sk.builtin.zip_;
+        Sk.builtins["BaseExceptionGroup"] = Sk.builtin.BaseExceptionGroup;
+        Sk.builtins["ExceptionGroup"] = Sk.builtin.ExceptionGroup;
         Sk.builtins["range"] = Sk.builtin.range_;
         removeBuiltin("reduce");
         removeBuiltin("xrange");
@@ -588,6 +591,8 @@ Sk.setupObjects = function (py3) {
             "builtins"
         );
     } else {
+        removeBuiltin("BaseExceptionGroup");
+        removeBuiltin("ExceptionGroup");
         Sk.builtins["range"] = new Sk.builtin.sk_method(
             {
                 $meth: Sk.builtin.range,
