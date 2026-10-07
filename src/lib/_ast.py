@@ -4,7 +4,7 @@ from _ast_native import _parse_tree, _register_type, _compile_tree, _int_field, 
 PyCF_ONLY_AST = 0x400
 PyCF_TYPE_COMMENTS = 0x1000
 PyCF_ALLOW_TOP_LEVEL_AWAIT = 0x2000
-PyCF_OPTIMIZED_AST = 0x8000
+PyCF_OPTIMIZED_AST = 0x8000 | PyCF_ONLY_AST
 
 class AST:
     _fields = ()
@@ -414,8 +414,13 @@ def _from_parser(value):
         return cls(**{name: _from_parser(item) for name, item in value.items() if name != '_type'})
     return value
 
-def _parse_ast(source, filename, mode):
-    return _from_parser(_parse_tree(source, filename, mode))
+def _preprocess_ast(tree, filename, flags, optimize):
+    from _ast_preprocess import _preprocess
+    return _preprocess(tree, filename, flags, optimize)
+
+def _parse_ast(source, filename, mode, flags=0, optimize=0):
+    tree = _from_parser(_parse_tree(source, filename, mode))
+    return _preprocess_ast(tree, filename, flags, optimize)
 
 
 
@@ -508,8 +513,10 @@ def _compile_ast(tree, filename, mode, flags, optimize):
         raise TypeError(f'expected {expected.__name__} node, got {type(tree).__name__}')
     converted = _to_parser(tree)
     snapshot = _from_parser(converted)
-    if flags & PyCF_ONLY_AST: return snapshot
     from _ast_validation import _validate
     _validate(snapshot)
+    if flags & PyCF_ONLY_AST: return _preprocess_ast(snapshot, filename, flags, optimize)
+    from _ast_preprocess import _future_from_ast
+    _future_from_ast(snapshot, filename)
     return _compile_tree(converted, filename, mode, flags, optimize)
 
