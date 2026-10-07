@@ -459,6 +459,9 @@ function setUpKlass(pyName, klass, bases, meta) {
         ht$qualname: { value: pyName, writable: true},
     });
     klass_proto.tp$mro = klass.$buildMRO();
+    for (const base of bases) {
+        Sk.abstr.registerSubclass(base, klass);
+    }
 
     Object.defineProperties(klass, {
         $typeLookup: { value: klass_proto.sk$prototypical ? fastLookup : slowLookup, writable: true },
@@ -698,6 +701,14 @@ function $allocateGetterSlot(dunder) {
     });
 }
 
+// Objects/typeobject.c: type_abstractmethods reads the local type dictionary.
+Sk.builtin.type.$getAbstractMethods = function () {
+    const name = new Sk.builtin.str("__abstractmethods__");
+    const value = this.$classDict && this.$classDict.quick$lookup(name);
+    if (value === undefined) { throw new Sk.builtin.AttributeError("__abstractmethods__"); }
+    return value;
+};
+
 Sk.builtin.type.prototype.tp$getsets = {
     __type_params__: {
         $get() {
@@ -733,6 +744,24 @@ Sk.builtin.type.prototype.tp$getsets = {
                 // make sure we always return the same tuple
             }
             return this.sk$tuple_mro;
+        },
+    },
+    __abstractmethods__: {
+        $get: Sk.builtin.type.$getAbstractMethods,
+        $set(value) {
+            if (!this.sk$klass) { throw new Sk.builtin.TypeError("cannot set __abstractmethods__ on an immutable type"); }
+            const name = new Sk.builtin.str("__abstractmethods__");
+            if (value === undefined) {
+                if (this.$classDict.quick$lookup(name) === undefined) { throw new Sk.builtin.AttributeError("__abstractmethods__"); }
+                this.$classDict.dict$delItem(name);
+                delete this.prototype.__abstractmethods__;
+                this.$isAbstract = false;
+            } else {
+                const abstract = Sk.misceval.isTrue(value);
+                this.$classDict.dict$setItem(name, value);
+                this.prototype.__abstractmethods__ = value;
+                this.$isAbstract = abstract;
+            }
         },
     },
     __dict__: {
@@ -885,6 +914,10 @@ Sk.builtin.type.prototype.tp$getsets = {
 };
 
 Sk.builtin.type.prototype.tp$methods = /**@lends {Sk.builtin.type.prototype}*/ {
+    __subclasses__: {
+        $meth() { return new Sk.builtin.list(Sk.abstr.typeSubclasses(this)); },
+        $flags: { NoArgs: true },
+    },
     mro: {
         $meth() {
             return new Sk.builtin.list(this.$buildMRO());

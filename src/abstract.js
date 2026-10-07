@@ -1004,9 +1004,43 @@ Sk.abstr.setUpInheritance = function (childName, child, parent, metaclass) {
  * @param  {FunctionConstructor} child
  *
  */
+// Objects/object.c: _PyObject_IsAbstract, shared by the descriptor getters.
+Sk.abstr.isAbstract = function (value) {
+    if (value === undefined) {
+        return false;
+    }
+    const flag = Sk.abstr.lookupAttr(value, new Sk.builtin.str("__isabstractmethod__"), true);
+    return Sk.misceval.chain(flag, result => result !== undefined && Sk.misceval.isTrue(result));
+};
+
+const subclassRegistry = new WeakMap();
+Sk.abstr.registerSubclass = function (base, child) {
+    // Class construction remains usable on hosts without weak references; the
+    // introspection API reports that host limitation instead of retaining classes.
+    if (typeof WeakRef === "undefined") {return;}
+    let refs = subclassRegistry.get(base);
+    if (!refs) {subclassRegistry.set(base, refs = new Set());}
+    refs.add(new WeakRef(child));
+};
+Sk.abstr.typeSubclasses = function (base) {
+    if (typeof WeakRef === "undefined") {
+        throw new Sk.builtin.NotImplementedError("type.__subclasses__ requires host WeakRef support");
+    }
+    const result = [];
+    const refs = subclassRegistry.get(base);
+    if (refs) {
+        for (const ref of refs) {
+            const child = ref.deref();
+            if (child === undefined) {refs.delete(ref);} else {result.push(child);}
+        }
+    }
+    return result;
+};
+
 Sk.abstr.setUpBuiltinMro = function (child) {
     let base = child.prototype.tp$base;
     const bases = base === null ? [] : [base];
+    for (const parent of bases) {Sk.abstr.registerSubclass(parent, child);}
     if (base === Sk.builtin.object || base === null) {
         Object.defineProperty(child, "sk$baseClass", { value: true, writable: true });
         Object.defineProperty(child.prototype, "sk$builtinBase", { value: child, writable: true });
