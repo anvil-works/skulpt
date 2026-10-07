@@ -723,7 +723,7 @@ const dict_view_slots = {
         switch (op) {
             case "NotEq":
             case "Eq":
-                let res;
+                let res = false;
                 if (this === other) {
                     res = true;
                 } else if (len_self === len_other) {
