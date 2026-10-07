@@ -800,10 +800,10 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     if (!dont_inherit) {flags |= inheritedCompilerFlags();}
     // Historical mandatory future features have no effect in Python 3.
-    // AST optimization/type comments, top-level await, incomplete input and Barry syntax need their own
+    // Type comments, top-level await, incomplete input and Barry syntax need their own
     // implementations, not ignored flags.
     const mandatoryMask = Sk.__future__.python3 ? 0x1be0010 : 0;
-    if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x400 : 0))) {
+    if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x8400 : 0))) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
     if (Sk.builtin.astType && source && source.ob$type.$isSubType(Sk.builtin.astType)) {
@@ -821,7 +821,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
         }
         return Sk.misceval.chain(Sk.importModule("ast", false, true), module =>
             Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_parse_ast")),
-                                              [new Sk.builtin.str(source), filename, mode]));
+                                              [new Sk.builtin.str(source), filename, mode, new Sk.builtin.int_(flags), new Sk.builtin.int_(Math.max(optimize, 0))]));
     }
     mode = mode.$jsstr();
     return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0), flags));
