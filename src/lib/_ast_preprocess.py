@@ -99,8 +99,9 @@ def _optimize_format(node):
 
 
 class _Preprocessor(ast.NodeTransformer):
-    def __init__(self, optimize, future_annotations):
+    def __init__(self, optimize, future_annotations, syntax_check_only):
         self.optimize = optimize
+        self.syntax_check_only = syntax_check_only
         self.future_annotations = future_annotations
 
     def _astfold_body(self, body):
@@ -141,20 +142,22 @@ class _Preprocessor(ast.NodeTransformer):
         return node
 
     def visit_Name(self, node):
-        if isinstance(node.ctx, ast.Load) and node.id == '__debug__':
+        if not self.syntax_check_only and isinstance(node.ctx, ast.Load) and node.id == '__debug__':
             return _make_const(node, not self.optimize)
         return node
 
     def visit_BinOp(self, node):
         self.generic_visit(node)
-        return _optimize_format(node)
+        return node if self.syntax_check_only else _optimize_format(node)
 
     def visit_MatchValue(self, node):
-        node.value = _fold_const_match_patterns(node.value)
+        if not self.syntax_check_only:
+            node.value = _fold_const_match_patterns(node.value)
         return node
 
     def visit_MatchMapping(self, node):
-        node.keys = [_fold_const_match_patterns(key) for key in node.keys]
+        if not self.syntax_check_only:
+            node.keys = [_fold_const_match_patterns(key) for key in node.keys]
         node.patterns = [self.visit(pattern) for pattern in node.patterns]
         return node
 
@@ -162,10 +165,10 @@ class _Preprocessor(ast.NodeTransformer):
 def _preprocess(tree, flags, optimize):
     future_annotations = bool(flags & 0x1000000)
     if isinstance(tree, (ast.Module, ast.Interactive)):
-        for stmt in tree.body:
-            if isinstance(stmt, ast.ImportFrom) and stmt.module == '__future__':
+        for index, stmt in enumerate(tree.body):
+            if isinstance(stmt, ast.ImportFrom) and stmt.module == '__future__' and stmt.level == 0:
                 future_annotations |= any(name.name == 'annotations' for name in stmt.names)
-            elif not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+            elif not (index == 0 and isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
                       and isinstance(stmt.value.value, str)):
                 break
-    return _Preprocessor(optimize, future_annotations).visit(tree)
+    return _Preprocessor(optimize, future_annotations, not (flags & 0x8000)).visit(tree)

@@ -472,5 +472,27 @@ class OptimizedASTRegressions(HarnessCase):
         self.assertIsInstance(ast.parse('__debug__', mode='eval', optimize=1).body, ast.Constant)
         self.assertIsInstance(ast.parse('__debug__', mode='single', optimize=1).body[0].value, ast.Constant)
 
+    def test_public_flag_validation_and_future_prefix(self):
+        self.assertEqual(ast.PyCF_OPTIMIZED_AST, 33792)
+        result = compile('__debug__', '?', 'eval', ast.PyCF_OPTIMIZED_AST, optimize=1)
+        self.assertIsInstance(result, ast.Expression)
+        self.assertIs(result.body.value, False)
+        invalid = ast.fix_missing_locations(ast.Expression(ast.Name('x', ast.Store())))
+        for flag in (ast.PyCF_ONLY_AST, ast.PyCF_OPTIMIZED_AST):
+            with self.assertRaises(ValueError):
+                compile(invalid, '?', 'eval', flag, optimize=1)
+        source = "'a'\n'b'\nfrom __future__ import annotations\nx: __debug__"
+        tree = ast.parse(source, optimize=1)
+        self.assertIs(tree.body[-1].annotation.value, False)
+        tree = ast.parse('from .__future__ import annotations\nx: __debug__', optimize=1)
+        self.assertIs(tree.body[-1].annotation.value, False)
+        for source in ('"doc"', 'def f(): "doc"'):
+            for source_or_ast in (source, ast.parse(source)):
+                tree = compile(source_or_ast, '?', 'exec', ast.PyCF_ONLY_AST, optimize=2)
+                body = tree.body[0].body if isinstance(tree.body[0], ast.FunctionDef) else tree.body
+                self.assertIsInstance(body[0], ast.Pass)
+        tree = compile("'%s' % (a,)", '?', 'exec', ast.PyCF_ONLY_AST, optimize=2)
+        self.assertIsInstance(tree.body[0].value, ast.BinOp)
+
 if __name__ == '__main__':
     unittest.main()
