@@ -65,6 +65,7 @@ require("./structseq.js");
 require("./generator.js");
 require("./coroutine.js");
 require("./async_generator.js");
+require("./async_iterator.js");
 require("./file.js");
 require("./ffi.js");
 require("./range.js");

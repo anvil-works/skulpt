@@ -10,9 +10,13 @@ for (const version of [Sk.python3, Sk.python3, Sk.python2, Sk.python2, Sk.python
     const get = name => namespace.mp$lookup(new Sk.builtin.str(name));
     assert.strictEqual(get("map"), Sk.builtins.map);
     if (version.python3) {
+        assert.notStrictEqual(get("aiter"), undefined);
+        assert.notStrictEqual(get("anext"), undefined);
         assert.strictEqual(get("bytes"), Sk.builtin.bytes);
         assert.strictEqual(get("reduce"), undefined);
     } else {
+        assert.strictEqual(get("aiter"), undefined);
+        assert.strictEqual(get("anext"), undefined);
         assert.strictEqual(get("bytes"), undefined);
         assert.notStrictEqual(get("reduce"), undefined);
     }
