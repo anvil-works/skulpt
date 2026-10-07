@@ -818,7 +818,8 @@ SymbolTable.prototype.visitExpr = function (e) {
             this.visitGenexp(e);
             break;
         case "Await":
-            if (!this.cur.coroutine) throw new Sk.builtin.SyntaxError("'await' outside async function", this.filename, e.lineno);
+            if (!this.cur.coroutine && !this.cur.comprehension) throw new Sk.builtin.SyntaxError("'await' outside async function", this.filename, e.lineno);
+            this.cur.coroutine = true;
             this.visitExpr(e.value);
             break;
         case "YieldFrom":
@@ -902,7 +903,6 @@ SymbolTable.prototype.visitExpr = function (e) {
 };
 
 SymbolTable.prototype.visitComprehension = function (lcs, startAt) {
-    if (lcs.some(lc => lc.is_async)) throw new Sk.builtin.SyntaxError("Async comprehensions are not supported by the Skulpt compiler", this.filename);
     var lc;
     var i;
     var len = lcs.length;
@@ -915,6 +915,7 @@ SymbolTable.prototype.visitComprehension = function (lcs, startAt) {
         this.visitExpr(lc.iter);
         this.cur.compIterExpr--;
         this.SEQExpr(lc.ifs);
+        if (lc.is_async) this.cur.coroutine = true;
     }
 };
 
@@ -999,6 +1000,7 @@ SymbolTable.prototype.visitComprehensionScope = function (e, name, value, key) {
     this.enterBlock(name, FunctionBlock, e, e.lineno);
     this.cur.comprehension = name;
     this.cur.generator = name === "genexpr";
+    this.cur.coroutine = !!outermost.is_async;
     this.addDef(new Sk.builtin.str(".0"), DEF_PARAM, e.lineno);
     this.cur.compIterTarget = true;
     this.visitExpr(outermost.target);
@@ -1009,7 +1011,12 @@ SymbolTable.prototype.visitComprehensionScope = function (e, name, value, key) {
         this.visitExpr(key);
     }
     this.visitExpr(value);
+    const asynchronous = this.cur.coroutine && !this.cur.generator;
     this.exitBlock();
+    if (asynchronous && !this.cur.coroutine && !this.cur.comprehension) {
+        throw new Sk.builtin.SyntaxError("asynchronous comprehension outside of an asynchronous function", this.filename, e.lineno);
+    }
+    if (asynchronous) this.cur.coroutine = true;
 };
 
 SymbolTable.prototype.visitExcepthandlers = function (handlers) {

@@ -59,7 +59,376 @@ def run_async__await__(coro):
     return buffer, result
 
 
+async def asynciter(iterable):
+    """Convert an iterable to an asynchronous iterator."""
+    for x in iterable:
+        yield x
+
+
 class CoroutineTest(unittest.TestCase):
+    def test_async_comprehension_scope_and_lazy_generators(self):
+        async def value(x): return x + 1
+        def make(): return (await value(i) for i in range(3))
+        gen = make()
+        self.assertIs(type(gen), types.AsyncGeneratorType)
+        self.assertTrue(gen.ag_code.co_flags & 0x200)
+        async def consume(): return [i async for i in gen]
+        self.assertEqual(run_async(consume()), ([], [1, 2, 3]))
+        namespace = {'value': value}
+        exec('gen = (await value(i) for i in range(2))', namespace)
+        async def consume_module(): return [i async for i in namespace['gen']]
+        self.assertEqual(run_async(consume_module()), ([], [1, 2]))
+        for source in ['[await value(i) for i in range(2)]',
+                       'def f():\n    [i async for i in gen]',
+                       'class C:\n    [i async for i in gen]',
+                       'def f():\n    [[await value(i) for i in xs] for xs in []]',
+                       'def f():\n    (i for i in await value(1))']:
+            with self.assertRaises(SyntaxError): compile(source, 'comp.py', 'exec')
+
+    def test_async_comprehension_locals_after_error(self):
+        async def values():
+            yield 1
+            raise ValueError('iteration')
+        async def f():
+            i = 'outer'
+            try: result = [i async for i in values()]
+            except ValueError:
+                self.assertEqual(i, 'outer')
+                self.assertEqual(locals()['i'], 'outer')
+            try: result = [i for i in [1, 2] if 1 / 0]
+            except ZeroDivisionError:
+                self.assertEqual(locals()['i'], 'outer')
+        self.assertEqual(run_async(f()), ([], None))
+
+    def test_comp_1(self):
+        async def f(i):
+            return i
+
+        async def run_list():
+            return [await c for c in [f(1), f(41)]]
+
+        async def run_set():
+            return {await c for c in [f(1), f(41)]}
+
+        async def run_dict1():
+            return {await c: 'a' for c in [f(1), f(41)]}
+
+        async def run_dict2():
+            return {i: await c for i, c in enumerate([f(1), f(41)])}
+
+        self.assertEqual(run_async(run_list()), ([], [1, 41]))
+        self.assertEqual(run_async(run_set()), ([], {1, 41}))
+        self.assertEqual(run_async(run_dict1()), ([], {1: 'a', 41: 'a'}))
+        self.assertEqual(run_async(run_dict2()), ([], {0: 1, 1: 41}))
+
+    def test_comp_2(self):
+        async def f(i):
+            return i
+
+        async def run_list():
+            return [s for c in [f(''), f('abc'), f(''), f(['de', 'fg'])]
+                    for s in await c]
+
+        self.assertEqual(
+            run_async(run_list()),
+            ([], ['a', 'b', 'c', 'de', 'fg']))
+
+        async def run_set():
+            return {d
+                    for c in [f([f([10, 30]),
+                                 f([20])])]
+                    for s in await c
+                    for d in await s}
+
+        self.assertEqual(
+            run_async(run_set()),
+            ([], {10, 20, 30}))
+
+        async def run_set2():
+            return {await s
+                    for c in [f([f(10), f(20)])]
+                    for s in await c}
+
+        self.assertEqual(
+            run_async(run_set2()),
+            ([], {10, 20}))
+
+    def test_comp_3(self):
+        async def f(it):
+            for i in it:
+                yield i
+
+        async def run_list():
+            return [i + 1 async for i in f([10, 20])]
+        self.assertEqual(
+            run_async(run_list()),
+            ([], [11, 21]))
+
+        async def run_set():
+            return {i + 1 async for i in f([10, 20])}
+        self.assertEqual(
+            run_async(run_set()),
+            ([], {11, 21}))
+
+        async def run_dict():
+            return {i + 1: i + 2 async for i in f([10, 20])}
+        self.assertEqual(
+            run_async(run_dict()),
+            ([], {11: 12, 21: 22}))
+
+        async def run_gen():
+            gen = (i + 1 async for i in f([10, 20]))
+            return [g + 100 async for g in gen]
+        self.assertEqual(
+            run_async(run_gen()),
+            ([], [111, 121]))
+
+    def test_comp_4(self):
+        async def f(it):
+            for i in it:
+                yield i
+
+        async def run_list():
+            return [i + 1 async for i in f([10, 20]) if i > 10]
+        self.assertEqual(
+            run_async(run_list()),
+            ([], [21]))
+
+        async def run_set():
+            return {i + 1 async for i in f([10, 20]) if i > 10}
+        self.assertEqual(
+            run_async(run_set()),
+            ([], {21}))
+
+        async def run_dict():
+            return {i + 1: i + 2 async for i in f([10, 20]) if i > 10}
+        self.assertEqual(
+            run_async(run_dict()),
+            ([], {21: 22}))
+
+        async def run_gen():
+            gen = (i + 1 async for i in f([10, 20]) if i > 10)
+            return [g + 100 async for g in gen]
+        self.assertEqual(
+            run_async(run_gen()),
+            ([], [121]))
+
+    def test_comp_4_2(self):
+        async def f(it):
+            for i in it:
+                yield i
+
+        async def run_list():
+            return [i + 10 async for i in f(range(5)) if 0 < i < 4]
+        self.assertEqual(
+            run_async(run_list()),
+            ([], [11, 12, 13]))
+
+        async def run_set():
+            return {i + 10 async for i in f(range(5)) if 0 < i < 4}
+        self.assertEqual(
+            run_async(run_set()),
+            ([], {11, 12, 13}))
+
+        async def run_dict():
+            return {i + 10: i + 100 async for i in f(range(5)) if 0 < i < 4}
+        self.assertEqual(
+            run_async(run_dict()),
+            ([], {11: 101, 12: 102, 13: 103}))
+
+        async def run_gen():
+            gen = (i + 10 async for i in f(range(5)) if 0 < i < 4)
+            return [g + 100 async for g in gen]
+        self.assertEqual(
+            run_async(run_gen()),
+            ([], [111, 112, 113]))
+
+    def test_comp_5(self):
+        async def f(it):
+            for i in it:
+                yield i
+
+        async def run_list():
+            return [i + 1 for pair in ([10, 20], [30, 40]) if pair[0] > 10
+                    async for i in f(pair) if i > 30]
+        self.assertEqual(
+            run_async(run_list()),
+            ([], [41]))
+
+    def test_comp_6(self):
+        async def f(it):
+            for i in it:
+                yield i
+
+        async def run_list():
+            return [i + 1 async for seq in f([(10, 20), (30,)])
+                    for i in seq]
+
+        self.assertEqual(
+            run_async(run_list()),
+            ([], [11, 21, 31]))
+
+    def test_comp_7(self):
+        async def f():
+            yield 1
+            yield 2
+            raise Exception('aaa')
+
+        async def run_list():
+            return [i async for i in f()]
+
+        with self.assertRaisesRegex(Exception, 'aaa'):
+            run_async(run_list())
+
+    def test_comp_8(self):
+        async def f():
+            return [i for i in [1, 2, 3]]
+
+        self.assertEqual(
+            run_async(f()),
+            ([], [1, 2, 3]))
+
+    def test_comp_9(self):
+        async def gen():
+            yield 1
+            yield 2
+        async def f():
+            l = [i async for i in gen()]
+            return [i for i in l]
+
+        self.assertEqual(
+            run_async(f()),
+            ([], [1, 2]))
+
+    def test_comp_10(self):
+        async def f():
+            xx = {i for i in [1, 2, 3]}
+            return {x: x for x in xx}
+
+        self.assertEqual(
+            run_async(f()),
+            ([], {1: 1, 2: 2, 3: 3}))
+
+    def test_nested_comp(self):
+        async def run_list_inside_list():
+            return [[i + j async for i in asynciter([1, 2])] for j in [10, 20]]
+        self.assertEqual(
+            run_async(run_list_inside_list()),
+            ([], [[11, 12], [21, 22]]))
+
+        async def run_set_inside_list():
+            return [{i + j async for i in asynciter([1, 2])} for j in [10, 20]]
+        self.assertEqual(
+            run_async(run_set_inside_list()),
+            ([], [{11, 12}, {21, 22}]))
+
+        async def run_list_inside_set():
+            return {sum([i async for i in asynciter(range(j))]) for j in [3, 5]}
+        self.assertEqual(
+            run_async(run_list_inside_set()),
+            ([], {3, 10}))
+
+        async def run_dict_inside_dict():
+            return {j: {i: i + j async for i in asynciter([1, 2])} for j in [10, 20]}
+        self.assertEqual(
+            run_async(run_dict_inside_dict()),
+            ([], {10: {1: 11, 2: 12}, 20: {1: 21, 2: 22}}))
+
+        async def run_list_inside_gen():
+            gen = ([i + j async for i in asynciter([1, 2])] for j in [10, 20])
+            return [x async for x in gen]
+        self.assertEqual(
+            run_async(run_list_inside_gen()),
+            ([], [[11, 12], [21, 22]]))
+
+        async def run_gen_inside_list():
+            gens = [(i async for i in asynciter(range(j))) for j in [3, 5]]
+            return [x for g in gens async for x in g]
+        self.assertEqual(
+            run_async(run_gen_inside_list()),
+            ([], [0, 1, 2, 0, 1, 2, 3, 4]))
+
+        async def run_gen_inside_gen():
+            gens = ((i async for i in asynciter(range(j))) for j in [3, 5])
+            return [x for g in gens async for x in g]
+        self.assertEqual(
+            run_async(run_gen_inside_gen()),
+            ([], [0, 1, 2, 0, 1, 2, 3, 4]))
+
+        async def run_list_inside_list_inside_list():
+            return [[[i + j + k async for i in asynciter([1, 2])]
+                     for j in [10, 20]]
+                    for k in [100, 200]]
+        self.assertEqual(
+            run_async(run_list_inside_list_inside_list()),
+            ([], [[[111, 112], [121, 122]], [[211, 212], [221, 222]]]))
+
+    def test_for_assign_raising_stop_async_iteration(self):
+        class BadTarget:
+            def __setitem__(self, key, value):
+                raise StopAsyncIteration(42)
+        tgt = BadTarget()
+        async def source():
+            yield 10
+
+        async def run_for():
+            with self.assertRaises(StopAsyncIteration) as cm:
+                async for tgt[0] in source():
+                    pass
+            self.assertEqual(cm.exception.args, (42,))
+            return 'end'
+        self.assertEqual(run_async(run_for()), ([], 'end'))
+
+        async def run_list():
+            with self.assertRaises(StopAsyncIteration) as cm:
+                return [0 async for tgt[0] in source()]
+            self.assertEqual(cm.exception.args, (42,))
+            return 'end'
+        self.assertEqual(run_async(run_list()), ([], 'end'))
+
+        async def run_gen():
+            gen = (0 async for tgt[0] in source())
+            a = gen.asend(None)
+            with self.assertRaises(RuntimeError) as cm:
+                await a
+            self.assertIsInstance(cm.exception.__cause__, StopAsyncIteration)
+            self.assertEqual(cm.exception.__cause__.args, (42,))
+            return 'end'
+        self.assertEqual(run_async(run_gen()), ([], 'end'))
+
+    def test_for_assign_raising_stop_async_iteration_2(self):
+        class BadIterable:
+            def __iter__(self):
+                raise StopAsyncIteration(42)
+        async def badpairs():
+            yield BadIterable()
+
+        async def run_for():
+            with self.assertRaises(StopAsyncIteration) as cm:
+                async for i, j in badpairs():
+                    pass
+            self.assertEqual(cm.exception.args, (42,))
+            return 'end'
+        self.assertEqual(run_async(run_for()), ([], 'end'))
+
+        async def run_list():
+            with self.assertRaises(StopAsyncIteration) as cm:
+                return [0 async for i, j in badpairs()]
+            self.assertEqual(cm.exception.args, (42,))
+            return 'end'
+        self.assertEqual(run_async(run_list()), ([], 'end'))
+
+        async def run_gen():
+            gen = (0 async for i, j in badpairs())
+            a = gen.asend(None)
+            with self.assertRaises(RuntimeError) as cm:
+                await a
+            self.assertIsInstance(cm.exception.__cause__, StopAsyncIteration)
+            self.assertEqual(cm.exception.__cause__.args, (42,))
+            return 'end'
+        self.assertEqual(run_async(run_gen()), ([], 'end'))
+
+
     def test_func_5(self):
         @types.coroutine
         def bar():

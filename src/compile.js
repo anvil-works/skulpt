@@ -547,8 +547,41 @@ Compiler.prototype.csetcomp = function(e) {
 // CPython codegen_comprehension inlines list/set/dict comprehensions while
 // preserving their logical scope. Distinct JS locals/cell dictionaries avoid
 // overwriting outer bindings, including when iteration raises or suspends.
+Compiler.prototype.ccomprehensionIter = function (expression, asynchronous) {
+    const value = this.vexpr(expression);
+    if (!asynchronous) return this._gr("iter", "Sk.abstr.iter(", value, ")");
+    out("$ret=Sk.builtin.getAsyncIterator(", value, ");");
+    this._checkSuspension(expression);
+    return this._gr("aiter", "$ret");
+};
+
+// codegen_comprehension_generator catches exhaustion only around ANEXT/await.
+Compiler.prototype.ccomprehensionNext = function (iterator, asynchronous, end, e) {
+    if (!asynchronous) {
+        out("$ret=Sk.abstr.iternext(", iterator, ",true);");
+        this._checkSuspension(e);
+        const next = this._gr("next", "$ret");
+        this._jumpundef(next, end);
+        return next;
+    }
+    const previousError = this._gr("comperr", "$err");
+    const exhausted = this.newBlock("async comp exhausted");
+    const ready = this.newBlock("async comp next");
+    this.setupExcept(exhausted);
+    out("$ret=Sk.builtin.getAsyncNext(", iterator, ");");
+    this._checkSuspension(e);
+    const next = this.cawait(e, "$ret", "__anext__");
+    this.endExcept();
+    this._jump(ready);
+    this.setBlock(exhausted);
+    out("if(!($err instanceof Sk.builtin.StopAsyncIteration)){throw $err;}$err=", previousError, ";");
+    this._jump(end);
+    this.setBlock(ready);
+    return next;
+};
+
 Compiler.prototype.ccomprehension = function (e, type, value, key) {
-    const iter = this._gr("iter", "Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ")");
+    const iter = this.ccomprehensionIter(e.generators[0].iter, e.generators[0].is_async);
     const outerSte = this.u.ste;
     const outerInline = this.u.inlineScope;
     const ste = this.st.getStsForAst(e);
@@ -607,7 +640,7 @@ Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, val
     var anchor = this.newBlock(type + " comp anchor");
 
     var l = generators[genIndex];
-    var iter = genIndex === 0 && outerIter ? outerIter : this._gr("iter", "Sk.abstr.iter(", this.vexpr(l.iter), ")");
+    var iter = genIndex === 0 && outerIter ? outerIter : this.ccomprehensionIter(l.iter, l.is_async);
     var lvalue;
     var lkey;
     var ifres;
@@ -619,13 +652,7 @@ Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, val
     this._jump(start);
     this.setBlock(start);
 
-    // load targets
-    out("$ret = Sk.abstr.iternext(", iter, ", true);");
-
-    this._checkSuspension(e);
-
-    nexti = this._gr("next", "$ret");
-    this._jumpundef(nexti, anchor); // todo; this should be handled by StopIteration
+    nexti = this.ccomprehensionNext(iter, l.is_async, anchor, e);
     target = this.vexpr(l.target, nexti);
 
     n = l.ifs ? l.ifs.length : 0;
@@ -708,6 +735,8 @@ Compiler.prototype.cyieldfrom = function (e, awaitIterator) {
     out(    "$ret = $gen.gi$finishYieldFrom();");
     out(    "$blk=", afterBlock, ";continue;");
     out("}");
+    // Python-level await/yield-from suspends even with host suspensions disabled.
+    this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
     out(`$blk = ${afterIter};`);
     out(`return $gen.gi$yield((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo), $ret);`);
     this.setBlock(afterBlock);
@@ -2580,10 +2609,8 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
     var n;
     var target;
     var nexti;
-    var toiter;
     var start = this.newBlock("start for " + genIndex);
     var skip = this.newBlock("skip for " + genIndex);
-    var ifCleanup = this.newBlock("if cleanup for " + genIndex);
     var end = this.newBlock("end for " + genIndex);
 
     var ge = generators[genIndex];
@@ -2595,9 +2622,7 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
         // local, which we retrieve here.
         iter = "$iter0";
     } else {
-        toiter = this.vexpr(ge.iter);
-        iter = this.gensym("iter");
-        out(iter, "=", "Sk.abstr.iter(", toiter, ");");
+        iter = this.ccomprehensionIter(ge.iter, ge.is_async);
     }
     this.u.tempsToSave.push(iter);
     this._jump(start);
@@ -2605,13 +2630,7 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
 
     this.annotateSource(elt);
 
-    // load targets
-    out ("$ret = Sk.abstr.iternext(", iter,(this.u.canSuspend?", true":", false"),");");
-
-    this._checkSuspension(elt);
-
-    nexti = this._gr("next", "$ret");
-    this._jumpundef(nexti, end); // todo; this should be handled by StopIteration
+    nexti = this.ccomprehensionNext(iter, ge.is_async, end, elt);
     target = this.vexpr(ge.target, nexti);
 
     n = ge.ifs ? ge.ifs.length : 0;
@@ -2630,6 +2649,7 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
         this.annotateSource(elt);
 
         velt = this.vexpr(elt);
+        if (this.u.ste.coroutine) velt = "new Sk.builtin.async_generator_wrapped_value(" + velt + ")";
         out(`$blk=${skip};`);
         out(`return $gen.gi$yield((susp) => $saveSuspension(susp, ${JSON.stringify(this.filename)}, $currLineNo, $currColNo), ${velt});`);
         this.setBlock(skip);
@@ -2653,7 +2673,7 @@ Compiler.prototype.cgenexp = function (e) {
     // but the code builder builds a wrapper that makes generators for normal
     // function generators, so we just do it outside (even just new'ing it
     // inline would be fine).
-    const iterator = this._gr("geniter", "Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ")");
+    const iterator = this.ccomprehensionIter(e.generators[0].iter, e.generators[0].is_async);
     return this._gr("gener", "Sk.misceval.callsimArray(", gen, ",[", iterator, "])");
 };
 
