@@ -863,6 +863,46 @@ Compiler.prototype.cboolop = function (e) {
 };
 
 
+// codegen_interpolation/codegen_formatted_value reject edited AST conversions.
+Compiler.prototype.checkConversion = function (conversion) {
+    if (![-1, 97, 114, 115].includes(conversion)) {
+        throw new Sk.builtin.SystemError("Unrecognized conversion character " + conversion);
+    }
+};
+
+// codegen_template_str: preserve expression spelling and conversion metadata,
+// evaluate nested format specifications but leave the value unformatted.
+Compiler.prototype.ctemplatestr = function (e) {
+    if (!Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, e.lineno);
+    const strings = [];
+    const interpolations = [];
+    let lastWasInterpolation = true;
+    // Like codegen_template_str, materialize the string tuple first.
+    for (const part of e.values) {
+        if (part._type === "Interpolation") {
+            if (lastWasInterpolation) strings.push("Sk.builtin.str.$emptystr");
+            lastWasInterpolation = true;
+        } else {
+            strings.push(this._gr("templatestring", this.vexpr(part)));
+            lastWasInterpolation = false;
+        }
+    }
+    if (lastWasInterpolation) strings.push("Sk.builtin.str.$emptystr");
+    for (const part of e.values) {
+        if (part._type === "Interpolation") {
+            this.checkConversion(part.conversion);
+            const value = this._gr("value", this.vexpr(part.value));
+            const expression = part.str === null ? "Sk.builtin.none.none$" : this.cconstant(part.str);
+            const conversion = part.conversion === -1 ? "Sk.builtin.none.none$"
+                : this.makeConstant("new Sk.builtin.str(", JSON.stringify(String.fromCharCode(part.conversion)), ")");
+            const spec = part.format_spec ? this.vexpr(part.format_spec) : "Sk.builtin.str.$emptystr";
+            interpolations.push(this._gr("interpolation", "new Sk.builtin.Interpolation(", value, ",", expression, ",", conversion, ",", spec, ")"));
+        }
+    }
+    return this._gr("template", "new Sk.builtin.Template(new Sk.builtin.tuple([", strings.join(","),
+        "]),new Sk.builtin.tuple([", interpolations.join(","), "]))");
+};
+
 Compiler.prototype.cjoinedstr = function (e) {
     let ret;
     Sk.asserts.assert(e._type === "JoinedStr");
@@ -884,7 +924,8 @@ Compiler.prototype.cjoinedstr = function (e) {
 };
 
 Compiler.prototype.cformattedvalue = function(e) {
-    let value = this.vexpr(e.value);
+    this.checkConversion(e.conversion);
+    let value = this._gr("value", this.vexpr(e.value));
     switch (e.conversion) {
         case 115:
             value = this._gr("value", "new Sk.builtin.str(",value,")");
@@ -1098,6 +1139,8 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
                 default:
                     throw new Sk.builtin.SyntaxError("can't use starred expression here", this.filename, e.lineno);
             }
+        case "TemplateStr":
+            return this.ctemplatestr(e);
         case "JoinedStr":
             return this.cjoinedstr(e);
         case "FormattedValue":

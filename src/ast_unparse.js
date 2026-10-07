@@ -66,7 +66,7 @@ function appendAstConstant(e) {
 }
 
 function appendInterpolation(e) {
-    const text = e._type === "Interpolation" ? e.str.value : appendAstExpr(e.value, PR_TEST + 1);
+    const text = e._type === "Interpolation" && e.str !== null ? e.str.value : appendAstExpr(e.value, PR_TEST + 1);
     let result = (text.startsWith("{") ? "{ " : "{") + text;
     if (e.conversion >= 0) {result += "!" + String.fromCharCode(e.conversion);}
     if (e.format_spec) {result += ":" + buildFtStringBody(e.format_spec.values);}
