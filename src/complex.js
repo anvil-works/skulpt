@@ -170,7 +170,6 @@ Sk.builtin.complex = Sk.abstr.buildNativeClass("complex", {
         __format__: {
             $meth(format_spec) {
                 if (Sk.builtin.checkString(format_spec)) {
-                    // currently just returns not implemented.
                     return _PyComplex_FormatAdvanced(this, format_spec);
                 }
                 throw new Sk.builtin.TypeError("__format__ requires str");
@@ -780,6 +779,7 @@ function complex_format(v, precision, format_code) {
  * @ignore
  */
 function _PyComplex_FormatAdvanced(self, format_spec) {
+    if (format_spec.v === "") {return self.tp$str();}
     throw new Sk.builtin.NotImplementedError("__format__ is not implemented for complex type.");
 }
 
