@@ -415,7 +415,29 @@ SymbolTable.prototype.visitAnnotation = function (annotation) {
     this.cur.children.pop();
 };
 
-SymbolTable.prototype.visitAnnotations = function (a, returns) {
+SymbolTable.prototype.visitAnnotations = function (a, returns, owner) {
+    const annotations = a.args.concat(a.posonlyargs, a.vararg ? [a.vararg] : [], a.kwonlyargs, a.kwarg ? [a.kwarg] : []).filter(arg => arg.annotation);
+    if (Sk.__future__.python3 && annotations.length + Number(!!returns) &&
+            (this.flags & 0x1000000 || this.cur.blockType !== ClassBlock)) {
+        const key = { _type: "Annotation", owner, lineno: owner.lineno,
+            args: { posonlyargs: [{ _type: "arg", arg: "$annotationFormat", annotation: null }], args: [],
+                defaults: [], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null } };
+        a.annotationScope = key;
+        this.enterBlock("__annotate__", FunctionBlock, key, owner.lineno);
+        this.cur.annotationScope = true;
+        this.visitArguments(key.args, owner.lineno);
+        for (const arg of annotations) this.visitExpr(arg.annotation);
+        if (returns) this.visitExpr(returns);
+        const scope = this.cur;
+        this.exitBlock();
+        if (this.flags & 0x1000000) {
+            this.cur.children.pop();
+            // Stringization emits no nested expression code or closure.
+            scope.children = [];
+            this.analyzeBlock(scope, null, {}, {});
+        }
+        return;
+    }
     if (a.posonlyargs) {
         this.visitArgAnnotations(a.posonlyargs);
     }
@@ -549,7 +571,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             if (s.decorator_list) {
                 this.SEQExpr(s.decorator_list);
             }
-            this.visitAnnotations(s.args, s.returns);
+            this.visitAnnotations(s.args, s.returns, s);
             this.enterBlock(s.name, FunctionBlock, s, s.lineno);
             this.visitArguments(s.args, s.lineno);
             this.SEQStmt(s.body);
