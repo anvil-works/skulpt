@@ -951,6 +951,11 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
     }
     //this.annotateSource(e);
     switch (e._type) {
+        case "NamedExpr": {
+            const value = this._gr("namedexpr", this.vexpr(e.value));
+            this.vexpr(e.target, value);
+            return value;
+        }
         case "BoolOp":
             return this.cboolop(e);
         case "BinOp":
@@ -2707,10 +2712,6 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
         throw new Sk.builtin.SyntaxError("can not assign to __debug__", this.filename, this.u.lineno);
     }
     Sk.asserts.assert(name.v !== "None");
-
-    if (name.v === "NotImplemented") {
-        return "Sk.builtin.NotImplemented.NotImplemented$";
-    }
 
     mangled = mangleName(this.u.private_, name).v;
     // Have to do this before looking it up in the scope
