@@ -105,8 +105,7 @@ function tp$call(args, kwargs) {
 }
 
 function tp$new(args, kwargs) {
-    // currently skulpt does not support metatypes...
-    // metatype.prototype = this
+    // Objects/typeobject.c: type_new_get_bases selects the most derived metaclass.
     if (args.length !== 3) {
         if (args.length === 1 && (kwargs === undefined || !kwargs.length)) {
             return args[0].ob$type;
@@ -144,6 +143,11 @@ function tp$new(args, kwargs) {
         throw new Sk.builtin.TypeError("type() doesn't support MRO entry resolution; use types.new_class()");
     }
 
+    const metaclass = Sk.misceval.calculateMetaclass(this.constructor, bases);
+    if (metaclass !== this.constructor && metaclass.prototype.tp$new !== tp$new) {
+        return metaclass.prototype.tp$new(args, kwargs);
+    }
+
     /**
      * @type {!typeObject}
      */
@@ -155,7 +159,7 @@ function tp$new(args, kwargs) {
         // use an array for slots - slots may be added at any index;
         this.$s = [];
     };
-    setUpKlass(name, klass, bases, this.constructor);
+    setUpKlass(name, klass, bases, metaclass);
     const klassProto = klass.prototype;
 
     // set some defaults which can be overridden by the dict object
