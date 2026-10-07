@@ -304,3 +304,18 @@ Full execution validation also restores the explicit Python 2 annotated-assignme
 The variable annotation review correction shares namespace scope analysis for nonsimple annotations and initializes conditional bookkeeping for every module annotation, including future mode. A CPython-checked regression covers nonsimple closure captures and empty conditional sets. The duplicate upstream format-name collision method remains only in its existing class-scope test module. Legacy annotation fixture/test expectations are updated to CPython 3.14: default modules no longer create __annotations__ eagerly, explicit mapping writes were removed upstream, and the separate-globals/locals exec method now accesses __annotate__ after merging namespaces.
 
 A further Spec correction retains conditional parent bookkeeping without capturing its synthetic set in an annotation function unless a simple annotation requires a membership check. The namespace regression verifies closure arity with conditional nonsimple targets in either statement order.
+
+## Exception notes and chaining descriptors
+
+`stu-dev/compiler/exception-notes` adds PEP 678 `BaseException.add_note` using
+Objects/exceptions.c optional attribute lookup and native list append. It respects
+`__notes__` descriptors, accepts string/list subclasses, preserves arbitrary
+explicit note storage and propagates getter/setter failures. The exception cause
+setter now raises Python TypeError for invalid values, rejects deletion and sets
+`__suppress_context__`; that descriptor accepts only bool and rejects deletion.
+The existing OSError type is exposed in builtins, allowing unchanged upstream
+exception subclass tests to exercise these inherited descriptors.
+
+Three unchanged CPython test_exceptions methods cover notes and chaining
+descriptors. Compiler propagation of active exceptions, implicit contexts and
+traceback introspection follow separately.
