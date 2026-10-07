@@ -369,3 +369,14 @@ class NodeTransformer(NodeVisitor):
                     setattr(node, field, new_node)
         return node
 
+
+
+def unparse(ast_obj):
+    global _Unparser
+    try:
+        unparser = _Unparser()
+    except NameError:
+        from _ast_unparse import Unparser as _Unparser
+        unparser = _Unparser()
+    return unparser.visit(ast_obj)
+

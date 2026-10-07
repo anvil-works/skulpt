@@ -109,6 +109,8 @@ count++;
 
 // Newly implemented syntax compares with CPython; the checkpoint predates it.
 for (const [name, source] of [
+    // CPython Lib/test/test_ucn.py: test_general's mixed-case names.
+    ["unicodenames", "print('\\N{LATIN SMALL LETTER f}\\N{LATIN CAPITAL LeTtEr o}\\N{LATIN SMaLl LETTER x}', ord('\\N{SNOWMAN}'))"],
     // CPython Lib/test/test_type_params.py: test_name_non_collision_02.
     ["genericfunction", "def func[A](A): return A\nprint(func(1), func.__type_params__[0].__name__)"],
     ["namedexpr", "x = (y := 1)\nprint(x, y)"],
@@ -160,10 +162,8 @@ assert.throws(() => Sk.compile("x = (", "location.py", "exec", true), (e) =>
     e.$lineno.v === 1 && e.$offset.v === 5 && e.$text.v.includes("x = ("));
 assert.throws(() => Sk.compile("if True:\npass", "indent.py", "exec", true),
     (e) => e instanceof Sk.builtin.IndentationError);
-assert.throws(() => Sk.compile("x = '\\N{SNOWMAN}'", "names.py", "exec", true),
-    (e) => e.name === "UnicodeNameDatabaseRequired" && !(e instanceof Sk.builtin.SyntaxError));
 assert.ok(Sk.compile("debugger", "debugger.py", "exec", true).code.includes("debugger;"));
-count += 4;
+count += 3;
 // AST byte columns must not leak into the existing JS traceback/debugger contract.
 for (const text of ["雪", "😀", "e\u0301"]) {
     const source = `x = "${text}"; location_pause(); missing`;

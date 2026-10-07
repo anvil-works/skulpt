@@ -7,6 +7,7 @@ const supportedEncodings = {
     utf_8: "utf-8",
     latin_1: "latin1", // browser spec
     ascii: "ascii",
+    unicode_escape: "unicode-escape",
     utf16: "utf-16",
     utf_16: "utf-16",
 };
@@ -984,10 +985,21 @@ function checkErrorsIsValid(errors) {
 function strEncode(pyStr, encoding, errors) {
     const source = pyStr.$jsstr();
     encoding = normalizeEncoding(encoding);
-    checkErrorsIsValid(errors);
+    // unicode_escape can encode every Python character, so CPython never
+    // looks up the requested error handler for this codec.
+    if (encoding !== "unicode-escape") {checkErrorsIsValid(errors);}
     let uint8;
     if (encoding === "ascii") {
         uint8 = encodeAscii(source, errors);
+    } else if (encoding === "unicode-escape") {
+        // Objects/unicodeobject.c: PyUnicode_AsUnicodeEscapeString.
+        const escapes = {"\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r"};
+        let escaped = "";
+        for (const char of source) {
+            const code = char.codePointAt(0);
+            if (escapes[char] !== undefined) {escaped += escapes[char];} else if (code >= 32 && code < 127) {escaped += char;} else if (code <= 255) {escaped += "\\x" + code.toString(16).padStart(2, "0");} else if (code <= 65535) {escaped += "\\u" + code.toString(16).padStart(4, "0");} else {escaped += "\\U" + code.toString(16).padStart(8, "0");}
+        }
+        uint8 = UtfEncoder.encode(escaped);
     } else if (encoding === "utf-8") {
         uint8 = UtfEncoder.encode(source);
     } else {
