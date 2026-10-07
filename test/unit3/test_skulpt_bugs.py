@@ -228,7 +228,7 @@ class TestExceptionProtocols(unittest.TestCase):
             def __exit__(self, *args):
                 pass
         for manager in (EnterOnly(), ExitOnly()):
-            with self.assertRaises(AttributeError):
+            with self.assertRaises(TypeError):
                 with manager:
                     self.fail("body must not run")
         self.assertEqual(entered, [])

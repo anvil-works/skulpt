@@ -678,3 +678,20 @@ Thirty-seven complete upstream ASTValidatorTests methods and their compile
 harness are unchanged, plus one edited-generic-function/immutable-constant
 regression and a conversion/identity regression (39 cases), passing both runtimes. Pattern validation follows with
 match compilation; whole-stdlib validation follows broader stdlib support.
+
+### Generator context-manager protocols
+
+CPython contextlib's generator context managers, decorators, abstract protocols,
+closing/aclosing and nullcontext run through the compiler's existing with and
+async-with paths. Selected implementations are unchanged; the private protocol
+import points to collections.abc. Missing protocol methods now raise TypeError
+in CPython's exit-before-enter order, including alternate-protocol suggestions.
+Python 2 retains its existing missing-attribute behavior. Async generators expose
+ag_suspended from their compiled frame state.
+
+Thirty-five synchronous and 27 asynchronous CPython contextlib tests, plus six
+unchanged test_with protocol-error cases and a qualified-owner regression, pass
+in both runtimes. Test bodies are
+unchanged; docstring decorators and assertion/support infrastructure are adapted.
+Slots, traceback formatting and weakref/GC cases remain deferred. ExitStack,
+stream redirection and filesystem context helpers are outside this increment.

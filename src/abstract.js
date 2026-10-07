@@ -38,6 +38,17 @@ Sk.abstr.typeName = function (obj) {
     }
 };
 
+// Objects/typeobject.c: _PyType_GetFullyQualifiedName, used by %T diagnostics.
+Sk.abstr.typeQualifiedName = function (obj) {
+    const type = obj.ob$type;
+    if (!type.sk$klass) {return type.prototype.tp$name;}
+    const qualname = type.prototype.ht$qualname.$jsstr();
+    const module = type.$classDict.quick$lookup(Sk.builtin.str.$module);
+    return Sk.builtin.checkString(module) && !["builtins", "__main__"].includes(module.v)
+        ? module.$jsstr() + "." + qualname : qualname;
+};
+
+
 const binop_name_to_symbol = {
     Add: "+",
     Sub: "-",
