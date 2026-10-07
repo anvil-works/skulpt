@@ -142,6 +142,20 @@ Sk.builtin.sk_method = Sk.abstr.buildNativeClass("builtin_function_or_method", {
                 return new Sk.builtin.str(this.$name);
             },
         },
+        // Objects/methodobject.c: meth_get__qualname__.
+        __qualname__: {
+            $get() {
+                if (this.$self === null || this.$self instanceof Sk.builtin.module) {
+                    return new Sk.builtin.str(this.$name);
+                }
+                const type = Sk.builtin.checkClass(this.$self) ? this.$self : this.$self.ob$type;
+                const qualname = Sk.abstr.gattr(type, Sk.builtin.str.$qualname);
+                if (!Sk.builtin.checkString(qualname)) {
+                    throw new Sk.builtin.TypeError("<method>.__class__.__qualname__ is not a unicode object");
+                }
+                return new Sk.builtin.str(new Sk.builtin.str(qualname).v + "." + this.$name);
+            },
+        },
         __text_signature__: {
             $get() {
                 return new Sk.builtin.str(this.$textsig);
