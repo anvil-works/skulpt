@@ -2,6 +2,10 @@
 
 This audit concerns the existing JavaScript compiler above `stu-dev/parser/direct-ast`, with the generator fix stack integrated above it. The bytecode experiment is parked. The target is Python 3.14 language behavior, not CPython bytecode, native extensions, or complete standard-library compatibility.
 
+## Current scope
+
+The active stack uses published `@anvil-works/skulpt-parser@0.0.1-dev.8` and the existing JavaScript compiler. Python async execution is parked on a separate sibling stack; Anvil host suspensions remain supported. Generator metadata, delegation temporaries and symbol-table flags are shared synchronous prerequisites rather than a reason to depend on the coroutine stack. Modern Python reserves `async` and `await` even when execution of their AST nodes is unsupported.
+
 Reference checkout: `/Users/scork/Desktop/Projects/cpython` (the project sibling `../cpython`), branch `3.14`, commit `18ef0f0cb5278fa6583b753ffaaef7f46e416ab9` (2026-10-06). All CPython links below pin that commit. The version history is a discovery checklist; the current grammar, compiler, symbol table and tests define the target behavior. This is a **source audit**, not a completed conformance run. “Implemented path” does not mean every edge case passes; suspected discrepancies need a failing CPython-derived test before a fix.
 
 The production stack passes `npm test`: 562 execution cases (2 existing disabled cases), 465 Python 2 tests, 2,984 Python 3 tests, and the generator/suspension JavaScript guards. Another 48 parser execution/error comparisons pass against the compatibility checkpoint and CPython 3.14.3. These are regression baselines, not counts of complete Python 3.14 conformance cases.
@@ -36,7 +40,7 @@ The production path is modern parser AST → `Sk.symboltable` → generated Java
 
 Implemented paths include ordinary functions/lambdas, defaults and keyword-only parameters, classes/decorators, `global`/`nonlocal`, closures, ordinary exception handling and context managers, comprehensions, generators/`yield from`, f-strings, starred containers/calls/assignment, and annotated assignments/functions. Existing execution tests remain the regression baseline; these paths need targeted modern CPython cases rather than a blanket “supported through version X” label. See `visitStmt`/`visitExpr` in the [symbol table](../src/symtable.js) and `vstmt`/`vexpr` in the [compiler](../src/compile.js).
 
-Unsupported AST statements/expressions fail explicitly in symbol-table traversal. The parser can accept syntax whose AST the compiler rejects. Its configuration currently also permits `async`/`await` as identifiers and selects only Python 2 versus 3, rather than individual Python 3 minor versions; modern reserved-keyword behavior and any version-gating contract need separate decisions and tests. [Parser options](../src/structural_ast.js).
+Unsupported AST statements/expressions fail explicitly in symbol-table traversal. The parser can accept syntax whose AST the compiler rejects. Its configuration reserves `async`/`await` in Python 3 and selects Python 2 versus 3, rather than individual Python 3 minor versions; any version-gating contract needs a separate decision and tests. [Parser options](../src/structural_ast.js).
 
 ## Inventory and order
 

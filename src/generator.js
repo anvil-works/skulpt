@@ -1,14 +1,15 @@
 /**
  * A Python generator owns a suspended compiled frame. Argument binding happens
  * before construction; the compiler installs the initial frame suspension.
- * name/qualname are Python function names.
+ * code is the original compiled function for gi_code; name/qualname are Python names.
  */
 Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
-    constructor: function generator(name, qualname) {
+    constructor: function generator(code, name, qualname) {
         if (!(this instanceof Sk.builtin.generator)) {
             throw new TypeError("bad internal call to generator, use 'new'");
         }
 
+        this.gi$scope = code;
         this.$name = name;
         this.$qualname = qualname;
         const susp = new Sk.misceval.Suspension();
@@ -121,6 +122,14 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                 }
                 this.$qualname = v.toString();
             },
+        },
+        gi_code: {
+            $get() {
+                return this.gi$scope.$code || (this.gi$scope.$code = new Sk.builtin.code(this.gi$scope.$metadata.filename, null, this.gi$scope));
+            },
+        },
+        gi_suspended: {
+            $get() { return new Sk.builtin.bool(this.gi$started && !this.gi$running && this.gi$frame !== null); },
         },
         gi_running: {
             $get() {
@@ -308,7 +317,7 @@ Sk.exportSymbol("Sk.builtin.generator", Sk.builtin.generator);
  */
 Sk.builtin.makeGenerator = function (next, data) {
     var key;
-    var gen = new Sk.builtin.generator(null, null);
+    var gen = new Sk.builtin.generator(null, null, null);
     gen.tp$iternext = next;
 
     for (key in data) {
