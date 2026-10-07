@@ -178,7 +178,11 @@ def _future_from_ast(tree, filename):
             if alias.name not in __future__.all_feature_names:
                 message = ('not a chance' if alias.name == 'braces' else
                            f'future feature {alias.name[:100]} is not defined')
-                error = SyntaxError(message, (filename, alias.lineno, alias.col_offset + 1, None))
+                error = SyntaxError(message)
+                error.filename = filename
+                error.lineno = alias.lineno
+                error.offset = alias.col_offset + 1
+                error.text = None
                 error.end_lineno = alias.end_lineno
                 error.end_offset = alias.end_col_offset + 1
                 raise error
