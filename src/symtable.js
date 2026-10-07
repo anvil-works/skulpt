@@ -305,7 +305,8 @@ SymbolTableScope.prototype.getScope = function (name) {
  * @constructor
  * @param {string} filename
  */
-function SymbolTable (filename) {
+function SymbolTable (filename, flags) {
+    this.flags = flags || 0;
     this.filename = filename;
     this.cur = null;
     this.top = null;
@@ -818,7 +819,7 @@ SymbolTable.prototype.visitExpr = function (e) {
                 this.visitExpr(e.value);
             }
             this.cur.generator = true;
-            if (this.cur.returnsValue) {
+            if (this.cur.returnsValue && !Sk.__future__.python3) {
                 throw new Sk.builtin.SyntaxError("'return' with argument inside generator", this.filename);
             }
             break;
@@ -1220,9 +1221,9 @@ SymbolTable.prototype.analyze = function () {
  * @param {Object} ast
  * @param {string} filename
  */
-Sk.symboltable = function (ast, filename) {
+Sk.symboltable = function (ast, filename, flags) {
     var i;
-    var ret = new SymbolTable(filename);
+    var ret = new SymbolTable(filename, flags);
 
     ret.enterBlock("top", ModuleBlock, ast, 0);
     ret.top = ret.cur;
