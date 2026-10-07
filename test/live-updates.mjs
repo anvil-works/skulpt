@@ -96,7 +96,7 @@ assert.equal(call(reservedModule.$d.captured), 2);
 // Rejected batches do not install an otherwise-compatible earlier definition.
 assert.throws(() => Sk.prepareModuleUpdate(after, after.replace("x * state[0]", "x - state[0]").replace("state = [5]", "state = [7]"), "live_test.py", {globals: module.$d}));
 assert.equal(call(module.$d.imported), 15);
-assert.throws(() => Sk.prepareModuleUpdate(after, after.replace("x=default()", "x=9"), "live_test.py", {globals: module.$d}));
+assert.throws(() => Sk.prepareModuleUpdate(after, after.replace("x=default()", "x=default()+1"), "live_test.py", {globals: module.$d}), /literal defaults/);
 assert.throws(() => Sk.prepareModuleUpdate(after, after + "\ndef invalid(:\n", "live_test.py", {globals: module.$d}));
 assert.equal(call(module.$d.callback), 25);
 assert.throws(() => Sk.prepareModuleUpdate(after, after + "\ndef annotated(x: missing):\n    return x\n", "live_test.py", {globals: module.$d}));
@@ -373,3 +373,253 @@ assert.throws(() => Sk.prepareModuleUpdates([{name: 'live_test', after: docstrin
 assert.equal(docstringMarkerModule.$d.initialized.v, 1);
 assert.equal(Sk.ffi.remapToJs(docstringMarkerModule.$d.state)[0], 1);
 console.log('Docstring marker does not authorize module initialization rerun');
+
+// Signature edits update captured functions and bound methods, including Python
+// keyword binding and immutable defaults, without running any module setup.
+const signatureBefore = `
+initialized = 0
+def effect():
+    global initialized
+    initialized += 1
+    return 7
+def calculate(x=effect()):
+    return x
+class Form:
+    def __init__(self, value=1):
+        self.value = value
+    def click(self, old=1):
+        return old
+form = Form()
+captured = calculate
+bound = form.click
+`;
+const signatureModule = await load(signatureBefore);
+const signatureAfter = signatureBefore.replace("def calculate(x=effect()):\n    return x", "def calculate(value=3, *extra, scale=2, **kw):\n    return (value + sum(extra) + kw.get('offset', 0)) * scale")
+    .replace("def click(self, old=1):\n        return old", "def click(self, amount=4, *, label='new'):\n        return label + str(amount)")
+    + "\ndef added(value: 'number' = (1, -2), *, enabled=True) -> 'tuple':\n    return value if enabled else None\n";
+const signaturePlan = Sk.prepareModuleUpdate(signatureBefore, signatureAfter, "live_test.py", {globals: signatureModule.$d});
+assert.equal(call(signatureModule.$d.captured), 7);
+assert.equal(signatureModule.$d.initialized.v, 1);
+signaturePlan.apply();
+assert.equal(signatureModule.$d.calculate, signatureModule.$d.captured);
+assert.equal(call(signatureModule.$d.captured), 6);
+assert.equal(call(signatureModule.$d.bound), 'new4');
+const keywordCall = (fn, args, kw) => Sk.ffi.remapToJs(Sk.misceval.callsimArray(fn, args.map(Sk.ffi.remapToPy), Object.entries(kw).flatMap(([key, value]) => [key, Sk.ffi.remapToPy(value)])));
+assert.equal(keywordCall(signatureModule.$d.captured, [1, 2, 3], {scale: 3, offset: 4}), 30);
+assert.equal(keywordCall(signatureModule.$d.bound, [], {amount: 8, label: 'got'}), 'got8');
+assert.throws(() => keywordCall(signatureModule.$d.bound, [], {old: 2}), /unexpected keyword/);
+assert.deepEqual(Array.from(call(signatureModule.$d.added)), [1, -2]);
+assert.equal(get(signatureModule.$d.added, '__annotations__').mp$subscript(new Sk.builtin.str('return')).v, 'tuple');
+assert.equal(get(signatureModule.$d.added, '__annotations__').mp$subscript(new Sk.builtin.str('value')).v, 'number');
+assert.equal(signatureModule.$d.initialized.v, 1);
+// A later body edit keeps runtime changes made to __defaults__.
+signatureModule.$d.calculate.tp$setattr(new Sk.builtin.str('__defaults__'), new Sk.builtin.tuple([new Sk.builtin.int_(9)]));
+const signatureBodyAfter = signatureAfter.replace("* scale", "* scale + 1");
+Sk.prepareModuleUpdate(signatureAfter, signatureBodyAfter, "live_test.py", {globals: signatureModule.$d}).apply();
+assert.equal(call(signatureModule.$d.captured), 19);
+for (const unsafe of [signatureBodyAfter.replace('value=3', 'value=effect()'), signatureBodyAfter + "\ndef unsafe(x: effect()):\n    return x\n"]) {
+    assert.throws(() => Sk.prepareModuleUpdate(signatureBodyAfter, unsafe, "live_test.py", {globals: signatureModule.$d}), /requires literal/);
+    assert.equal(signatureModule.$d.initialized.v, 1);
+    assert.equal(call(signatureModule.$d.captured), 19);
+}
+const defaultsAfter = signatureBodyAfter.replace('value=3', 'value=6').replace("-> 'tuple'", "-> 'values'");
+Sk.prepareModuleUpdate(signatureBodyAfter, defaultsAfter, 'live_test.py', {globals: signatureModule.$d}).apply();
+assert.equal(call(signatureModule.$d.captured), 13);
+assert.equal(get(signatureModule.$d.added, '__annotations__').mp$subscript(new Sk.builtin.str('return')).v, 'values');
+const constructorPlan = Sk.prepareModuleUpdate(defaultsAfter, defaultsAfter.replace('__init__(self, value=1)', '__init__(self, value=2)'), "live_test.py", {globals: signatureModule.$d, formClass: 'Form'});
+assert.deepEqual(Array.from(constructorPlan.resetClasses), ['Form']);
+constructorPlan.apply();
+assert.equal(get(signatureModule.$d.form, 'value').v, 1);
+console.log('Signature edits preserve captured callable identity and safely refresh literal metadata');
+
+// Dev-only executed reads distinguish deferred imports from actual captures,
+// including helpers and nested class/function initialization.
+Sk.trackModuleReads = true;
+const trackedProviderSource = 'RATE = 2\nOTHER = 10\ndef current():\n    return RATE\n';
+Sk.read = filename => filename.endsWith('/provider.py') || filename === 'provider.py' ? trackedProviderSource : previousRead(filename);
+const deferredImportSource = 'state = [1]\ndef value():\n    from provider import RATE\n    return RATE\n';
+const deferredImportModule = await load(deferredImportSource);
+assert.equal(call(deferredImportModule.$d.value), 2);
+const deferredProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+const deferredFunction = deferredImportModule.$d.value;
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates([{name: 'provider', after: trackedProviderSource.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('live_test', deferredImportSource, deferredImportModule), batchModule('provider', trackedProviderSource, deferredProvider)]
+}).apply);
+assert.equal(call(deferredFunction), 3);
+assert.equal(deferredFunction, deferredImportModule.$d.value);
+assert.equal(Sk.ffi.remapToJs(deferredImportModule.$d.state)[0], 1);
+for (const captureSource of [
+    'def outer():\n    def inner():\n        from provider import RATE\n        return RATE\n    return inner()\ncached = outer()\n',
+    'def helper():\n    from provider import RATE\n    return RATE\nclass Model:\n    cached = helper()\n',
+    'import provider\ncached = provider.current()\n'
+]) {
+    const captureModule = await load(captureSource);
+    const captureProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+    assert.throws(() => Sk.prepareModuleUpdates([{name: 'provider', after: trackedProviderSource.replace('RATE = 2', 'RATE = 4')}], {
+        modules: [batchModule('live_test', captureSource, captureModule), batchModule('provider', trackedProviderSource, captureProvider)]
+    }), /imported constants were captured/);
+    assert.equal(captureProvider.$d.RATE.v, 2);
+}
+// An unrelated initialization call is no longer assumed to read every constant.
+const unrelatedCallSource = 'RATE = 2\ndef other():\n    return 10\ncached = other()\ndef value():\n    return RATE\n';
+const unrelatedCallModule = await load(unrelatedCallSource);
+Sk.prepareModuleUpdates([{name: 'live_test', after: unrelatedCallSource.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('live_test', unrelatedCallSource, unrelatedCallModule)]
+}).apply();
+assert.equal(call(unrelatedCallModule.$d.value), 3);
+const ownCaptureSource = 'RATE = 2\ndef helper():\n    return RATE\ncached = helper()\n';
+const ownCaptureModule = await load(ownCaptureSource);
+assert.throws(() => Sk.prepareModuleUpdates([{name: 'live_test', after: ownCaptureSource.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('live_test', ownCaptureSource, ownCaptureModule)]
+}), /captured during initialization/);
+// An authorized rerun refreshes captures rather than retaining stale edges.
+const trackedRerunBefore = '# anvil: live-update-safe\ndef read():\n    from provider import RATE\n    return RATE\ncached = read()\n';
+const trackedRerunModule = await load(trackedRerunBefore);
+const trackedRerunProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+const trackedRerunAfter = trackedRerunBefore.replace('cached = read()', 'cached = 0');
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates([{name: 'live_test', after: trackedRerunAfter}], {
+    modules: [batchModule('live_test', trackedRerunBefore, trackedRerunModule), batchModule('provider', trackedProviderSource, trackedRerunProvider)]
+}).apply);
+assert.equal(trackedRerunModule.$d.cached.v, 0);
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates([{name: 'provider', after: trackedProviderSource.replace('RATE = 2', 'RATE = 4')}], {
+    modules: [batchModule('live_test', trackedRerunAfter, trackedRerunModule), batchModule('provider', trackedProviderSource, trackedRerunProvider)]
+}).apply);
+assert.equal(trackedRerunModule.$d.cached.v, 0);
+assert.equal(call(trackedRerunModule.$d.read), 4);
+// Suspended initialization collects reads on resume, with no ambient collector
+// attributing unrelated work while the initialization promise is waiting.
+let resumeTrackedImport;
+Sk.builtins.pause_tracking = new Sk.builtin.func(() => Sk.misceval.promiseToSuspension(new Promise(resolve => { resumeTrackedImport = resolve; })));
+const trackedSuspensionSource = 'import provider\ndef read():\n    pause_tracking()\n    return provider.RATE\ncached = read()\n';
+const trackedImportPromise = load(trackedSuspensionSource);
+while (!resumeTrackedImport) await new Promise(resolve => setTimeout(resolve, 0));
+const trackedSuspensionProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+assert.equal(get(trackedSuspensionProvider, 'OTHER').v, 10);
+resumeTrackedImport(Sk.builtin.none.none$);
+const trackedSuspensionModule = await trackedImportPromise;
+assert.equal(trackedSuspensionModule.$d.cached.v, 2);
+assert.throws(() => Sk.prepareModuleUpdates([{name: 'provider', after: trackedProviderSource.replace('RATE = 2', 'RATE = 5')}], {
+    modules: [batchModule('live_test', trackedSuspensionSource, trackedSuspensionModule), batchModule('provider', trackedProviderSource, trackedSuspensionProvider)]
+}), /imported constants were captured/);
+Sk.prepareModuleUpdates([{name: 'provider', after: trackedProviderSource.replace('OTHER = 10', 'OTHER = 11')}], {
+    modules: [batchModule('live_test', trackedSuspensionSource, trackedSuspensionModule), batchModule('provider', trackedProviderSource, trackedSuspensionProvider)]
+}).apply();
+assert.equal(trackedSuspensionProvider.$d.OTHER.v, 11);
+delete Sk.builtins.pause_tracking;
+// Reads through an untracked provider retain the static fallback; opaque module
+// escapes retain their existing conservative boundary even with tracking on.
+Sk.trackModuleReads = false;
+const mixedProviderSource = 'RATE = 2\ndef value():\n    return RATE\n';
+const mixedProvider = await load(mixedProviderSource);
+Sk.sysmodules.mp$ass_subscript(new Sk.builtin.str('provider'), mixedProvider);
+Sk.trackModuleReads = true;
+const mixedConsumerSource = 'def value():\n    from provider import RATE\n    return RATE\n';
+const mixedConsumer = await Sk.misceval.asyncToPromise(() => Sk.importModuleInternal_('consumer', false, 'consumer', mixedConsumerSource, undefined, false, true));
+assert.throws(() => Sk.prepareModuleUpdates([{name: 'provider', after: mixedProviderSource.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('consumer', mixedConsumerSource, mixedConsumer), batchModule('provider', mixedProviderSource, mixedProvider)]
+}), /imported constants were captured/);
+const trackedOpaqueSource = 'import provider\ndef value():\n    return provider\n';
+const trackedOpaqueModule = await load(trackedOpaqueSource);
+const trackedOpaqueProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+assert.throws(() => Sk.prepareModuleUpdates([{name: 'provider', after: trackedProviderSource.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('live_test', trackedOpaqueSource, trackedOpaqueModule), batchModule('provider', trackedProviderSource, trackedOpaqueProvider)]
+}), /module reference escapes/);
+// Reciprocal real imports need no execution order for body-only patches.
+// Captured from-imports and unrelated mutable state remain the same objects.
+const cyclicDefinitionsProvider = 'state = [10]\ndef a():\n    return state[0]\nimport consumer\nfrom consumer import b\n';
+const cyclicDefinitionsConsumer = 'state = [20]\ndef b():\n    return state[0]\nimport provider\nfrom provider import a\n';
+Sk.read = filename => filename.endsWith('/provider.py') || filename === 'provider.py' ? cyclicDefinitionsProvider
+    : filename.endsWith('/consumer.py') || filename === 'consumer.py' ? cyclicDefinitionsConsumer : previousRead(filename);
+await load('import provider\n');
+const cyclicProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+const cyclicConsumer = Sk.sysmodules.quick$lookup(new Sk.builtin.str('consumer'));
+const capturedA = cyclicConsumer.$d.a, capturedB = cyclicProvider.$d.b;
+const providerState = cyclicProvider.$d.state, consumerState = cyclicConsumer.$d.state;
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates([
+    {name: 'provider', after: cyclicDefinitionsProvider.replace('return state[0]', 'return state[0] + 1')},
+    {name: 'consumer', after: cyclicDefinitionsConsumer.replace('return state[0]', 'return state[0] + 2')}
+], {modules: [batchModule('provider', cyclicDefinitionsProvider, cyclicProvider), batchModule('consumer', cyclicDefinitionsConsumer, cyclicConsumer)]}).apply);
+assert.equal(call(capturedA), 11);
+assert.equal(call(capturedB), 22);
+assert.equal(cyclicProvider.$d.a, capturedA);
+assert.equal(cyclicConsumer.$d.b, capturedB);
+assert.equal(cyclicProvider.$d.state, providerState);
+assert.equal(cyclicConsumer.$d.state, consumerState);
+Sk.read = filename => filename.endsWith('/provider.py') || filename === 'provider.py' ? cycleProvider : filename.endsWith('/consumer.py') || filename === 'consumer.py' ? cycleConsumer : previousRead(filename);
+await load('import consumer\n');
+const trackedCycleProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+const trackedCycleConsumer = Sk.sysmodules.quick$lookup(new Sk.builtin.str('consumer'));
+assert.throws(() => Sk.prepareModuleUpdates([{name: 'provider', after: cycleProvider.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('provider', cycleProvider, trackedCycleProvider), batchModule('consumer', cycleConsumer, trackedCycleConsumer)]
+}), /dependency cycle/);
+Sk.trackModuleReads = false;
+Sk.read = previousRead;
+console.log('Tracked initialization reads support deferred imports and retain helper/class/suspension capture boundaries');
+
+// Module constant ownership follows Python scopes, so similarly named locals,
+// nested definitions/imports and class attributes do not force a restart.
+Sk.trackModuleReads = true;
+const scopedConstantSource = `
+RATE = 2
+def local_assignment():
+    RATE = 5
+    return RATE
+def local_definition():
+    def RATE():
+        return 6
+    return RATE()
+def local_import():
+    import unrelated as RATE
+    return RATE
+def local_exception():
+    try:
+        raise ValueError()
+    except ValueError as RATE:
+        return 7
+class Other:
+    RATE = 8
+    def RATE_method(self):
+        RATE = 9
+        return RATE
+def value():
+    return RATE
+`;
+const scopedConsumerSource = 'import provider\ndef value():\n    return provider.RATE\n';
+Sk.read = filename => filename.endsWith('/provider.py') || filename === 'provider.py' ? scopedConstantSource : previousRead(filename);
+const scopedConsumer = await load(scopedConsumerSource);
+const scopedProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+const scopedProviderGlobals = scopedProvider.$d;
+const scopedLocalFunction = scopedProvider.$d.local_assignment;
+Sk.prepareModuleUpdates([{name: 'provider', after: scopedConstantSource.replace('RATE = 2', 'RATE = 3')}], {
+    modules: [batchModule('live_test', scopedConsumerSource, scopedConsumer), batchModule('provider', scopedConstantSource, scopedProvider)]
+}).apply();
+assert.equal(call(scopedConsumer.$d.value), 3);
+assert.equal(call(scopedProvider.$d.value), 3);
+assert.equal(call(scopedLocalFunction), 5);
+assert.equal(call(scopedProvider.$d.local_definition), 6);
+assert.equal(call(scopedProvider.$d.local_exception), 7);
+assert.equal(get(scopedProvider.$d.Other, 'RATE').v, 8);
+assert.equal(scopedProvider.$d, scopedProviderGlobals);
+assert.equal(scopedProvider.$d.local_assignment, scopedLocalFunction);
+// Deferred global writes/deletes and global definition/import bindings remain
+// ambiguous module ownership, even if the function has not yet been called.
+for (const globalBinding of [
+    'def mutate():\n    global RATE\n    RATE = 5\n',
+    'del RATE\n',
+    'def mutate():\n    global RATE\n    def RATE():\n        return 5\n',
+    'def mutate():\n    global RATE\n    import unrelated as RATE\n',
+    'class Other:\n    global RATE\n    RATE = 5\n'
+]) {
+    const globalBindingSource = 'RATE = 2\n' + globalBinding;
+    Sk.read = filename => filename.endsWith('/provider.py') || filename === 'provider.py' ? globalBindingSource : previousRead(filename);
+    const globalBindingConsumer = await load(scopedConsumerSource);
+    const globalBindingProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('provider'));
+    const originalRate = globalBindingProvider.$d.RATE;
+    assert.throws(() => Sk.prepareModuleUpdates([{name: 'provider', after: globalBindingSource.replace('RATE = 2', 'RATE = 3')}], {
+        modules: [batchModule('live_test', scopedConsumerSource, globalBindingConsumer), batchModule('provider', globalBindingSource, globalBindingProvider)]
+    }), /multiple source bindings/);
+    assert.equal(globalBindingProvider.$d.RATE, originalRate);
+}
+Sk.trackModuleReads = false;
+Sk.read = previousRead;
+console.log('Constant binding ownership distinguishes local/class names from real module writes');

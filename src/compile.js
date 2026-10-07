@@ -3183,6 +3183,31 @@ function liveAstFingerprint(node) {
         ["lineno", "col_offset", "end_lineno", "end_col_offset", "scopeId"].includes(key) ? undefined : value);
 }
 
+// Definition metadata can be refreshed only from inert immutable literals.
+// Construct values directly: preparation must never evaluate application code.
+function liveLiteral(node) {
+    return node && (node._type === "Constant" && ["int", "float", "str", "bool", "none"].includes(node.value.type) ||
+        node._type === "UnaryOp" && ["USub", "UAdd"].includes(node.op._type) &&
+        node.operand._type === "Constant" && ["int", "float"].includes(node.operand.value.type) ||
+        node._type === "Tuple" && node.elts.every(liveLiteral));
+}
+
+function liveLiteralValue(node) {
+    if (node._type === "Tuple") return new Sk.builtin.tuple(node.elts.map(liveLiteralValue));
+    if (node._type === "UnaryOp") {
+        const value = liveLiteralValue(node.operand);
+        return node.op._type === "USub" ? Sk.abstr.numberUnaryOp(value, "USub") : value;
+    }
+    const value = node.value;
+    switch (value.type) {
+        case "int": return new Sk.builtin.int_(typeof value.value === "number" ? value.value : String(value.value));
+        case "float": return new Sk.builtin.float_(value.value);
+        case "str": return new Sk.builtin.str(value.value);
+        case "bool": return value.value ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
+        case "none": return Sk.builtin.none.none$;
+    }
+}
+
 /** Prepare an atomic set of definition updates. Non-definition statements must stay unchanged. */
 Sk.prepareModuleUpdate = function (before, after, filename, options) {
     const { globals, unwrap } = options;
@@ -3228,8 +3253,8 @@ Sk.prepareModuleUpdate = function (before, after, filename, options) {
             } else {
                 if (previous && previous._type !== "FunctionDef") reject("definition kind changed");
                 if (previous && liveAstFingerprint(previous) === liveAstFingerprint(node)) continue;
-                if (previous && liveAstFingerprint(Object.assign({}, previous, {body: []})) !== liveAstFingerprint(Object.assign({}, node, {body: []}))) {
-                    reject("signature, defaults or decorators changed for " + currentPath.join("."));
+                if (previous && liveAstFingerprint(Object.assign({}, previous, {body: [], args: null, returns: null})) !== liveAstFingerprint(Object.assign({}, node, {body: [], args: null, returns: null}))) {
+                    reject("decorators changed for " + currentPath.join("."));
                 }
                 if (node.name === "__init__" || node.name === "__new__") {
                     if (node.name !== "__init__" || path.length !== 1 || path[0] !== options.formClass) {
@@ -3237,13 +3262,29 @@ Sk.prepareModuleUpdate = function (before, after, filename, options) {
                     }
                     resetClasses.add(path[0]);
                 }
-                if (!previous && ((!path.length || !livePropertyAccessor(node)) && node.decorator_list.length || node.args.defaults.length || node.args.kw_defaults.some(Boolean))) {
-                    reject("new decorated function or default expression");
+                if (!previous && ((!path.length || !livePropertyAccessor(node)) && node.decorator_list.length)) {
+                    reject("new decorated function");
                 }
-                if (!previous && (node.returns || node.args.args.concat(node.args.kwonlyargs, [node.args.vararg, node.args.kwarg]).some(a => a && a.annotation))) {
-                    reject("new function annotations");
+                const metadataChanged = !previous || liveAstFingerprint([previous.args, previous.returns]) !== liveAstFingerprint([node.args, node.returns]);
+                let metadata;
+                if (metadataChanged) {
+                    if (!node.args.defaults.every(liveLiteral) || !node.args.kw_defaults.every(n => !n || liveLiteral(n))) {
+                        reject("signature update requires literal defaults for " + currentPath.join("."));
+                    }
+                    const annotations = n => n.args.args.concat(n.args.kwonlyargs, [n.args.vararg, n.args.kwarg])
+                        .filter(a => a && a.annotation).map(a => [a.arg, a.annotation]).concat(n.returns ? [["return", n.returns]] : []);
+                    const nextAnnotations = annotations(node);
+                    const annotationsChanged = !previous || liveAstFingerprint(annotations(previous)) !== liveAstFingerprint(nextAnnotations);
+                    if (annotationsChanged && !nextAnnotations.every(([, value]) => liveLiteral(value))) {
+                        reject("annotation update requires literals for " + currentPath.join("."));
+                    }
+                    metadata = {
+                        defaults: node.args.defaults.map(liveLiteralValue),
+                        kwdefaults: node.args.kw_defaults.map(n => n ? liveLiteralValue(n) : undefined),
+                        annotations: annotationsChanged ? nextAnnotations.flatMap(([name, value]) => [name, liveLiteralValue(value)]) : undefined,
+                    };
                 }
-                changes.push({path: currentPath, node, added: !previous, accessor: path.length && livePropertyAccessor(node)});
+                changes.push({path: currentPath, node, metadata, added: !previous, accessor: path.length && livePropertyAccessor(node)});
             }
         }
         if (oldDefs.some(n => !names.has(key(n)))) reject("a definition was removed");
@@ -3271,6 +3312,11 @@ Sk.prepareModuleUpdate = function (before, after, filename, options) {
             reject("callable was rebound: " + path.join("."));
         }
         const replacement = Sk.compileFunctionUpdate(after, filename, path, {globals, accessor: change.accessor});
+        if (change.metadata) {
+            replacement.$defaults = change.metadata.defaults.length ? change.metadata.defaults : null;
+            replacement.$kwdefs = change.metadata.kwdefaults;
+            if (change.metadata.annotations !== undefined) replacement.func_annotations = change.metadata.annotations;
+        }
         return () => {
             if (change.added) {
                 if (change.accessor) {
@@ -3278,7 +3324,7 @@ Sk.prepareModuleUpdate = function (before, after, filename, options) {
                     else cls.tp$setattr(name, new Sk.builtin.property(replacement));
                 } else if (cls) cls.tp$setattr(name, replacement);
                 else globals[name.$mangled] = replacement;
-            } else original.$replaceImplementation(replacement);
+            } else original.$replaceImplementation(replacement, {replaceDefaults: !!change.metadata, replaceAnnotations: !!change.metadata && change.metadata.annotations !== undefined});
         };
     });
     return {count: operations.length, resetClasses: [...resetClasses], apply: () => operations.forEach(fn => fn())};
@@ -3288,7 +3334,8 @@ Sk.exportSymbol("Sk.prepareModuleUpdate", Sk.prepareModuleUpdate);
 /**
  * Classify a batch against every loaded app module's source. The marker grants
  * permission to rerun initialization; it does not prove arbitrary Python side
- * effects safe. Opaque module captures and dependency cycles require a refresh.
+ * effects safe. Opaque module captures and cycles between initialization reruns
+ * require a refresh; definition patches do not execute module imports.
  */
 Sk.prepareModuleUpdates = function (changes, options) {
     const reject = message => { throw new Sk.builtin.NotImplementedError("Restart required: " + message); };
@@ -3316,30 +3363,14 @@ Sk.prepareModuleUpdates = function (changes, options) {
             else if (value && typeof value === "object") walk(value, fn, node, deferred);
         }
     };
-    const literal = node => node && (node._type === "Constant" && ["int", "float", "str", "bool", "none"].includes(node.value.type) ||
-        node._type === "UnaryOp" && ["USub", "UAdd"].includes(node.op._type) &&
-        node.operand._type === "Constant" && ["int", "float"].includes(node.operand.value.type));
-    const literalValue = node => {
-        if (node._type === "UnaryOp") {
-            const value = literalValue(node.operand);
-            return node.op._type === "USub" ? Sk.abstr.numberUnaryOp(value, "USub") : value;
-        }
-        const value = node.value;
-        switch (value.type) {
-            case "int": return new Sk.builtin.int_(typeof value.value === "number" ? value.value : String(value.value));
-            case "float": return new Sk.builtin.float_(value.value);
-            case "str": return new Sk.builtin.str(value.value);
-            case "bool": return value.value ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
-            case "none": return Sk.builtin.none.none$;
-            default: reject("unsupported constant literal");
-        }
-    };
+    const literal = node => liveLiteral(node) && node._type !== "Tuple";
     // Batch policy: literals -> capture/dependency graph -> authorized rerun
     // propagation -> provider-first ordering and callable identity restoration.
     // 1. Parse and classify definition edits and unambiguous literal bindings.
     const entries = new Map(options.modules.map(module => [module.name, Object.assign({}, module, {
         ast: Sk.parseModule(module.source, module.filename), after: module.source,
         constants: new Map(), rerun: false, safeToRerun: marked(module.source, module.filename),
+        initializationReads: Sk.getModuleInitializationReads(module.globals),
     })]));
     for (const change of changes) {
         const entry = entries.get(change.name);
@@ -3352,20 +3383,63 @@ Sk.prepareModuleUpdates = function (changes, options) {
         const oldConstants = assignments(entry.ast.body), newConstants = assignments(entry.nextAst.body);
         for (const [name, node] of oldConstants) {
             const next = newConstants.get(name);
-            if (next && liveAstFingerprint(node.value) !== liveAstFingerprint(next.value)) entry.constants.set(name, literalValue(next.value));
+            if (next && liveAstFingerprint(node.value) !== liveAstFingerprint(next.value)) entry.constants.set(name, liveLiteralValue(next.value));
         }
         // A literal is an editable constant only when it has one unambiguous
         // source binding. Later assignments, imports or definitions can shadow it.
         const writes = (ast, name) => {
+            const symbols = Sk.symboltable(ast, entry.filename);
             let count = 0;
-            walk(ast, node => {
-                if (node._type === "Name" && node.id === name && node.ctx._type !== "Load") count++;
-                if (["FunctionDef", "ClassDef"].includes(node._type) && node.name === name) count++;
-                if (["Import", "ImportFrom"].includes(node._type)) for (const alias of node.names) {
-                    if ((alias.asname || alias.name.split(".")[0]) === name) count++;
+            const visit = (node, scope, privateName) => {
+                if (!node || typeof node !== "object") {
+                    return;
                 }
-                if (node._type === "ExceptHandler" && node.name === name) count++;
-            });
+                const bindsModule = binding => {
+                    const mangled = Sk.mangleName(privateName, binding).v;
+                    return mangled === name && (scope.blockType === Sk.SYMTAB_CONSTS.ModuleBlock ||
+                        scope.getScope(Sk.fixReserved(mangled)) === Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT);
+                };
+                if (node._type === "Name" && node.ctx._type !== "Load" && bindsModule(node.id)) {
+                    count++;
+                }
+                if (["FunctionDef", "ClassDef"].includes(node._type) && bindsModule(node.name)) {
+                    count++;
+                }
+                if (["Import", "ImportFrom"].includes(node._type)) {
+                    for (const alias of node.names) {
+                        if (alias.name === "*" && scope.blockType === Sk.SYMTAB_CONSTS.ModuleBlock ||
+                            bindsModule(alias.asname || (node._type === "Import" ? alias.name.split(".")[0] : alias.name))) {
+                            count++;
+                        }
+                    }
+                }
+                if (node._type === "ExceptHandler" && node.name && bindsModule(node.name)) {
+                    count++;
+                }
+                if (node._type === "GeneratorExp") {
+                    // The first iterable runs outside the generator's scope.
+                    visit(node.generators[0].iter, scope, privateName);
+                    const generatorScope = symbols.getStsForAst(node);
+                    visit(node.generators[0].target, generatorScope, privateName);
+                    node.generators[0].ifs.forEach(child => visit(child, generatorScope, privateName));
+                    node.generators.slice(1).forEach(child => visit(child, generatorScope, privateName));
+                    visit(node.elt, generatorScope, privateName);
+                    return;
+                }
+                for (const [key, value] of Object.entries(node)) {
+                    // A definition binds its own name outside its body. Defaults,
+                    // annotations, decorators and bases also run in that outer scope.
+                    const entersScope = key === "body" && ["FunctionDef", "ClassDef", "Lambda"].includes(node._type);
+                    const childScope = entersScope ? symbols.getStsForAst(node) : scope;
+                    const childPrivateName = entersScope && node._type === "ClassDef" ? node.name : privateName;
+                    if (Array.isArray(value)) {
+                        value.forEach(child => visit(child, childScope, childPrivateName));
+                    } else if (value && typeof value === "object") {
+                        visit(value, childScope, childPrivateName);
+                    }
+                }
+            };
+            visit(ast, symbols.top);
             return count;
         };
         for (const name of entry.constants.keys()) {
@@ -3383,21 +3457,29 @@ Sk.prepareModuleUpdates = function (changes, options) {
             entry.rerun = true;
         }
         if (entry.constants.size) {
-            for (const node of entry.ast.body) {
-                const initialization = node._type === "FunctionDef" ? Object.assign({}, node, {body: []}) : node;
-                walk(initialization, (read, parent, inFunctionBody) => {
-                    if (inFunctionBody) return;
-                    // Initialization can call helpers that extract a constant;
-                    // evaluating that call graph would itself run arbitrary code.
-                    if (read._type === "Call") {
-                        if (!entry.safeToRerun) reject(entry.name + ": initialization calls may capture a constant");
-                        entry.rerun = true;
-                    }
-                    if (read._type === "Name" && read.ctx._type === "Load" && entry.constants.has(read.id)) {
-                        if (!entry.safeToRerun) reject(entry.name + ": a constant was captured during initialization");
-                        entry.rerun = true;
-                    }
-                });
+            if (entry.initializationReads) {
+                const captured = entry.initializationReads.get(entry.globals);
+                if (captured && [...entry.constants.keys()].some(name => captured.has(name))) {
+                    if (!entry.safeToRerun) reject(entry.name + ": a constant was captured during initialization");
+                    entry.rerun = true;
+                }
+            } else {
+                for (const node of entry.ast.body) {
+                    const initialization = node._type === "FunctionDef" ? Object.assign({}, node, {body: []}) : node;
+                    walk(initialization, (read, parent, inFunctionBody) => {
+                        if (inFunctionBody) return;
+                        // Initialization can call helpers that extract a constant;
+                        // evaluating that call graph would itself run arbitrary code.
+                        if (read._type === "Call") {
+                            if (!entry.safeToRerun) reject(entry.name + ": initialization calls may capture a constant");
+                            entry.rerun = true;
+                        }
+                        if (read._type === "Name" && read.ctx._type === "Load" && entry.constants.has(read.id)) {
+                            if (!entry.safeToRerun) reject(entry.name + ": a constant was captured during initialization");
+                            entry.rerun = true;
+                        }
+                    });
+                }
             }
         }
     }
@@ -3424,19 +3506,20 @@ Sk.prepareModuleUpdates = function (changes, options) {
         const sources = consumer.nextAst ? [consumer.ast, consumer.nextAst] : [consumer.ast];
         for (const source of sources) {
             const aliases = new Map();
-            walk(source, node => {
+            walk(source, (node, parent, inFunctionBody) => {
                 if (node._type === "Import") for (const alias of node.names) {
                     aliases.set(alias.asname || alias.name.split(".")[0], alias.asname ? alias.name : alias.name.split(".")[0]);
-                    if (entries.has(alias.name) && alias.name !== consumer.name) dependencies.get(consumer.name).add(alias.name);
+                    if ((!consumer.initializationReads || !inFunctionBody || consumer.rerun) && entries.has(alias.name) && alias.name !== consumer.name) dependencies.get(consumer.name).add(alias.name);
                 }
                 if (node._type === "ImportFrom") {
                     const from = importName(consumer, node);
+                    if ((!consumer.initializationReads || !inFunctionBody || consumer.rerun) && entries.has(from) && from !== consumer.name) dependencies.get(consumer.name).add(from);
                     for (const alias of node.names) {
-                        if (entries.has(from)) recordCapture(consumer.name, from, alias.name);
+                        if (entries.has(from) && (!consumer.initializationReads || !entries.get(from).initializationReads)) recordCapture(consumer.name, from, alias.name);
                         const name = from + "." + alias.name;
                         if (entries.has(name)) {
                             aliases.set(alias.asname || alias.name, name);
-                            if (name !== consumer.name) dependencies.get(consumer.name).add(name);
+                            if ((!consumer.initializationReads || !inFunctionBody || consumer.rerun) && name !== consumer.name) dependencies.get(consumer.name).add(name);
                         }
                     }
                 }
@@ -3456,16 +3539,24 @@ Sk.prepareModuleUpdates = function (changes, options) {
                 if (!["Name", "Attribute"].includes(node._type) || node.ctx._type !== "Load") return;
                 const provider = moduleFor(node);
                 if (!entries.has(provider) || provider === consumer.name) return;
-                dependencies.get(consumer.name).add(provider);
+                if (!consumer.initializationReads || consumer.rerun) dependencies.get(consumer.name).add(provider);
                 if (!parent || parent._type !== "Attribute" || parent.value !== node) {
                     opaque.get(provider).add(consumer.name);
-                } else if (!inFunctionBody) {
+                } else if (!inFunctionBody && (!consumer.initializationReads || !entries.get(provider).initializationReads)) {
                     // `cached = provider.VALUE` and default expressions capture
                     // now; `def current(): return provider.VALUE` reads the same
                     // module's current attribute on each future invocation.
                     recordCapture(consumer.name, provider, parent.attr);
                 }
             });
+        }
+    }
+    // Executed reads distinguish import-time captures from function calls that
+    // happen later, while retaining the source escape policy for opaque modules.
+    for (const consumer of entries.values()) if (consumer.initializationReads) {
+        for (const [globals, names] of consumer.initializationReads) {
+            const provider = moduleNames.get(globals);
+            if (provider) for (const name of names) recordCapture(consumer.name, provider, name);
         }
     }
     // 3. Propagate captured-value changes until every affected consumer is
@@ -3516,20 +3607,23 @@ Sk.prepareModuleUpdates = function (changes, options) {
         }
         entry.compiled = (0, eval)(Sk.compile(entry.after, entry.filename, "exec", true).code);
     }
-    // 4. Prepare a provider-first apply order; preserve callable identities after
-    // authorized initialization runs. Nothing above executes app Python code.
-    const ordered = [], visiting = new Set(), visited = new Set();
+    // 4. Install independent definition/constant patches before initialization
+    // reruns, so their imports see the prepared values. Only reruns need provider-
+    // first ordering: ordinary patches execute no app code or module imports.
+    // Preserve callable identities after each authorized initialization run.
+    const ordered = [...entries.values()].filter(entry => !entry.rerun && (entry.constants.size || entry.plan));
+    const visiting = new Set(), visited = new Set();
     const visit = entry => {
         if (visited.has(entry.name)) return;
         if (visiting.has(entry.name)) reject("module dependency cycle");
         visiting.add(entry.name);
         for (const name of dependencies.get(entry.name)) {
             const dependency = entries.get(name);
-            if (dependency.rerun || dependency.constants.size || dependency.plan) visit(dependency);
+            if (dependency.rerun) visit(dependency);
         }
         visiting.delete(entry.name); visited.add(entry.name); ordered.push(entry);
     };
-    for (const entry of entries.values()) if (entry.rerun || entry.constants.size || entry.plan) visit(entry);
+    for (const entry of entries.values()) if (entry.rerun) visit(entry);
     return {
         count: ordered.reduce((n, entry) => n + (entry.plan ? entry.plan.count : 0), 0),
         resetClasses: ordered.flatMap(entry => (entry.plan ? entry.plan.resetClasses : []).map(name => ({module: entry.name, name}))),
@@ -3541,14 +3635,12 @@ Sk.prepareModuleUpdates = function (changes, options) {
             }
             const functions = new Map(Object.entries(entry.globals).filter(([name, value]) =>
                 value instanceof Sk.builtin.func && value.func_globals === entry.globals));
-            return Sk.misceval.chain(entry.compiled(entry.globals), () => {
+            return Sk.misceval.chain(Sk.runTrackedModuleInitialization(entry.globals, () => entry.compiled(entry.globals)), () => {
                 for (const [name, original] of functions) {
                     const replacement = entry.globals[name];
                     if (!(replacement instanceof Sk.builtin.func)) reject(entry.name + ": rerun rebound a function");
-                    original.$replaceImplementation(replacement);
-                    // An explicitly authorized rerun evaluates defaults again.
-                    original.$defaults = replacement.$defaults;
-                    original.$kwdefs = replacement.$kwdefs;
+                    // An explicitly authorized rerun evaluates definition metadata again.
+                    original.$replaceImplementation(replacement, {replaceDefaults: true, replaceAnnotations: true});
                     entry.globals[name] = original;
                 }
             });

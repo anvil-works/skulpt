@@ -129,3 +129,59 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
 });
 
 Sk.exportSymbol("Sk.builtin.module", Sk.builtin.module);
+
+// IDE live updates opt into observing initialization reads. Dictionaries retain
+// their identity for functions, imports and later updates; ordinary runs use the
+// original plain dictionary.
+Sk["trackModuleReads"] = false;
+Sk.moduleReadTracking = {active: null, reads: new WeakMap()};
+Sk.trackModuleGlobals = function (globals) {
+    const tracking = Sk.moduleReadTracking;
+    const proxy = new Proxy(globals, {
+        get(target, name, receiver) {
+            if (tracking.active && typeof name === "string") {
+                let names = tracking.active.get(proxy);
+                if (!names) {
+                    tracking.active.set(proxy, (names = new Set()));
+                }
+                names.add(Sk.unfixReserved(name));
+            }
+            return Reflect.get(target, name, receiver);
+        },
+    });
+    tracking.reads.set(proxy, new Map());
+    return proxy;
+};
+
+Sk.getModuleInitializationReads = function (globals) {
+    return Sk.moduleReadTracking.reads.get(globals);
+};
+
+// Restore context around each resumed Python frame, leaving no active collector
+// while a promise waits. Nested imports install their own collector temporarily.
+Sk.runTrackedModuleInitialization = function (globals, run) {
+    const tracking = Sk.moduleReadTracking;
+    if (!tracking.reads.has(globals)) {
+        return run();
+    }
+    const reads = new Map();
+    tracking.reads.set(globals, reads);
+    const execute = fn => {
+        const previous = tracking.active;
+        tracking.active = reads;
+        try {
+            const result = fn();
+            if (!(result instanceof Sk.misceval.Suspension)) {
+                return result;
+            }
+            const suspension = new Sk.misceval.Suspension(undefined, result);
+            suspension.resume = () => execute(() => result.resume());
+            return suspension;
+        } finally {
+            tracking.active = previous;
+        }
+    };
+    return execute(run);
+};
+Sk.exportSymbol("Sk.getModuleInitializationReads", Sk.getModuleInitializationReads);
+Sk.exportSymbol("Sk.runTrackedModuleInitialization", Sk.runTrackedModuleInitialization);

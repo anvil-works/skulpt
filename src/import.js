@@ -266,6 +266,9 @@ Sk.importModuleInternal_ = function (name, dumpJS, modname, suppliedPyBody, rela
             }
 
             modscope = Sk.global["eval"](finalcode);
+            if (Sk["trackModuleReads"] && co.funcname === "$compiledmod") {
+                module["$d"] = Sk.trackModuleGlobals(module["$d"]);
+            }
             module.init$dict(pyModName, Sk.builtin.none.none$);
 
             module["$d"].__package__ = co.packagePath
@@ -295,7 +298,7 @@ Sk.importModuleInternal_ = function (name, dumpJS, modname, suppliedPyBody, rela
             // we can only setInitializing to false once the suspensions have completed
             return Sk.misceval.tryCatch(
                 () =>
-                    Sk.misceval.chain(modscope(module["$d"]), (rv) => {
+                    Sk.misceval.chain(Sk.runTrackedModuleInitialization(module["$d"], () => modscope(module["$d"])), (rv) => {
                         setInitializing(false);
                         return rv;
                     }),
