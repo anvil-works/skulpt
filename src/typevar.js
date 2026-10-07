@@ -43,11 +43,16 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
             if (covariant && contravariant) {throw new Sk.builtin.ValueError("Bivariant types are not supported.");}
             if (inferVariance && (covariant || contravariant)) {throw new Sk.builtin.ValueError("Variance cannot be specified with infer_variance.");}
             const constraints = new Sk.builtin.tuple(args.slice(1));
-            if (constraints.v.length === 1) {throw new Sk.builtin.TypeError("A single constraint is not allowed");}
-            if (constraints.v.length && !Sk.builtin.checkNone(bound)) {throw new Sk.builtin.TypeError("Constraints cannot be combined with bound=...");}
-            if (bound.ob$type === Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Bound must be a type. Got " + Sk.misceval.objectRepr(bound) + ".");}
-            if (Sk.builtin.checkString(bound)) {throw new Sk.builtin.NotImplementedError("string bounds require ForwardRef support");}
-            return new Sk.builtin.TypeVar(name, { bound, constraints, default: defaultValue, covariant, contravariant, inferVariance });
+            // typevar_new_impl validates the bound before constraint arity.
+            // Constraints themselves remain unevaluated, as in CPython 3.14.
+            return Sk.misceval.chain(
+                Sk.builtin.checkNone(bound) ? bound : Sk.builtin.callTypingFunction("_type_check", [bound, new Sk.builtin.str("Bound must be a type.")]),
+                checkedBound => {
+                    if (constraints.v.length === 1) {throw new Sk.builtin.TypeError("A single constraint is not allowed");}
+                    if (constraints.v.length && !Sk.builtin.checkNone(checkedBound)) {throw new Sk.builtin.TypeError("Constraints cannot be combined with bound=...");}
+                    return new Sk.builtin.TypeVar(name, { bound: checkedBound, constraints, default: defaultValue, covariant, contravariant, inferVariance });
+                }
+            );
         },
         $r() {
             return new Sk.builtin.str((this.$inferVariance ? "" : this.$covariant ? "+" : this.$contravariant ? "-" : "~") + this.$name.v);
@@ -71,10 +76,7 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
     methods: {
         __typing_subst__: {
             $meth(arg) {
-                if (Sk.builtin.checkNone(arg)) {return Sk.builtin.none;}
-                if (arg.ob$type === Sk.builtin.tuple) {throw new Sk.builtin.TypeError("Parameters to generic types must be types. Got " + Sk.misceval.objectRepr(arg) + ".");}
-                if (Sk.builtin.checkString(arg)) {throw new Sk.builtin.NotImplementedError("string substitutions require ForwardRef support");}
-                return arg;
+                return Sk.builtin.callTypingFunction("_typevar_subst", [this, arg]);
             },
             $flags: { OneArg: true },
         },
