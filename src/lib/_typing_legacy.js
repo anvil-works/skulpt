@@ -804,6 +804,8 @@ function $builtinmodule() {
 
 
 
+    typing._schema_key_required = pyNone;
+
     // ==================== TypedDict ====================
     // TypedDict classes carry schema metadata, but calling one produces an
     // ordinary dict. A metaclass keeps these separate, as in CPython.
@@ -844,12 +846,7 @@ function $builtinmodule() {
                     for (const [key, value] of own.$items()) {
                         annotations.mp$ass_subscript(key, value);
                         const name = key.toString();
-                        let qualifier = value;
-                        while (qualifier.$origin === typing.Annotated) {
-                            qualifier = qualifier.$args.v[0];
-                        }
-                        const isRequired = qualifier.$origin === typing.Required ||
-                            (qualifier.$origin !== typing.NotRequired && isTrue(total));
+                        const isRequired = isTrue(pyCall(typing._schema_key_required, [value, total]));
                         if (isRequired) {
                             required.add(name);
                             optional.delete(name);
