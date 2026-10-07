@@ -130,11 +130,11 @@ class FunctionPropertiesTest(FuncAttrsTest):
             return 3
         self.assertNotEqual(self.b, duplicate)
 
-    # def test_copying___code__(self):
-    #     def test(): pass
-    #     self.assertEqual(test(), None)
-    #     test.__code__ = self.b.__code__
-    #     self.assertEqual(test(), 3) # self.b always returns 3, arbitrarily
+    def test_copying___code__(self):
+        def test(): pass
+        self.assertEqual(test(), None)
+        test.__code__ = self.b.__code__
+        self.assertEqual(test(), 3) # self.b always returns 3, arbitrarily
 
     def test___builtins__(self):
         if __name__ == "__main__":
@@ -226,6 +226,89 @@ class FunctionPropertiesTest(FuncAttrsTest):
         with self.assertRaises(ValueError, msg=msg):
             cell_obj.cell_contents
 
+    def test_code_replacement_preserves_function_state(self):
+        first = 2
+        second = 40
+        def original(a=1, *, b=3):
+            "original doc"
+            return first + a + b
+        def replacement(a, *, b):
+            "replacement doc"
+            return second * a + b
+        closure = original.__closure__
+        defaults = original.__defaults__
+        kwdefaults = original.__kwdefaults__
+        name, qualname, doc = original.__name__, original.__qualname__, original.__doc__
+        original.__code__ = replacement.__code__
+        self.assertIs(original.__code__, replacement.__code__)
+        self.assertIs(original.__closure__, closure)
+        self.assertIs(original.__defaults__, defaults)
+        self.assertIs(original.__kwdefaults__, kwdefaults)
+        self.assertEqual((original.__name__, original.__qualname__, original.__doc__), (name, qualname, doc))
+        self.assertEqual(original(), 5)
+        closure[0].cell_contents = 10
+        kwdefaults['b'] = 4
+        self.assertEqual(original(2), 24)
+        self.assertEqual(first, 10)
+
+    def test_code_replacement_through_module_code_retains_defaults(self):
+        def f(a=42): return a
+        def g(a): return a
+        defaults = f.__defaults__
+        f.__code__ = compile('1', '<replacement>', 'eval')
+        self.assertEqual(f(), 1)
+        self.assertIs(f.__defaults__, defaults)
+        f.__code__ = g.__code__
+        self.assertIs(f.__defaults__, defaults)
+        self.assertEqual(f(), 42)
+        constructed = types.FunctionType(compile('1', '<constructed>', 'eval'), {}, argdefs=defaults)
+        self.assertEqual(constructed(), 1)
+        constructed.__code__ = g.__code__
+        self.assertIs(constructed.__defaults__, defaults)
+        self.assertEqual(constructed(), 42)
+
+    def test_module_code_uses_captured_builtins(self):
+        builtins = {'value': 1}
+        namespace = {'__builtins__': builtins}
+        exec('def f(): return value', namespace)
+        f = namespace['f']
+        f.__code__ = compile('value', '<replacement>', 'eval')
+        constructed = types.FunctionType(f.__code__, namespace)
+        namespace['__builtins__'] = {'value': 2}
+        self.assertIs(f.__builtins__, builtins)
+        self.assertEqual(f(), 1)
+        self.assertEqual(constructed(), 1)
+
+    def test___code__(self):
+        num_one, num_two = 7, 8
+        def a(): pass
+        def b(): return 12
+        def c(): return num_one
+        def d(): return num_two
+        def e(): return num_one, num_two
+        for func in [a, b, c, d, e]:
+            self.assertEqual(type(func.__code__), types.CodeType)
+        self.assertEqual(c(), 7)
+        self.assertEqual(d(), 8)
+        d.__code__ = c.__code__
+        self.assertEqual(c.__code__, d.__code__)
+        self.assertEqual(c(), 7)
+        # self.assertEqual(d(), 7)
+        try:
+            b.__code__ = c.__code__
+        except ValueError:
+            pass
+        else:
+            self.fail("__code__ with different numbers of free vars should "
+                      "not be possible")
+        try:
+            e.__code__ = d.__code__
+        except ValueError:
+            pass
+        else:
+            self.fail("__code__ with different numbers of free vars should "
+                      "not be possible")
+
     def test___kwdefaults__(self):
         def func(a=1, *, b=2, c=3):
             return a, b, c
@@ -241,6 +324,16 @@ class FunctionPropertiesTest(FuncAttrsTest):
             func.__kwdefaults__ = [('b', 4)]
         del func.__kwdefaults__
         self.assertIsNone(func.__kwdefaults__)
+
+    def test_invalid___code___deletion(self):
+        def func(): pass
+        with self.assertRaisesRegex(TypeError,
+                                    '__code__ must be set to a code object'):
+            func.__code__ = None
+        with self.assertRaisesRegex(TypeError,
+                                    '__code__ must be set to a code object'):
+            del func.__code__
+
 
     def test___name__(self):
         self.assertEqual(self.b.__name__, 'b')
