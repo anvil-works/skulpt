@@ -499,3 +499,29 @@ Constructed aliases use a native constant evaluator with exactly one C-int forma
 argument, keyword rejection and CPython's constant STRING rendering. Compiled
 alias evaluators retain their defaulted positional-only `.format` parameter.
 Fourteen focused cases pass both runtimes, including the review regressions.
+
+
+### TypeVar runtime and generic substitution foundation
+
+`stu-dev/compiler/type-variables` adds native TypeVar and NoDefault objects before
+compiler type-parameter lowering. It follows `Objects/typevarobject.c` for
+identity, variance, bounds/constraints/defaults, evaluator access, instance and
+subclass rejection, and substitution/default preparation. The value getters
+retain separate evaluator functions so the next compiler increment can create
+actual lazy bound/default closures. String bounds/substitutions still explicitly
+require ForwardRef support. ParamSpec, TypeVarTuple and generic compiler syntax
+remain subsequent increments.
+
+GenericAlias's former substitution stub is replaced with `_Py_make_parameters`
+and `_Py_subs_parameters`-shaped ordered traversal: skip bare classes, discover
+identity-distinct parameters, prepare defaults, recurse into nested aliases and
+list/tuple arguments, then invoke substitution protocols. Union parameter
+inspection/substitution uses the same implementation. Nineteen unchanged CPython
+TypeVar/union/generic-alias methods and two CPython-checked default/evaluator and
+substitution regressions pass (21 cases in both runtimes).
+
+Type-variable review fixes reject preparation when the parameter is absent,
+normalize non-tuple results before each subsequent preparation hook, and honor
+list-subclass iteration in discovery and substitution. Twenty-two focused cases
+pass both runtimes. The full foundation suite before these protocol fixes passed
+3,705 Python 3, 465 Python 2 and 562 execution tests.
