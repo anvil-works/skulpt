@@ -2897,7 +2897,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
         case OP_GLOBAL:
             switch (ctx) {
                 case "Load":
-                    return this._gr("loadgbl", "Sk.misceval.loadname('", mangledNoPre, "',$gbl,$builtins)");
+                    return this._gr("loadgbl", "Sk.misceval.loadGlobal('", mangledNoPre, "',$gbl,$builtins)");
                 case "Store":
                     out("$gbl.", mangledNoPre, "=", dataToStore, ";");
                     break;

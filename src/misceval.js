@@ -687,26 +687,39 @@ Sk.misceval.getBuiltins = function (globals) {
 };
 Sk.exportSymbol("Sk.misceval.getBuiltins", Sk.misceval.getBuiltins);
 
-Sk.misceval.lookupBuiltin = function (name, builtins) {
+function lookupMapping(name, mapping) {
     try {
         return Sk.misceval.retryOptionalSuspensionOrThrow(
-            Sk.abstr.objectGetItem(builtins, new Sk.builtin.str(Sk.unfixReserved(name)))
+            Sk.abstr.objectGetItem(mapping, new Sk.builtin.str(Sk.unfixReserved(name)))
         );
     } catch (err) {
         if (err instanceof Sk.builtin.KeyError) {return undefined;}
         throw err;
     }
-};
+}
+Sk.misceval.lookupBuiltin = lookupMapping;
 Sk.exportSymbol("Sk.misceval.lookupBuiltin", Sk.misceval.lookupBuiltin);
+
+function loadBuiltinName(name, builtins) {
+    const value = lookupMapping(name, builtins);
+    if (value !== undefined) {return value;}
+    throw new Sk.builtin.NameError("name '" + Sk.unfixReserved(name) + "' is not defined");
+}
 
 Sk.misceval.loadname = function (name, other, builtins) {
     const value = other[name];
-    if (value !== undefined) {return value;}
-    const builtin = Sk.misceval.lookupBuiltin(name, builtins === undefined ? Sk.misceval.getBuiltins(other) : builtins);
-    if (builtin !== undefined) {return builtin;}
-    throw new Sk.builtin.NameError("name '" + Sk.unfixReserved(name) + "' is not defined");
+    return value !== undefined ? value : loadBuiltinName(name, builtins === undefined ? Sk.misceval.getBuiltins(other) : builtins);
 };
 Sk.exportSymbol("Sk.misceval.loadname", Sk.misceval.loadname);
+
+// _PyEval_LoadGlobalStackRef: exact dictionaries use direct lookup; the slow
+// path honors globals dictionary subclasses' item lookup and missing hooks.
+Sk.misceval.loadGlobal = function (name, globals, builtins) {
+    const namespace = Sk.misceval.namespaceDict(globals);
+    const value = namespace.ob$type === Sk.builtin.dict ? namespace.mp$lookup(new Sk.builtin.str(Sk.unfixReserved(name))) : lookupMapping(name, namespace);
+    return value !== undefined ? value : loadBuiltinName(name, builtins);
+};
+Sk.exportSymbol("Sk.misceval.loadGlobal", Sk.misceval.loadGlobal);
 
 // LOAD_BUILD_CLASS consults builtins without global-name fallback.
 Sk.misceval.loadBuildClass = function (builtins) {
