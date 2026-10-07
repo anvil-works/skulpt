@@ -494,5 +494,18 @@ class OptimizedASTRegressions(HarnessCase):
         tree = compile("'%s' % (a,)", '?', 'exec', ast.PyCF_ONLY_AST, optimize=2)
         self.assertIsInstance(tree.body[0].value, ast.BinOp)
 
+    def test_edited_future_features(self):
+        for name, message in [('unknown', 'future feature unknown is not defined'), ('braces', 'not a chance')]:
+            tree = ast.fix_missing_locations(ast.Module(
+                body=[ast.ImportFrom(module='__future__', names=[ast.alias(name=name)], level=0)],
+                type_ignores=[]))
+            for flag in (0, ast.PyCF_ONLY_AST, ast.PyCF_OPTIMIZED_AST):
+                with self.assertRaises(SyntaxError) as caught:
+                    compile(tree, '<edited>', 'exec', flag, optimize=1)
+                error = caught.exception
+                self.assertEqual((error.msg, error.filename, error.lineno, error.offset, error.text,
+                                  error.end_lineno, error.end_offset),
+                                 (message, '<edited>', 1, 1, None, 1, 1))
+
 if __name__ == '__main__':
     unittest.main()
