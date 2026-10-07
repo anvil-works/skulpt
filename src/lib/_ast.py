@@ -414,13 +414,13 @@ def _from_parser(value):
         return cls(**{name: _from_parser(item) for name, item in value.items() if name != '_type'})
     return value
 
-def _preprocess_ast(tree, flags, optimize):
+def _preprocess_ast(tree, filename, flags, optimize):
     from _ast_preprocess import _preprocess
-    return _preprocess(tree, flags, optimize)
+    return _preprocess(tree, filename, flags, optimize)
 
 def _parse_ast(source, filename, mode, flags=0, optimize=0):
     tree = _from_parser(_parse_tree(source, filename, mode))
-    return _preprocess_ast(tree, flags, optimize)
+    return _preprocess_ast(tree, filename, flags, optimize)
 
 
 
@@ -515,6 +515,8 @@ def _compile_ast(tree, filename, mode, flags, optimize):
     snapshot = _from_parser(converted)
     from _ast_validation import _validate
     _validate(snapshot)
-    if flags & PyCF_ONLY_AST: return _preprocess_ast(snapshot, flags, optimize)
+    if flags & PyCF_ONLY_AST: return _preprocess_ast(snapshot, filename, flags, optimize)
+    from _ast_preprocess import _future_from_ast
+    _future_from_ast(snapshot, filename)
     return _compile_tree(converted, filename, mode, flags, optimize)
 
