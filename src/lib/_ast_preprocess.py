@@ -162,13 +162,33 @@ class _Preprocessor(ast.NodeTransformer):
         return node
 
 
-def _preprocess(tree, flags, optimize):
-    future_annotations = bool(flags & 0x1000000)
-    if isinstance(tree, (ast.Module, ast.Interactive)):
-        for index, stmt in enumerate(tree.body):
-            if isinstance(stmt, ast.ImportFrom) and stmt.module == '__future__' and stmt.level == 0:
-                future_annotations |= any(name.name == 'annotations' for name in stmt.names)
-            elif not (index == 0 and isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
-                      and isinstance(stmt.value.value, str)):
-                break
-    return _Preprocessor(optimize, future_annotations, not (flags & 0x8000)).visit(tree)
+def _future_from_ast(tree, filename):
+    # Python/future.c: future_parse and future_check_features.
+    import __future__
+    features = 0
+    if not isinstance(tree, (ast.Module, ast.Interactive)):
+        return features
+    for index, stmt in enumerate(tree.body):
+        if (index == 0 and isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str)):
+            continue
+        if not (isinstance(stmt, ast.ImportFrom) and stmt.module == '__future__' and stmt.level == 0):
+            break
+        for alias in stmt.names:
+            if alias.name not in __future__.all_feature_names:
+                message = ('not a chance' if alias.name == 'braces' else
+                           f'future feature {alias.name[:100]} is not defined')
+                error = SyntaxError(message, (filename, alias.lineno, alias.col_offset + 1, None))
+                error.end_lineno = alias.end_lineno
+                error.end_offset = alias.end_col_offset + 1
+                raise error
+            if alias.name == 'annotations':
+                features |= 0x1000000
+            elif alias.name == 'barry_as_FLUFL':
+                features |= 0x400000
+    return features
+
+
+def _preprocess(tree, filename, flags, optimize):
+    flags |= _future_from_ast(tree, filename)
+    return _Preprocessor(optimize, bool(flags & 0x1000000), not (flags & 0x8000)).visit(tree)
