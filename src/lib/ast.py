@@ -1,8 +1,8 @@
 """CPython 3.14 AST objects and traversal helpers.
 
 Schema: Parser/Python.asdl at 18ef0f0cb52. Helpers: Lib/ast.py at that revision.
-Source parsing uses Skulpt's configured parser. Statement unparsing, optimized
-ASTs and type-comment parsing are implemented in subsequent compiler layers.
+Source parsing uses Skulpt's configured parser. Type-comment parsing is
+implemented in a subsequent compiler layer.
 """
 from _ast import *
 from _ast import _parse_ast
@@ -272,6 +272,88 @@ def walk(node):
         node = todo.popleft()
         todo.extend(iter_child_nodes(node))
         yield node
+
+
+def compare(
+    a,
+    b,
+    /,
+    *,
+    compare_attributes=False,
+):
+    """Recursively compares two ASTs.
+
+    compare_attributes affects whether AST attributes are considered
+    in the comparison. If compare_attributes is False (default), then
+    attributes are ignored. Otherwise they must all be equal. This
+    option is useful to check whether the ASTs are structurally equal but
+    might differ in whitespace or similar details.
+    """
+
+    sentinel = object()  # handle the possibility of a missing attribute/field
+
+    def _compare(a, b):
+        # Compare two fields on an AST object, which may themselves be
+        # AST objects, lists of AST objects, or primitive ASDL types
+        # like identifiers and constants.
+        if isinstance(a, AST):
+            return compare(
+                a,
+                b,
+                compare_attributes=compare_attributes,
+            )
+        elif isinstance(a, list):
+            # If a field is repeated, then both objects will represent
+            # the value as a list.
+            if len(a) != len(b):
+                return False
+            for a_item, b_item in zip(a, b):
+                if not _compare(a_item, b_item):
+                    return False
+            else:
+                return True
+        else:
+            return type(a) is type(b) and a == b
+
+    def _compare_fields(a, b):
+        if a._fields != b._fields:
+            return False
+        for field in a._fields:
+            a_field = getattr(a, field, sentinel)
+            b_field = getattr(b, field, sentinel)
+            if a_field is sentinel and b_field is sentinel:
+                # both nodes are missing a field at runtime
+                continue
+            if a_field is sentinel or b_field is sentinel:
+                # one of the node is missing a field
+                return False
+            if not _compare(a_field, b_field):
+                return False
+        else:
+            return True
+
+    def _compare_attributes(a, b):
+        if a._attributes != b._attributes:
+            return False
+        # Attributes are always ints.
+        for attr in a._attributes:
+            a_attr = getattr(a, attr, sentinel)
+            b_attr = getattr(b, attr, sentinel)
+            if a_attr is sentinel and b_attr is sentinel:
+                # both nodes are missing an attribute at runtime
+                continue
+            if a_attr != b_attr:
+                return False
+        else:
+            return True
+
+    if type(a) is not type(b):
+        return False
+    if not _compare_fields(a, b):
+        return False
+    if compare_attributes and not _compare_attributes(a, b):
+        return False
+    return True
 
 
 class NodeVisitor(object):
