@@ -23,7 +23,7 @@ class DictComprehensionTest(unittest.TestCase):
                     6: None, 7: None, 8: None, 9: None}
         actual = {k: None for k in range(10)}
         self.assertEqual(actual, expected)
-        # self.assertEqual(k, "Local Variable")
+        self.assertEqual(k, "Local Variable")
 
         expected = {9: 1, 18: 2, 19: 2, 27: 3, 28: 3, 29: 3, 36: 4, 37: 4,
                     38: 4, 39: 4, 45: 5, 46: 5, 47: 5, 48: 5, 49: 5, 54: 6,
@@ -32,15 +32,16 @@ class DictComprehensionTest(unittest.TestCase):
                     76: 8, 77: 8, 78: 8, 79: 8, 81: 9, 82: 9, 83: 9, 84: 9,
                     85: 9, 86: 9, 87: 9, 88: 9, 89: 9}
         actual = {k: v for v in range(10) for k in range(v * 9, v * 10)}
-        # self.assertEqual(k, "Local Variable")
+        self.assertEqual(k, "Local Variable")
         self.assertEqual(actual, expected)
+
 
     def test_scope_isolation_from_global(self):
         expected = {0: None, 1: None, 2: None, 3: None, 4: None, 5: None,
                     6: None, 7: None, 8: None, 9: None}
         actual = {g: None for g in range(10)}
         self.assertEqual(actual, expected)
-        # self.assertEqual(g, "Global variable")
+        self.assertEqual(g, "Global variable")
 
         expected = {9: 1, 18: 2, 19: 2, 27: 3, 28: 3, 29: 3, 36: 4, 37: 4,
                     38: 4, 39: 4, 45: 5, 46: 5, 47: 5, 48: 5, 49: 5, 54: 6,
@@ -49,8 +50,9 @@ class DictComprehensionTest(unittest.TestCase):
                     76: 8, 77: 8, 78: 8, 79: 8, 81: 9, 82: 9, 83: 9, 84: 9,
                     85: 9, 86: 9, 87: 9, 88: 9, 89: 9}
         actual = {g: v for v in range(10) for g in range(v * 9, v * 10)}
-        # self.assertEqual(g, "Global variable")
+        self.assertEqual(g, "Global variable")
         self.assertEqual(actual, expected)
+
 
     def test_local_visibility(self):
         v = "Local variable"
@@ -97,6 +99,16 @@ class DictComprehensionTest(unittest.TestCase):
 
         self.assertEqual(actual, expected)
         self.assertEqual(actual_calls, expected_calls)
+
+    def test_global_visibility(self):
+        expected = {0: 'Global variable', 1: 'Global variable',
+                    2: 'Global variable', 3: 'Global variable',
+                    4: 'Global variable', 5: 'Global variable',
+                    6: 'Global variable', 7: 'Global variable',
+                    8: 'Global variable', 9: 'Global variable'}
+        actual = {k: g for k in range(10)}
+        self.assertEqual(actual, expected)
+
 
 
 if __name__ == "__main__":
