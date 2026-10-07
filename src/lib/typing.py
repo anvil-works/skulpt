@@ -1031,7 +1031,7 @@ def _eval_type(t, globalns, localns, type_params=(), *, recursive_guard=frozense
         return evaluate_forward_ref(t, globals=globalns, locals=localns,
                                     type_params=type_params, owner=owner,
                                     _recursive_guard=recursive_guard, format=format)
-    if isinstance(t, (_GenericAlias, GenericAlias, Union)):
+    if isinstance(t, (_GenericAlias, GenericAlias, Union, _UnpackGenericAlias)):
         if isinstance(t, GenericAlias):
             args = tuple(
                 _make_forward_ref(arg, parent_fwdref=parent_fwdref) if isinstance(arg, str) else arg
@@ -1054,6 +1054,8 @@ def _eval_type(t, globalns, localns, type_params=(), *, recursive_guard=frozense
         )
         if ev_args == t.__args__:
             return t
+        if isinstance(t, _UnpackGenericAlias):
+            return Unpack[ev_args[0]]
         if isinstance(t, GenericAlias):
             return GenericAlias(t.__origin__, ev_args)
         if isinstance(t, Union):
@@ -1226,7 +1228,7 @@ _legacy.ForwardRef = ForwardRef
 def _typevar_subst(self, arg):
     msg = "Parameters to generic types must be types."
     arg = _type_check(arg, msg, is_argument=True)
-    if ((isinstance(arg, _GenericAlias) and arg.__origin__ is Unpack) or
+    if ((isinstance(arg, (_GenericAlias, _UnpackGenericAlias)) and arg.__origin__ is Unpack) or
         (isinstance(arg, GenericAlias) and getattr(arg, '__unpacked__', False))):
         raise TypeError(f"{arg} is not valid as type argument")
     return arg
