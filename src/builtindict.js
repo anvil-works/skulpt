@@ -66,6 +66,7 @@ Sk.builtins = {
     "RuntimeError"       : Sk.builtin.RuntimeError,
     "RecursionError"     : Sk.builtin.RecursionError,
     "StopIteration"      : Sk.builtin.StopIteration,
+    "StopAsyncIteration" : Sk.builtin.StopAsyncIteration,
     "SyntaxError"        : Sk.builtin.SyntaxError,
     "SystemError"        : Sk.builtin.SystemError,
     "KeyboardInterrupt"  : Sk.builtin.KeyboardInterrupt,

@@ -60,6 +60,565 @@ def run_async__await__(coro):
 
 
 class CoroutineTest(unittest.TestCase):
+    def test_async_with_suppression_exception_state(self):
+        class Suppress:
+            async def __aenter__(self): pass
+            async def __aexit__(self, *args): return True
+        async def empty():
+            async with Suppress(): raise ValueError('suppressed')
+            with self.assertRaisesRegex(RuntimeError, 'No active exception'): raise
+        self.assertEqual(run_async(empty()), ([], None))
+        async def enclosing():
+            error = KeyError('outer')
+            try: raise error
+            except KeyError:
+                async with Suppress(): raise ValueError('suppressed')
+                try: raise
+                except KeyError as caught: self.assertIs(caught, error)
+        self.assertEqual(run_async(enclosing()), ([], None))
+
+    def test_async_with_truth_failure_context(self):
+        error = ValueError('body')
+        class BadTruth:
+            def __bool__(self): raise TypeError('truth')
+        class Manager:
+            async def __aenter__(self): pass
+            async def __aexit__(self, *args): return BadTruth()
+        async def f():
+            async with Manager(): raise error
+        with self.assertRaisesRegex(TypeError, 'truth') as cm: run_async(f())
+        self.assertIs(cm.exception.__context__, error)
+
+    def test_async_with_missing_exit_lookup_order(self):
+        seen = []
+        class Enter:
+            def __get__(self, obj, owner):
+                seen.append('enter lookup')
+                return lambda: None
+        class Manager:
+            __aenter__ = Enter()
+        async def f():
+            async with Manager(): pass
+        with self.assertRaisesRegex(TypeError, '__aexit__'): run_async(f())
+        self.assertEqual(seen, [])
+
+    def test_async_iteration_protocol_and_exception_state(self):
+        class Iterator:
+            def __aiter__(self): return self
+            async def __anext__(self): raise StopAsyncIteration
+        async def f():
+            async for item in Iterator(): pass
+            with self.assertRaises(RuntimeError): raise
+            error = ValueError('original')
+            try: raise error
+            except ValueError:
+                async for item in Iterator(): pass
+                with self.assertRaises(ValueError) as cm: raise
+                self.assertIs(cm.exception, error)
+        self.assertEqual(run_async(f()), ([], None))
+        class BadIterator:
+            def __aiter__(self): return self
+            def __anext__(self): return ()
+        async def invalid(value):
+            async for item in value: pass
+        for value, message in [((), '__aiter__'), (BadIterator(), '__anext__')]:
+            with self.assertRaisesRegex(TypeError, message): run_async(invalid(value))
+        class NoNext:
+            def __aiter__(self): return self
+        with self.assertRaisesRegex(TypeError, 'does not implement __anext__'):
+            run_async(invalid(NoNext()))
+        class BadValue:
+            def __iter__(self): raise StopAsyncIteration('assignment')
+        class OneValue:
+            def __aiter__(self): return self
+            async def __anext__(self): return BadValue()
+        async def assignment():
+            async for x, y in OneValue(): pass
+        with self.assertRaisesRegex(StopAsyncIteration, 'assignment'):
+            run_async(assignment())
+
+    def test_with_10(self):
+        CNT = 0
+
+        class CM:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                1/0
+
+        async def foo():
+            nonlocal CNT
+            async with CM():
+                async with CM():
+                    raise RuntimeError
+
+        try:
+            run_async(foo())
+        except ZeroDivisionError as exc:
+            self.assertTrue(exc.__context__ is not None)
+            self.assertTrue(isinstance(exc.__context__, ZeroDivisionError))
+            self.assertTrue(isinstance(exc.__context__.__context__,
+                                       RuntimeError))
+        else:
+            self.fail('exception from __aexit__ did not propagate')
+
+    def test_with_7(self):
+        class CM:
+            async def __aenter__(self):
+                return self
+
+            def __aexit__(self, *e):
+                return 444
+
+        # Exit with exception
+        async def foo():
+            async with CM():
+                1/0
+
+        try:
+            run_async(foo())
+        except TypeError as exc:
+            self.assertRegex(
+                exc.args[0],
+                "'async with' received an object from __aexit__ "
+                "that does not implement __await__: int")
+            self.assertTrue(exc.__context__ is not None)
+            self.assertTrue(isinstance(exc.__context__, ZeroDivisionError))
+        else:
+            self.fail('invalid asynchronous context manager did not fail')
+
+
+    # Skulpt's teaching harness normally records failures instead of raising.
+    # Upstream test_with_5 deliberately asserts inside assertRaises.
+    def appendResult(self, result, actual, expected, feedback):
+        if not result:
+            raise AssertionError(feedback)
+        super().appendResult(result, actual, expected, feedback)
+
+
+    def test_with_13(self):
+        CNT = 0
+
+        class CM:
+            async def __aenter__(self):
+                1/0
+
+            async def __aexit__(self, *e):
+                return True
+
+        async def foo():
+            nonlocal CNT
+            CNT += 1
+            async with CM():
+                CNT += 1000
+            CNT += 10000
+
+        with self.assertRaises(ZeroDivisionError):
+            run_async(foo())
+        self.assertEqual(CNT, 1)
+
+    def test_with_12(self):
+        CNT = 0
+
+        class CM:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                return True
+
+        async def foo():
+            nonlocal CNT
+            async with CM() as cm:
+                self.assertIs(cm.__class__, CM)
+                raise RuntimeError
+
+        run_async(foo())
+
+    def test_with_11(self):
+        CNT = 0
+
+        class CM:
+            async def __aenter__(self):
+                raise NotImplementedError
+
+            async def __aexit__(self, *e):
+                1/0
+
+        async def foo():
+            nonlocal CNT
+            async with CM():
+                raise RuntimeError
+
+        try:
+            run_async(foo())
+        except NotImplementedError as exc:
+            self.assertTrue(exc.__context__ is None)
+        else:
+            self.fail('exception from __aenter__ did not propagate')
+
+    def test_with_9(self):
+        CNT = 0
+
+        class CM:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                1/0
+
+        async def foo():
+            nonlocal CNT
+            async with CM():
+                CNT += 1
+
+        with self.assertRaises(ZeroDivisionError):
+            run_async(foo())
+
+        self.assertEqual(CNT, 1)
+
+    def test_with_8(self):
+        CNT = 0
+
+        class CM:
+            async def __aenter__(self):
+                return self
+
+            def __aexit__(self, *e):
+                return 456
+
+        # Normal exit
+        async def foo():
+            nonlocal CNT
+            async with CM():
+                CNT += 1
+        with self.assertRaisesRegex(
+                TypeError,
+                "'async with' received an object from __aexit__ "
+                "that does not implement __await__: int"):
+            run_async(foo())
+        self.assertEqual(CNT, 1)
+
+        # Exit with 'break'
+        async def foo():
+            nonlocal CNT
+            for i in range(2):
+                async with CM():
+                    CNT += 1
+                    break
+        with self.assertRaisesRegex(
+                TypeError,
+                "'async with' received an object from __aexit__ "
+                "that does not implement __await__: int"):
+            run_async(foo())
+        self.assertEqual(CNT, 2)
+
+        # Exit with 'continue'
+        async def foo():
+            nonlocal CNT
+            for i in range(2):
+                async with CM():
+                    CNT += 1
+                    continue
+        with self.assertRaisesRegex(
+                TypeError,
+                "'async with' received an object from __aexit__ "
+                "that does not implement __await__: int"):
+            run_async(foo())
+        self.assertEqual(CNT, 3)
+
+        # Exit with 'return'
+        async def foo():
+            nonlocal CNT
+            async with CM():
+                CNT += 1
+                return
+        with self.assertRaisesRegex(
+                TypeError,
+                "'async with' received an object from __aexit__ "
+                "that does not implement __await__: int"):
+            run_async(foo())
+        self.assertEqual(CNT, 4)
+
+
+    def test_with_6(self):
+        class CM:
+            def __aenter__(self):
+                return 123
+
+            def __aexit__(self, *e):
+                return 456
+
+        async def foo():
+            async with CM():
+                pass
+
+        with self.assertRaisesRegex(
+                TypeError,
+                "'async with' received an object from __aenter__ "
+                "that does not implement __await__: int"):
+            # it's important that __aexit__ wasn't called
+            run_async(foo())
+
+    def test_with_5(self):
+        # While this test doesn't make a lot of sense,
+        # it's a regression test for an early bug with opcodes
+        # generation
+
+        class CM:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                pass
+
+        async def func():
+            async with CM():
+                self.assertEqual((1, ), 1)
+
+        with self.assertRaises(AssertionError):
+            run_async(func())
+
+    def test_with_4(self):
+        class CM:
+            pass
+
+        body_executed = None
+        async def foo():
+            nonlocal body_executed
+            body_executed = False
+            async with CM():
+                body_executed = True
+
+        with self.assertRaisesRegex(TypeError, 'asynchronous context manager'):
+            run_async(foo())
+        self.assertIs(body_executed, False)
+
+    def test_with_3(self):
+        class CM:
+            def __aexit__(self):
+                pass
+
+        body_executed = None
+        async def foo():
+            nonlocal body_executed
+            body_executed = False
+            async with CM():
+                body_executed = True
+
+        with self.assertRaisesRegex(TypeError, 'asynchronous context manager'):
+            run_async(foo())
+        self.assertIs(body_executed, False)
+
+    def test_with_2(self):
+        class CM:
+            def __aenter__(self):
+                pass
+
+        body_executed = None
+        async def foo():
+            nonlocal body_executed
+            body_executed = False
+            async with CM():
+                body_executed = True
+
+        with self.assertRaisesRegex(TypeError, 'asynchronous context manager.*__aexit__'):
+            run_async(foo())
+        self.assertIs(body_executed, False)
+
+    def test_with_1(self):
+        class Manager:
+            def __init__(self, name):
+                self.name = name
+
+            async def __aenter__(self):
+                await AsyncYieldFrom(['enter-1-' + self.name,
+                                      'enter-2-' + self.name])
+                return self
+
+            async def __aexit__(self, *args):
+                await AsyncYieldFrom(['exit-1-' + self.name,
+                                      'exit-2-' + self.name])
+
+                if self.name == 'B':
+                    return True
+
+
+        async def foo():
+            async with Manager("A") as a, Manager("B") as b:
+                await AsyncYieldFrom([('managers', a.name, b.name)])
+                1/0
+
+        f = foo()
+        result, _ = run_async(f)
+
+        self.assertEqual(
+            result, ['enter-1-A', 'enter-2-A', 'enter-1-B', 'enter-2-B',
+                     ('managers', 'A', 'B'),
+                     'exit-1-B', 'exit-2-B', 'exit-1-A', 'exit-2-A']
+        )
+
+        async def foo():
+            async with Manager("A") as a, Manager("C") as c:
+                await AsyncYieldFrom([('managers', a.name, c.name)])
+                1/0
+
+        with self.assertRaises(ZeroDivisionError):
+            run_async(foo())
+
+    def test_for_stop_iteration(self):
+        class Done(Exception): pass
+
+        class AIter(StopIteration):
+            i = 0
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                if self.i:
+                    raise StopAsyncIteration
+                self.i += 1
+                return self.value
+
+        result = []
+        async def foo():
+            async for i in AIter(42):
+                result.append(i)
+            raise Done
+
+        with self.assertRaises(Done):
+            foo().send(None)
+        self.assertEqual(result, [42])
+
+    def test_for_tuple(self):
+        class Done(Exception): pass
+
+        class AIter(tuple):
+            i = 0
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                if self.i >= len(self):
+                    raise StopAsyncIteration
+                self.i += 1
+                return self[self.i - 1]
+
+        result = []
+        async def foo():
+            async for i in AIter([42]):
+                result.append(i)
+            raise Done
+
+        with self.assertRaises(Done):
+            foo().send(None)
+        self.assertEqual(result, [42])
+
+    def test_for_11(self):
+        class F:
+            def __aiter__(self):
+                return self
+            def __anext__(self):
+                return self
+            def __await__(self):
+                1 / 0
+
+        async def main():
+            async for _ in F():
+                pass
+
+        with self.assertRaisesRegex(TypeError,
+                                    'an invalid object from __anext__') as c:
+            main().send(None)
+
+        err = c.exception
+        self.assertIsInstance(err.__cause__, ZeroDivisionError)
+
+    def test_for_7(self):
+        CNT = 0
+        class AI:
+            def __aiter__(self):
+                1/0
+        async def foo():
+            nonlocal CNT
+            async for i in AI():
+                CNT += 1
+            CNT += 10
+        with self.assertRaises(ZeroDivisionError):
+            run_async(foo())
+        self.assertEqual(CNT, 0)
+
+    def test_for_1(self):
+        aiter_calls = 0
+
+        class AsyncIter:
+            def __init__(self):
+                self.i = 0
+
+            def __aiter__(self):
+                nonlocal aiter_calls
+                aiter_calls += 1
+                return self
+
+            async def __anext__(self):
+                self.i += 1
+
+                if not (self.i % 10):
+                    await AsyncYield(self.i * 10)
+
+                if self.i > 100:
+                    raise StopAsyncIteration
+
+                return self.i, self.i
+
+
+        buffer = []
+        async def test1():
+            async for i1, i2 in AsyncIter():
+                buffer.append(i1 + i2)
+
+        yielded, _ = run_async(test1())
+        # Make sure that __aiter__ was called only once
+        self.assertEqual(aiter_calls, 1)
+        self.assertEqual(yielded, [i * 100 for i in range(1, 11)])
+        self.assertEqual(buffer, [i*2 for i in range(1, 101)])
+
+
+        buffer = []
+        async def test2():
+            nonlocal buffer
+            async for i in AsyncIter():
+                buffer.append(i[0])
+                if i[0] == 20:
+                    break
+            else:
+                buffer.append('what?')
+            buffer.append('end')
+
+        yielded, _ = run_async(test2())
+        # Make sure that __aiter__ was called only once
+        self.assertEqual(aiter_calls, 2)
+        self.assertEqual(yielded, [100, 200])
+        self.assertEqual(buffer, [i for i in range(1, 21)] + ['end'])
+
+
+        buffer = []
+        async def test3():
+            nonlocal buffer
+            async for i in AsyncIter():
+                if i[0] > 20:
+                    continue
+                buffer.append(i[0])
+            else:
+                buffer.append('what?')
+            buffer.append('end')
+
+        yielded, _ = run_async(test3())
+        # Make sure that __aiter__ was called only once
+        self.assertEqual(aiter_calls, 3)
+        self.assertEqual(yielded, [i * 100 for i in range(1, 11)])
+        self.assertEqual(buffer, [i for i in range(1, 21)] +
+                                 ['what?', 'end'])
+
     def test_coroutine_names(self):
         async def f(): pass
         f.__name__ = 'custom'

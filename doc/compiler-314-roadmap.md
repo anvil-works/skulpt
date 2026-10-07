@@ -252,3 +252,11 @@ Async iteration/context managers/comprehensions/generators, iterable-coroutine d
 The coroutine review follow-up retains Python 3.14 close return values, exposes custom awaitables' actual delegate iterators through cr_await and starts await delegation with the already-validated iterator (no additional __iter__ call). Native coroutine delegates still expose the coroutine object. CPython-checked regressions cover all three contracts, including a __next__-only iterator.
 
 Coroutine name/qualified-name descriptors also preserve mutable Python strings and validate writes/deletion. The unchanged upstream coroutine-type method and a CPython-checked name/identity regression cover these attributes.
+
+## Async iteration and context managers
+
+`stu-dev/compiler/async-control-flow` lowers AsyncFor/AsyncWith using CPython codegen_async_for/codegen_async_with ordering over the existing loop and cleanup blocks. Async iteration resolves __aiter__ once and awaits each __anext__; only iterator exhaustion is caught, so assignment/body StopAsyncIteration escapes normally. Exhaustion restores the enclosing exception binding. Async context-manager enter/exit results are awaited, preserving nesting, suppression and return/break/continue cleanup. Errors in exceptional __aexit__ acquire the body exception as context using CPython's context-cycle handling. Protocol diagnostics and invalid-await causes follow GET_AITER/GET_ANEXT/GET_AWAITABLE. StopAsyncIteration is exposed as a builtin.
+
+Eighteen unchanged upstream coroutine methods cover async loops, nested context managers, entry/exit errors, await yields, suppression and invalid protocols. A CPython-checked regression covers invalid iterators, assignment errors and exception-state restoration. All selected cases pass the built CPython interpreter; async-generator/comprehension methods remain for their respective following layers. The test class adapts the teaching unittest harness to raise assertion failures, preserving the upstream method that intentionally asserts inside assertRaises. General implicit exception context across all frames/handlers remains separate work.
+
+The exception-restoration regression also exposed bare raise with no active exception throwing JavaScript undefined. It now raises CPython's RuntimeError explicitly.
