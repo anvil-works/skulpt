@@ -204,6 +204,9 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                         }
                         const wrapped = new Sk.builtin.RuntimeError("generator raised StopIteration");
                         wrapped.$cause = error;
+                        wrapped.context = error;
+                        wrapped.$suppressContext = true;
+                        wrapped.$propagating = true;
                         throw wrapped;
                     }
                     throw error;
