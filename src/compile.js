@@ -153,8 +153,15 @@ Compiler.prototype.gensym = function (hint) {
 };
 
 Compiler.prototype.niceName = function (roughName) {
-    return this.gensym(roughName.replace("<", "").replace(">", "").replace(" ", "_"));
+    return this.gensym(roughName.replace(/[^a-zA-Z0-9_$]/g, "_"));
 };
+
+// Hidden CPython compiler arguments retain their public code-object spelling.
+function compilerArgumentName(name) {
+    const names = { $annotationFormat: "format", $aliasFormat: ".format", $typeFormat: ".format",
+        $typeDefaults: ".defaults", $typeKwdefaults: ".kwdefaults" };
+    return names[name] || Sk.unfixReserved(name);
+}
 
 var reservedWords_ = Sk.builtin.str.reservedWords_; // defined in str.js
 
@@ -1459,7 +1466,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         kwonlyargcount: unit.kwonlyargcount,
         firstlineno: unit.firstlineno || 1,
         flags,
-        varnames: Array.from(varnames, name => name === "$annotationFormat" ? "format" : name === "$aliasFormat" ? ".format" : Sk.unfixReserved(name)),
+        varnames: Array.from(varnames, compilerArgumentName),
         cellvars: Array.from(cellvars, Sk.unfixReserved).sort(),
         freevars: freevars.map(Sk.unfixReserved).sort(),
     };
@@ -2199,7 +2206,7 @@ Compiler.prototype.cfromimport = function (s) {
  * @returns the name of the newly created function or generator object.
  *
  */
-Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, callback, class_for_super) {
+Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, callback, class_for_super, preparedDefaults) {
     if (typeof coname === "string") coname = new Sk.builtin.str(coname);
     if (typeof class_for_super === "string") class_for_super = new Sk.builtin.str(class_for_super);
     var frees;
@@ -2229,11 +2236,11 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
         decos = this.vseqexpr(decorator_list);
     }
     if (args && args.defaults) {
-        defaults = this.vseqexpr(args.defaults);
+        defaults = preparedDefaults ? preparedDefaults.defaults : this.vseqexpr(args.defaults);
     }
 
     if (args && args.kw_defaults) {
-        kw_defaults = args.kw_defaults.map(e => e ? this.vexpr(e) : "undefined");
+        kw_defaults = preparedDefaults ? preparedDefaults.kw_defaults : args.kw_defaults.map(e => e ? this.vexpr(e) : "undefined");
     }
     const func_annotations = this.cannotations(args, n.returns);
     if (args && args.vararg) {
@@ -2454,7 +2461,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // binding.
     //
     if (argnamesarr.length > 0) {
-        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(name => name === "$annotationFormat" ? "format" : name === "$aliasFormat" ? ".format" : name)), ";");
+        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(compilerArgumentName)), ";");
     } else {
         out(scopename, ".co_varnames=[];");
     }
@@ -2617,6 +2624,8 @@ Compiler.prototype.cDocstringOfCode = function(node) {
     case "GeneratorExp":
     case "Annotation":
     case "TypeAlias":
+    case "TypeParameters":
+    case "TypeVariable":
         return "Sk.builtin.none.none$";
 
     default:
@@ -2624,14 +2633,65 @@ Compiler.prototype.cDocstringOfCode = function(node) {
     }
 }
 
+// codegen_type_params: create parameters in order, attaching lazy evaluators.
+Compiler.prototype.ctypeparams = function (s) {
+    const parameters = [];
+    for (const param of s.type_params) {
+        const value = this._gr("typeparam", "new Sk.builtin.TypeVar(new Sk.builtin.str(", JSON.stringify(param.name),
+            "),{bound:Sk.builtin.none.none$,constraints:new Sk.builtin.tuple([]),default:Sk.builtin.NoDefault,covariant:false,contravariant:false,inferVariance:true})");
+        this.nameop(param.name, "Store", value);
+        for (const [field, expression, key] of [
+            [param.bound && param.bound._type === "Tuple" ? "constraints" : "bound", param.bound, param.boundScope],
+            ["default", param.default_value, param.defaultScope],
+        ]) {
+            if (!expression) continue;
+            const evaluate = this.buildcodeobj(key, param.name, null, key.args, function () {
+                const format = this.nameop("$typeFormat", "Load");
+                out("if(Sk.misceval.richCompareBool(", format, ",new Sk.builtin.int_(2),'Gt'))throw new Sk.builtin.NotImplementedError();");
+                out("return ", this.vexpr(expression), ";");
+            });
+            out(value, ".$", field, "=undefined;", value, ".$evaluate.", field, "=", evaluate, ";");
+        }
+        parameters.push(value);
+    }
+    return this._gr("typeparams", "new Sk.builtin.tuple([", parameters.join(","), "])");
+};
+
 Compiler.prototype.cfunction = function (s, class_for_super) {
-    var funcorgen;
-    Sk.asserts.assert(s._type === "FunctionDef");
-    funcorgen = this.buildcodeobj(s, s.name, s.decorator_list, s.args, function (scopename) {
+    const body = function () {
         this.vseqstmt(s.body);
-        out("return Sk.builtin.none.none$;"); // if we fall off the bottom, we want the ret to be None
-    }, class_for_super);
-    this.nameop(s.name, "Store", funcorgen);
+        out("return Sk.builtin.none.none$;");
+    };
+    let func;
+    if (!s.type_params.length) {
+        func = this.buildcodeobj(s, s.name, s.decorator_list, s.args, body, class_for_super);
+    } else {
+        const decorators = this.vseqexpr(s.decorator_list);
+        const defaults = this.vseqexpr(s.args.defaults);
+        const kwdefaults = s.args.kw_defaults.map(e => e ? this.vexpr(e) : "undefined");
+        const values = [];
+        if (defaults.length) values.push(this._gr("defaults", "new Sk.builtin.tuple([", defaults.join(","), "])"));
+        if (s.args.kw_defaults.some(e => e)) values.push(this._gr("kwdefaults", "[", kwdefaults.join(","), "]"));
+        const key = s.typeParamScope;
+        const wrapper = this.buildcodeobj(key, "<generic parameters of " + s.name + ">", null, key.args, function () {
+            const params = this.ctypeparams(s);
+            const prepared = {
+                defaults: defaults.map((_, i) => this.nameop("$typeDefaults", "Load") + ".v[" + i + "]"),
+                kw_defaults: kwdefaults.map((_, i) => s.args.kw_defaults.some(e => e) ? this.nameop("$typeKwdefaults", "Load") + "[" + i + "]" : "undefined"),
+            };
+            const inner = this.buildcodeobj(s, s.name, null, s.args, body, class_for_super, prepared);
+            out(inner, ".func_type_params=", params, ";return ", inner, ";");
+        });
+        out("$ret=Sk.misceval.callsimOrSuspendArray(", wrapper, ",[", values.join(","), "]);");
+        this._checkSuspension(s);
+        func = this._gr("genericfunction", "$ret");
+        for (const decorator of decorators.reverse()) {
+            out("$ret=Sk.misceval.callsimOrSuspendArray(", decorator, ",[", func, "]);");
+            this._checkSuspension(s);
+            out(func, "=$ret;");
+        }
+    }
+    this.nameop(s.name, "Store", func);
 };
 
 Compiler.prototype.clambda = function (e) {
@@ -2645,14 +2705,29 @@ Compiler.prototype.clambda = function (e) {
 };
 
 // codegen_typealias_body: make a closure, then construct the lazy alias.
-Compiler.prototype.ctypealias = function (s) {
+Compiler.prototype.ctypealiasbody = function (s, parameters) {
     const evaluate = this.buildcodeobj(s, s.name.id, null, s.args, function () {
         const format = this.nameop("$aliasFormat", "Load");
         out("if(Sk.misceval.richCompareBool(", format, ",new Sk.builtin.int_(2),'Gt'))throw new Sk.builtin.NotImplementedError();");
         out("return ", this.vexpr(s.value), ";");
     });
-    const alias = this._gr("typealias", "new Sk.builtin.TypeAliasType(new Sk.builtin.str(",
-        JSON.stringify(s.name.id), "),undefined,", evaluate, ",null)");
+    return this._gr("typealias", "new Sk.builtin.TypeAliasType(new Sk.builtin.str(",
+        JSON.stringify(s.name.id), "),undefined,", evaluate, ",null,", parameters || "undefined", ")");
+};
+
+Compiler.prototype.ctypealias = function (s) {
+    let alias;
+    if (s.type_params.length) {
+        const key = s.typeParamScope;
+        const wrapper = this.buildcodeobj(key, "<generic parameters of " + s.name.id + ">", null, key.args, function () {
+            const params = this.ctypeparams(s);
+            const value = this.ctypealiasbody(s, params);
+            out("return ", value, ";");
+        });
+        out("$ret=Sk.misceval.callsimOrSuspendArray(", wrapper, ",[]);");
+        this._checkSuspension(s);
+        alias = this._gr("genericalias", "$ret");
+    } else alias = this.ctypealiasbody(s);
     this.nameop(s.name.id, "Store", alias);
 };
 
@@ -3234,7 +3309,7 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
     // reset named functions/classes to a module name; lambdas retain nesting.
     u.qualname = name.v;
     let qualnameParent = this.u;
-    while (qualnameParent && qualnameParent.scopeType === "TypeAlias") qualnameParent = qualnameParent.parent;
+    while (qualnameParent && ["TypeAlias", "TypeParameters", "TypeVariable"].includes(qualnameParent.scopeType)) qualnameParent = qualnameParent.parent;
     if (qualnameParent && !["Module", "Expression", "Interactive"].includes(qualnameParent.scopeType)) {
         const scope = qualnameParent.ste.getScope(fixReserved(mangleName(qualnameParent.private_, name).v));
         const named = key._type === "FunctionDef" || key._type === "AsyncFunctionDef" || key._type === "ClassDef";
@@ -3247,9 +3322,9 @@ Compiler.prototype.enterScope = function (name, key, lineno, canSuspend) {
             ? "__annotate__" : this.u.qualname + ".__annotate__";
     } else if (key._type === "Annotation") {
         const ownerName = key.owner.name;
-        const global = this.u.ste.getScope(fixReserved(mangleName(this.u.private_, ownerName).v)) === Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT;
-        u.qualname = (global || ["Module", "Expression", "Interactive"].includes(this.u.scopeType) ? "" :
-            this.u.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(this.u.scopeType) ? ".<locals>." : ".")) + ownerName + ".__annotate__";
+        const global = qualnameParent.ste.getScope(fixReserved(mangleName(qualnameParent.private_, ownerName).v)) === Sk.SYMTAB_CONSTS.GLOBAL_EXPLICIT;
+        u.qualname = (global || ["Module", "Expression", "Interactive"].includes(qualnameParent.scopeType) ? "" :
+            qualnameParent.qualname + (["FunctionDef", "AsyncFunctionDef", "Lambda"].includes(qualnameParent.scopeType) ? ".<locals>." : ".")) + ownerName + ".__annotate__";
     }
     u.firstlineno = key.decorator_list && key.decorator_list.length ? key.decorator_list[0].lineno : lineno;
     u.argcount = key.args ? key.args.posonlyargs.length + key.args.args.length : key._type === "GeneratorExp" ? 1 : 0;

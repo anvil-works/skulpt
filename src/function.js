@@ -99,6 +99,13 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         },
     },
     getsets: {
+        __type_params__: {
+            $get() { return this.func_type_params || new Sk.builtin.tuple([]); },
+            $set(value) {
+                if (!(value instanceof Sk.builtin.tuple)) {throw new Sk.builtin.TypeError("__type_params__ must be set to a tuple");}
+                this.func_type_params = value;
+            },
+        },
         __name__: {
             $get() {
                 return this.$name;

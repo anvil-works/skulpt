@@ -109,6 +109,8 @@ count++;
 
 // Newly implemented syntax compares with CPython; the checkpoint predates it.
 for (const [name, source] of [
+    // CPython Lib/test/test_type_params.py: test_name_non_collision_02.
+    ["genericfunction", "def func[A](A): return A\nprint(func(1), func.__type_params__[0].__name__)"],
     ["namedexpr", "x = (y := 1)\nprint(x, y)"],
     // CPython Lib/test/test_except_star.py: test_match_single_type and doSplitTestNamed.
     ["exceptstar", "try:\n    raise ExceptionGroup('test2', [ValueError('V1'), ValueError('V2')])\nexcept* ValueError as e:\n    print([str(exc) for exc in e.exceptions])"],
@@ -125,7 +127,6 @@ for (const [name, source] of [
 
 for (const source of [
     "match x:\n    case 1: pass",
-    "def f[T](): pass",
     "x = t'{value}'",
 ]) {
     Sk.configure({ __future__: { ...Sk.python3 } });
