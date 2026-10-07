@@ -754,3 +754,22 @@ from public constructor coalescing, and preserve CPython constructor validation
 order, empty keyword-dictionary rejection and qualified type diagnostics.
 The corresponding CPython-checked compiler/native regressions cover edited AST
 entries, iteration and concatenation as well as normal source compilation.
+
+### Enum prerequisite for annotation formats
+
+CPython annotationlib exposes Format as an IntEnum. The CPython 3.14 enum
+module and types.DynamicClassAttribute descriptor now run through the existing
+metaclass/descriptor compiler path. Two inherited-method comparison sites permit
+missing native pickle methods; no general object serialization is added.
+Twelve complete upstream Enum/IntEnum fixture methods and eleven complete
+DynamicClassAttribute methods pass in CPython and Skulpt. The upstream slots
+docstring exception case is skipped by CPython on this runtime and omitted here.
+This is selected coverage for annotation's concrete dependency, not a claim
+of complete enum or pickle conformance.
+
+Enum prerequisite review moves DynamicClassAttribute before types.__all__
+construction and fixes slot_tp_getattr_hook's native descriptor path: an
+AttributeError raised by class lookup reaches the metaclass's __getattr__,
+while other errors propagate. Thirteen descriptor cases and twelve enum
+cases pass in both runtimes. The enum fixture retains only exercised
+class-style setup; selected upstream test bodies remain unchanged.
