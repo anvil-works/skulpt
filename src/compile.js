@@ -1301,7 +1301,7 @@ Compiler.prototype.outputLocals = function (unit) {
 Compiler.prototype.outputExceptionPrelude = function () {
     return "if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); }" +
         "if(!err.$propagating){Sk.builtin.chainException(err,Sk.misceval.getException());}err.$propagating=true;" +
-        "err.traceback.push({lineno:$currLineNo,colno:$currColNo,filename:" + JSON.stringify(this.filename) + "});";
+        "Sk.builtin.addTraceback(err,$frame,$currLineNo,$currColNo," + JSON.stringify(this.filename) + ");";
 };
 
 Compiler.prototype.outputSuspensionHelpers = function (unit) {
@@ -1313,7 +1313,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
     var output = (localsToSave.length > 0 ? ("var " + localsToSave.join(",") + ";") : "") +
                  "var $wakeFromSuspension = function() {" +
                     "var susp = "+unit.scopename+".$wakingSuspension; "+unit.scopename+".$wakingSuspension = undefined;" +
-                    "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $builtins=susp.$builtins; $exc=susp.$exc; $err=susp.$err; $handled=susp.$handled; $postfinally=susp.$postfinally;" +
+                    "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $builtins=susp.$builtins; $exc=susp.$exc; $err=susp.$err; $handled=susp.$handled; if(susp.$frame.$pyFrame){$frame.$pyFrame=susp.$frame.$pyFrame;$frame.$pyFrame.$state=$frame;} $postfinally=susp.$postfinally;" +
                     "$currLineNo=susp.$lineno; $currColNo=susp.$colno; Sk.lastYield=Date.now();" +
                     (hasCell?"$cell=susp.$cell;":"");
 
@@ -1333,7 +1333,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
     output += "var $saveSuspension = function($child, $filename, $lineno, $colno) {" +
                 "var susp = new Sk.misceval.Suspension(); susp.child=$child;" +
                 "susp.resume=function(){"+unit.scopename+".$wakingSuspension=susp; return "+unit.scopename+".call("+(unit.ste.generator?"$gen":"$self")+"); };" +
-                "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$builtins=$builtins;susp.$exc=$exc;susp.$err=$err;susp.$handled=$handled;susp.$postfinally=$postfinally;" +
+                "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$builtins=$builtins;susp.$exc=$exc;susp.$err=$err;susp.$frame=$frame;susp.$handled=$handled;susp.$postfinally=$postfinally;" +
                 "susp.$filename=$filename;susp.$lineno=$lineno;susp.$colno=$colno;" +
                 "susp.optional=susp.child.optional;" +
                 (hasCell ? "susp.$cell=$cell;" : "");
@@ -1405,7 +1405,7 @@ Compiler.prototype.outputAllUnits = function () {
                 }
             }
         }
-        const end = "}finally{Sk.misceval.currentFrame=$prevFrame;}";
+        const end = "}finally{$frame.active=false;Sk.misceval.currentFrame=$prevFrame;}";
         const suffix = unit.suffixCode.replace(/catch\(err\)\{/, "catch(err){$localsScope=0;");
         ret += suffix.replace("/* frame end */", end);
     }
@@ -1526,7 +1526,7 @@ Compiler.prototype.outputFrame = function (unit) {
     if (unit.ste.blockType === constants.ClassBlock) {
         code += "$loc=Sk.misceval.namespaceToJs($loc);";
     }
-    code += "Sk.misceval.currentFrame={getException:function(){return $handled===undefined?($prevFrame?$prevFrame.getException():undefined):$handled;},getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
+    code += "var $frame=Sk.misceval.currentFrame={active:true,getBack:function(){return " + (unit.ste.generator || unit.ste.coroutine ? "$frame.active?$prevFrame:undefined" : "$prevFrame") + ";},getCode:function(){return " + unit.scopename + ".$code || (" + unit.scopename + ".$code=new Sk.builtin.code(" + unit.scopename + ".$metadata.filename,null," + unit.scopename + "));},getLine:function(){return $currLineNo===undefined?" + unit.scopename + ".$metadata.firstlineno:$currLineNo;},getException:function(){return $handled===undefined?($prevFrame?$prevFrame.getException():undefined):$handled;},getBuiltins:function(){return $builtins;},getGlobals:function(){return $gbl;},getCompilerFlags:function(){return " + (this.flags & 0x1fe0000) + ";},getLocals:function(){switch($localsScope){";
     for (const scope of unit.comprehensions) {
         code += "case " + scope.id + ":return " + snapshot(scopeBindings(scope)) + ";";
     }
@@ -1734,10 +1734,10 @@ Compiler.prototype.craise = function (s) {
             out(exc, ".$cause = ", cause, ";", exc, ".$suppressContext=true;");
         }
 
-        out("if (", exc, " instanceof Sk.builtin.BaseException) {Sk.builtin.chainException(",exc,",Sk.misceval.getException());",exc,".$propagating=true;throw ",exc,";} else {throw new Sk.builtin.TypeError('exceptions must derive from BaseException');};");
+        out("if (", exc, " instanceof Sk.builtin.BaseException) {Sk.builtin.chainException(",exc,",Sk.misceval.getException());",exc,".$propagating=true;",exc,".$tracebackFrame=undefined;throw ",exc,";} else {throw new Sk.builtin.TypeError('exceptions must derive from BaseException');};");
     } else {
         // Python/ceval.c: do_raise rejects a bare raise with no active exception.
-        out("var $active=Sk.misceval.getException();if($active===undefined){throw new Sk.builtin.RuntimeError('No active exception to reraise');}$active.$propagating=true;throw $active;");
+        out("var $active=Sk.misceval.getException();if($active===undefined){throw new Sk.builtin.RuntimeError('No active exception to reraise');}$active.$propagating=true;$active.$tracebackFrame=Sk.builtin.getFrame($frame);throw $active;");
     }
 };
 
