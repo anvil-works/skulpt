@@ -447,7 +447,7 @@ Sk.misceval.richCompare = function (v, w, op, canSuspend) {
         const [object, other, slot] = comparisons[index];
         return Sk.misceval.chain(object[slot](other, canSuspend), result =>
             result === Sk.builtin.NotImplemented.NotImplemented$ ? compare(index + 1)
-                : typeof result === "boolean" ? new Sk.builtin.bool(result) : result);
+            : typeof result === "boolean" ? new Sk.builtin.bool(result) : result);
     }
     return compare(0);
 

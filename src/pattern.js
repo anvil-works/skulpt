@@ -22,7 +22,7 @@ Sk.abstr.setPatternKind = function (type, kind) {
 for (const type of [Sk.builtin.list, Sk.builtin.tuple, Sk.builtin.range_]) {type.sk$patternKind = 32;}
 for (const type of [Sk.builtin.dict, Sk.builtin.mappingproxy]) {type.sk$patternKind = 64;}
 for (const type of [Sk.builtin.bool, Sk.builtin.bytes, Sk.builtin.dict, Sk.builtin.float_, Sk.builtin.frozenset,
-                   Sk.builtin.int_, Sk.builtin.list, Sk.builtin.set, Sk.builtin.str, Sk.builtin.tuple]) {
+                    Sk.builtin.int_, Sk.builtin.list, Sk.builtin.set, Sk.builtin.str, Sk.builtin.tuple]) {
     type.sk$matchSelf = true;
 }
 
