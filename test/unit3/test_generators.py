@@ -299,9 +299,11 @@ class GeneratorProtocolTest(unittest.TestCase):
             yield 1
         error = StopIteration("injected")
         g = gen()
-        with self.assertRaises(RuntimeError) as caught:
+        # CPython 3.14 raises the supplied exception before the initial resume;
+        # PEP 479 conversion applies after the generator body has started.
+        with self.assertRaises(StopIteration) as caught:
             g.throw(error)
-        self.assertIs(caught.exception.__cause__, error)
+        self.assertIs(caught.exception, error)
         with self.assertRaises(StopIteration) as caught:
             g.throw(error)
         self.assertIs(caught.exception, error)
@@ -445,6 +447,97 @@ class CPythonCoroutineTests(unittest.TestCase):
         with self.assertRaises(TypeError) as caught:
             g.close()
         self.assertEqual(str(caught.exception), "fie!")
+
+
+class GeneratorCloseTest(unittest.TestCase):
+    # Verbatim methods from CPython 3.14, commit 18ef0f0cb52,
+    # Lib/test/test_generators.py:GeneratorCloseTest. Only the weakref/GC test
+    # is omitted because Skulpt does not support those introspection facilities.
+
+    def test_close_no_return_value(self):
+        def f():
+            yield
+
+        gen = f()
+        gen.send(None)
+        self.assertIsNone(gen.close())
+
+
+    def test_close_return_value(self):
+        def f():
+            try:
+                yield
+                # close() raises GeneratorExit here, which is caught
+            except GeneratorExit:
+                return 0
+
+        gen = f()
+        gen.send(None)
+        self.assertEqual(gen.close(), 0)
+
+
+    def test_close_not_catching_exit(self):
+        def f():
+            yield
+            # close() raises GeneratorExit here, which isn't caught and
+            # therefore propagates -- no return value
+            return 0
+
+        gen = f()
+        gen.send(None)
+        self.assertIsNone(gen.close())
+
+
+    def test_close_not_started(self):
+        def f():
+            try:
+                yield
+            except GeneratorExit:
+                return 0
+
+        gen = f()
+        self.assertIsNone(gen.close())
+
+
+    def test_close_exhausted(self):
+        def f():
+            try:
+                yield
+            except GeneratorExit:
+                return 0
+
+        gen = f()
+        next(gen)
+        with self.assertRaises(StopIteration):
+            next(gen)
+        self.assertIsNone(gen.close())
+
+
+    def test_close_closed(self):
+        def f():
+            try:
+                yield
+            except GeneratorExit:
+                return 0
+
+        gen = f()
+        gen.send(None)
+        self.assertEqual(gen.close(), 0)
+        self.assertIsNone(gen.close())
+
+
+    def test_close_raises(self):
+        def f():
+            try:
+                yield
+            except GeneratorExit:
+                pass
+            raise RuntimeError
+
+        gen = f()
+        gen.send(None)
+        with self.assertRaises(RuntimeError):
+            gen.close()
 
 
 if __name__ == "__main__":
