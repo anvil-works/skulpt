@@ -1343,13 +1343,13 @@ Sk.misceval.makeClosure = function (closure, closure2) {
 Sk.exportSymbol("Sk.misceval.makeClosure", Sk.misceval.makeClosure);
 
 // The compiler uses property access for module/class namespaces. Keep that
-// interface backed by the actual Python dictionary, so locals()/globals() and
+// interface backed by the actual Python mapping, so locals()/globals() and
 // exec namespace mutations observe the same mapping in both directions.
 const namespaceCache = new WeakMap();
 Sk.misceval.namespaceToJs = function (namespace, globals) {
     let entry = namespaceCache.get(namespace);
     if (entry === undefined) {
-        const dict = namespace instanceof Sk.builtin.dict ? namespace : new Sk.builtin.dict(
+        const dict = namespace.mp$subscript !== undefined ? namespace : new Sk.builtin.dict(
             Object.keys(namespace).filter(name => namespace[name] !== undefined).flatMap(name => [new Sk.builtin.str(Sk.unfixReserved(name)), namespace[name]])
         );
         entry = { dict };
@@ -1364,7 +1364,7 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
                 return Sk.builtin.dict.prototype.mp$lookup.call(dict, key);
             }
             try {
-                return Sk.misceval.retryOptionalSuspensionOrThrow(dict.mp$subscript(key));
+                return Sk.misceval.retryOptionalSuspensionOrThrow(Sk.abstr.objectGetItem(dict, key));
             } catch (err) {
                 if (err instanceof Sk.builtin.KeyError) {
                     return undefined;
@@ -1374,26 +1374,46 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
         };
         entry[role] = new Proxy({}, {
             get(target, name) {
-                if (typeof name !== "string") {
+                // Generated Python identifiers are reserved-name mangled; these
+                // unmangled properties belong to the JS execution machinery.
+                if (typeof name !== "string" || name === "constructor" || name[0] === "$") {
                     return Reflect.get(target, name);
                 }
                 const value = read(name);
                 return value === undefined ? Reflect.get(target, name) : value;
             },
             set(target, name, value) {
-                const assign = globals ? Sk.builtin.dict.prototype.mp$ass_subscript : dict.mp$ass_subscript;
-                Sk.misceval.retryOptionalSuspensionOrThrow(assign.call(dict, new Sk.builtin.str(Sk.unfixReserved(name)), value));
+                const key = new Sk.builtin.str(Sk.unfixReserved(name));
+                if (globals) {
+                    Sk.builtin.dict.prototype.mp$ass_subscript.call(dict, key, value);
+                } else {
+                    Sk.abstr.objectSetItem(dict, key, value);
+                }
                 return true;
             },
             deleteProperty(target, name) {
-                if (read(name) !== undefined) {
-                    const assign = globals ? Sk.builtin.dict.prototype.mp$ass_subscript : dict.mp$ass_subscript;
-                    Sk.misceval.retryOptionalSuspensionOrThrow(assign.call(dict, new Sk.builtin.str(Sk.unfixReserved(name)), undefined));
+                const key = new Sk.builtin.str(Sk.unfixReserved(name));
+                try {
+                    if (globals) {
+                        Sk.builtin.dict.prototype.mp$ass_subscript.call(dict, key, undefined);
+                    } else {
+                        Sk.abstr.objectSetItem(dict, key, undefined);
+                    }
+                } catch (err) {
+                    // CPython DELETE_NAME replaces any mapping deletion
+                    // failure with NameError; DELETE_GLOBAL only handles KeyError.
+                    if (!globals || err instanceof Sk.builtin.KeyError) {
+                        throw new Sk.builtin.NameError("name '" + key.$jsstr() + "' is not defined");
+                    }
+                    throw err;
                 }
                 return true;
             },
             ownKeys() {
-                return dict.$items().filter(item => Sk.builtin.checkString(item[0])).map(item => item[0].$mangled);
+                const keys = globals ? dict.sk$asarray() : Sk.misceval.arrayFromIterable(
+                    Sk.misceval.callsimArray(Sk.abstr.gattr(dict, Sk.builtin.str.$keys))
+                );
+                return keys.filter(Sk.builtin.checkString).map(key => key.$mangled);
             },
             getOwnPropertyDescriptor(target, name) {
                 const value = read(name);
@@ -1470,19 +1490,15 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
        calculation, so we will use the explicitly given object as it is */
 
     let ns = null; // namespace
-    let handler; // used as the proxy object handler
     if (meta !== Sk.builtin.type) {
         // slow path we have a metaclass use the __prepare__ mechanism
-        [ns, handler] = do_prepare(meta, _name, _bases, kws, is_class);
+        ns = do_prepare(meta, _name, _bases, kws, is_class);
     }
 
     if (ns === null) {
         ns = new Sk.builtin.dict([]);
     }
-    const locals = ns instanceof Sk.builtin.dict ? Sk.misceval.namespaceToJs(ns) : new Proxy(ns, handler);
-    if (!(ns instanceof Sk.builtin.dict)) {
-        namespaceCache.set(locals, { dict: ns, "locals": locals });
-    }
+    const locals = Sk.misceval.namespaceToJs(ns);
 
     // file's __name__ is class's __module__
     if (globals["__name__"]) {
@@ -1545,31 +1561,14 @@ function calculate_meta(meta, bases) {
 function do_prepare(meta, _name, _bases, kws, is_class) {
     // we have a metaclass
     const prep = meta.tp$getattr(Sk.builtin.str.$prepare);
-    let handler;
     let ns = null;
     if (prep === undefined) {
         // unusual case - the metaclass is not a typeobject
-        return [ns, handler];
+        return ns;
     }
     ns = Sk.misceval.callsimArray(prep, [_name, _bases], kws);
     if (!Sk.builtin.checkMapping(ns)) {
         throw new Sk.builtin.TypeError(is_class ? meta.prototype.tp$name : "<metaclass>" + ".__prepare__() must return a mapping not '" + Sk.abstr.typeName(ns) + "'");
     }
-    handler = {
-        get(target, prop) {
-            try {
-                return Sk.abstr.objectGetItem(target, new Sk.builtin.str(Sk.unfixReserved(prop)));
-            } catch (e) {
-                if (e instanceof Sk.builtin.KeyError) {
-                    return;
-                }
-                throw e;
-            }
-        },
-        set(target, prop, value) {
-            Sk.abstr.objectSetItem(target, new Sk.builtin.str(Sk.unfixReserved(prop)), value);
-            return true; // Proxy protocol must return true on success
-        },
-    };
-    return [ns, handler];
+    return ns;
 }

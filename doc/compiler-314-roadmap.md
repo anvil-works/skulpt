@@ -120,3 +120,9 @@ All 59 selected list-comprehension methods now use CPython's actual `locals()` f
 Remaining adjacent work: general mapping execution namespaces, byte sources, single code mode and flags, custom builtin namespaces, native module dictionary identity, and frame inspection APIs. Current execution namespace arguments still explicitly require dictionaries; this increment does not claim complete `compile`/`exec`/`eval` or frame compatibility.
 
 The namespace review also found that the old `eval` result temporary overwrote and deleted a user binding. Expression-mode compilation now returns the expression directly, and `eval` of executable code returns `None`. A CPython-checked regression preserves the namespace throughout both modes; no Python-visible result temporary is emitted.
+
+## General execution mappings
+
+`stu-dev/compiler/execution-mappings` extends the existing namespace bridge to general mapping locals for `exec`/`eval`, and class `__prepare__` uses the same bridge. Globals retain dictionary base semantics; locals honor mapping lookup/store/delete and overridden `keys()`. No-argument `dir()` requests the mapping's keys. Python 3.13 keyword arguments for globals/locals are accepted while source remains positional-only.
+
+The unchanged `TestSpecifics.test_exec_with_general_mapping_for_locals`, plus `BuiltinTest.test_eval_kwargs`, `test_exec_kwargs`, and `test_general_eval`, pass under Skulpt and the built pinned CPython checkout. Assertions are unchanged; one non-asserting `collections.UserDict` fixture call is omitted because that stdlib class is absent. The nested spreadsheet example covers locals mappings without `keys()`. Class/scope/list-comprehension and builtin regressions pass. Namespace property hooks retain the existing synchronous host-suspension limitation of class mapping access.
