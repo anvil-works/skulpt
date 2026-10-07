@@ -506,9 +506,9 @@ def _to_parser(node):
 _register_type(AST)
 
 def _compile_ast(tree, filename, mode, flags, optimize):
-    if mode not in ('exec', 'eval', 'single'):
-        raise ValueError("compile() mode must be 'exec', 'eval' or 'single'")
-    expected = {'exec': Module, 'eval': Expression, 'single': Interactive}[mode]
+    if mode not in ('exec', 'eval', 'single', 'func_type'):
+        raise ValueError("compile() mode must be 'exec', 'eval', 'single' or 'func_type'")
+    expected = {'exec': Module, 'eval': Expression, 'single': Interactive, 'func_type': FunctionType}[mode]
     if not isinstance(tree, expected):
         raise TypeError(f'expected {expected.__name__} node, got {type(tree).__name__}')
     converted = _to_parser(tree)
