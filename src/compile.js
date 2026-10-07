@@ -1059,19 +1059,14 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
             mangled = mangleName(this.u.private_, new Sk.builtin.str(mangled)).v;
             mname = this.makeConstant("new Sk.builtin.str('" + mangled + "')");
             switch (e.ctx._type) {
+                // LOAD_ATTR follows PyObject_GetAttr, including exception context.
                 case "AugLoad":
-                    out("$ret = ", augvar, ".tp$getattr(", mname, ", true);");
+                    out("$ret = Sk.abstr.gattr(", augvar, ",", mname, ", true);");
                     this._checkSuspension(e);
-                    out("\nif ($ret === undefined) {");
-                    out("\nthrow new Sk.builtin.AttributeError(", augvar, ".sk$attrError() + \" has no attribute '\" + ", mname,".$jsstr() + \"'\");");
-                    out("\n};");
                     return this._gr("lattr", "$ret");
                 case "Load":
-                    out("$ret = ", val, ".tp$getattr(", mname, ", true);");
+                    out("$ret = Sk.abstr.gattr(", val, ",", mname, ", true);");
                     this._checkSuspension(e);
-                    out("\nif ($ret === undefined) {");
-                    out("\nthrow new Sk.builtin.AttributeError(", val, ".sk$attrError() + \" has no attribute '\" + ", mname,".$jsstr() + \"'\");");
-                    out("\n};");
                     return this._gr("lattr", "$ret");
                 case "AugStore":
                     // To be more correct, we shouldn't sattr() again if the in-place update worked.
@@ -3211,7 +3206,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore, skipClassLookup) {
         // codegen_load_classdict_freevar forces this synthetic cell even when
         // the class contains an annotated target named __classdict__.
         const classdict = this._gr("classdict", "$free.__classdict__");
-        out("if(", classdict, "===undefined)throw new Sk.builtin.NameError(\"cannot access free variable '__classdict__' where it is not associated with a value in enclosing scope\");");
+        out("if(", classdict, "===undefined)throw Sk.builtin.nameError(\"cannot access free variable '__classdict__' where it is not associated with a value in enclosing scope\", '__classdict__');");
         const value = this._gr("classannotation", "Sk.misceval.namespaceToJs(", classdict, ")[",
             JSON.stringify(mangled), "]");
         const fallback = this.newBlock("class annotation fallback");
@@ -3332,9 +3327,9 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore, skipClassLookup) {
                     // variable raises NameError, a local cell raises UnboundLocalError.
                     out("if (", dict, ".", mangledNoPre, "===undefined) {");
                     if (scope === Sk.SYMTAB_CONSTS.FREE) {
-                        out("throw new Sk.builtin.NameError(\"cannot access free variable '",
+                        out("throw Sk.builtin.nameError(\"cannot access free variable '",
                             mangledNoPre,
-                            "' where it is not associated with a value in enclosing scope\");");
+                            "' where it is not associated with a value in enclosing scope\",", JSON.stringify(Sk.unfixReserved(mangledNoPre)), ");");
                     } else {
                         out("throw new Sk.builtin.UnboundLocalError(\"cannot access local variable '",
                             mangledNoPre,

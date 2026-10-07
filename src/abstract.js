@@ -848,19 +848,17 @@ Sk.exportSymbol("Sk.abstr.objectSetItem", Sk.abstr.objectSetItem);
  */
 Sk.abstr.gattr = function (obj, pyName, canSuspend) {
     // let the getattr and setattr's deal with reserved words - we don't want to pass a mangled pyName to tp$getattr!!
-    const ret = obj.tp$getattr(pyName, canSuspend);
-    if (ret === undefined) {
-        throw new Sk.builtin.AttributeError(obj.sk$attrError() + " has no attribute '" + pyName.$jsstr() + "'");
-    } else if (ret.$isSuspension) {
-        return Sk.misceval.chain(ret, function (r) {
-            if (r === undefined) {
+    return Sk.misceval.tryCatch(
+        () => Sk.misceval.chain(obj.tp$getattr(pyName, canSuspend), (ret) => {
+            if (ret === undefined) {
                 throw new Sk.builtin.AttributeError(obj.sk$attrError() + " has no attribute '" + pyName.$jsstr() + "'");
             }
-            return r;
-        });
-    } else {
-        return ret;
-    }
+            return ret;
+        }),
+        (error) => {
+            return Sk.builtin.raiseAttributeErrorWithContext(error, obj, pyName);
+        }
+    );
 };
 Sk.exportSymbol("Sk.abstr.gattr", Sk.abstr.gattr);
 
