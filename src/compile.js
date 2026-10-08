@@ -3486,8 +3486,13 @@ Sk.prepareModuleUpdates = function (changes, options) {
     // 2. Resolve imports once from both running and proposed source. Keep a
     // dependency edge and the exported names each consumer may have captured.
     const importName = (entry, node) => {
-        const parts = entry.name.split(".");
-        const prefix = node.level ? parts.slice(0, parts.length - (entry.isPackage ? node.level - 1 : node.level)).join(".") : "";
+        // Module entry points are loaded as __main__, while __package__ retains
+        // their real package for relative imports. Use that same import context.
+        const packageName = entry.globals.__package__;
+        const parts = packageName instanceof Sk.builtin.str
+            ? packageName.v.split(".")
+            : entry.name.split(".").slice(0, entry.isPackage ? undefined : -1);
+        const prefix = node.level ? parts.slice(0, parts.length - node.level + 1).join(".") : "";
         return [prefix, node.module].filter(Boolean).join(".");
     };
     const dependencies = new Map([...entries.keys()].map(name => [name, new Set()]));

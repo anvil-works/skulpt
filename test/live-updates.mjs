@@ -623,3 +623,74 @@ for (const globalBinding of [
 Sk.trackModuleReads = false;
 Sk.read = previousRead;
 console.log('Constant binding ownership distinguishes local/class names from real module writes');
+
+// The runner imports a module entry point as __main__. Importing that file by
+// its qualified name creates another live module, with distinct global state.
+Sk.trackModuleReads = true;
+const startupProviderSource = '# anvil: live-update-safe\nRATE = 2\nprice = RATE + 1\n';
+const startupSource = '# anvil: live-update-safe\nfrom .provider import price\nruns = globals().get("runs", 0) + 1\ndef callback():\n    return price\n';
+const startupFiles = {
+    'app/startup_test/__init__.py': '',
+    'app/startup_test/provider.py': startupProviderSource,
+    'app/startup_test/entry.py': startupSource,
+};
+Sk.configure({__future__: Sk.python3, syspath: ['app'], read: filename => {
+    if (filename in startupFiles) return startupFiles[filename];
+    throw new Error('No startup fixture source: ' + filename);
+}});
+await load('');
+Sk.sysmodules.mp$ass_subscript(new Sk.builtin.str('__main__'), undefined);
+await Sk.misceval.asyncToPromise(() => Sk.importModuleInternal_('startup_test.entry', false, '__main__', undefined, undefined, false, true));
+const startupMain = Sk.sysmodules.quick$lookup(new Sk.builtin.str('__main__'));
+assert.equal(Sk.sysmodules.quick$lookup(new Sk.builtin.str('startup_test.entry')), undefined);
+assert.equal(startupMain.$d.__package__.v, 'startup_test');
+await Sk.misceval.asyncToPromise(() => Sk.importModule('startup_test.entry', false, true));
+const startupQualified = Sk.sysmodules.quick$lookup(new Sk.builtin.str('startup_test.entry'));
+const startupProvider = Sk.sysmodules.quick$lookup(new Sk.builtin.str('startup_test.provider'));
+assert.notEqual(startupMain.$d, startupQualified.$d);
+const startupCallbacks = [startupMain.$d.callback, startupQualified.$d.callback];
+const startupModules = source => [
+    {...batchModule('__main__', source, startupMain), filename: 'app/startup_test/entry.py'},
+    {...batchModule('startup_test.entry', source, startupQualified), filename: 'app/startup_test/entry.py'},
+    {...batchModule('startup_test.provider', startupProviderSource, startupProvider), filename: 'app/startup_test/provider.py'},
+];
+const patchedStartupSource = startupSource.replace('return price', 'return price + 10');
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates([
+    {name: '__main__', after: patchedStartupSource},
+    {name: 'startup_test.entry', after: patchedStartupSource},
+], {modules: startupModules(startupSource)}).apply);
+assert.deepEqual(startupCallbacks.map(fn => call(fn)), [13, 13]);
+assert.equal(startupMain.$d.callback, startupCallbacks[0]);
+assert.equal(startupQualified.$d.callback, startupCallbacks[1]);
+const changedStartupProvider = startupProviderSource.replace('RATE = 2', 'RATE = 4');
+const startupChanges = [{name: 'startup_test.provider', after: changedStartupProvider}];
+const unmarkedMain = startupModules(patchedStartupSource);
+unmarkedMain[0].source = patchedStartupSource.replace('# anvil: live-update-safe\n', '');
+assert.throws(() => Sk.prepareModuleUpdates(startupChanges, {modules: unmarkedMain}), /imported constants were captured/);
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates(startupChanges, {modules: startupModules(patchedStartupSource)}).apply);
+assert.deepEqual(startupCallbacks.map(fn => call(fn)), [15, 15]);
+assert.equal(startupMain.$d.runs.v, 2);
+assert.equal(startupQualified.$d.runs.v, 2);
+assert.equal(startupMain.$d.callback, startupCallbacks[0]);
+assert.equal(startupQualified.$d.callback, startupCallbacks[1]);
+// A newly proposed relative import has no recorded read yet. Source analysis
+// must still order its rerunning provider before both startup consumers.
+const startupOtherSource = '# anvil: live-update-safe\nRATE = 20\nprice = RATE + 1\n';
+startupFiles['app/startup_test/other.py'] = startupOtherSource;
+await Sk.misceval.asyncToPromise(() => Sk.importModule('startup_test.other', false, true));
+const startupOther = Sk.sysmodules.quick$lookup(new Sk.builtin.str('startup_test.other'));
+const proposedStartupSource = patchedStartupSource.replace('from .provider', 'from .other');
+const proposedStartupModules = startupModules(patchedStartupSource);
+proposedStartupModules[2].source = changedStartupProvider;
+proposedStartupModules.push({...batchModule('startup_test.other', startupOtherSource, startupOther), filename: 'app/startup_test/other.py'});
+await Sk.misceval.asyncToPromise(Sk.prepareModuleUpdates([
+    {name: '__main__', after: proposedStartupSource},
+    {name: 'startup_test.entry', after: proposedStartupSource},
+    {name: 'startup_test.other', after: startupOtherSource.replace('RATE = 20', 'RATE = 40')},
+], {modules: proposedStartupModules}).apply);
+assert.deepEqual(startupCallbacks.map(fn => call(fn)), [51, 51]);
+assert.equal(startupMain.$d.runs.v, 3);
+assert.equal(startupQualified.$d.runs.v, 3);
+Sk.trackModuleReads = false;
+Sk.read = previousRead;
+console.log('Actual __main__ startup and qualified imports retain callbacks and rerun relative-import captures');
