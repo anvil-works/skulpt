@@ -22,7 +22,8 @@
     "devbuild": "webpack --mode development",
     "postdevbuild": "node support/build/wrapmodules.js stdlib dev",
     "watch": "webpack --watch --mode development",
-    "test": "node test/testwrapper.js && node test/testunit.js && node test/testunit.js --python3",
+    "test": "node test/testwrapper.js && node test/testunit.js && node test/testunit.js --python3 && npm run test:livereload",
+    "test:livereload": "node test/live_reload/test_replace_code.js && node test/live_reload/scope_proof.js",
     "start": "node support/run/runfile.js",
     "profile": "node --prof --no-logfile-per-isolate --log-internal-timer-events support/run/runfile.js -o",
     "postprofile": "node --prof-process v8.log"

@@ -148,6 +148,49 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         }
     },
     proto: {
+        /**
+         * Make this function run (and introspect as) `other`, in place, so
+         * everything already holding this function object sees the new code:
+         * module and class attributes, `from x import f` holders, bound methods
+         * (which read im_func.tp$call on every call), stored callbacks.
+         * Used by Anvil's live reload. Frames already running keep the old code.
+         *
+         * Copies everything the constructor and the compiler set up from the
+         * code object, so the result matches a freshly created `other`:
+         * fast-call code reads $gbl and $free from this.func_globals and
+         * this.func_closure, and generator functions are non-fast-call JS
+         * wrappers with neither, so both are copied, and tp$call is always
+         * re-bound (a function can become a generator and vice versa).
+         * Defaults come from `other`, i.e. from the new definition.
+         *
+         * @param {Sk.builtin.func} other
+         */
+        $replaceCode(other) {
+            if (!(other instanceof Sk.builtin.func)) {
+                throw new Sk.builtin.TypeError("$replaceCode() expects a function, not '" + Sk.abstr.typeName(other) + "'");
+            }
+            const code = other.func_code;
+            this.func_code = code;
+            this.func_globals = other.func_globals;
+            this.func_closure = other.func_closure;
+            this.func_annotations = other.func_annotations;
+            this.$name = other.$name;
+            this.$qualname = other.$qualname;
+            this.$doc = other.$doc;
+            this.$module = other.$module;
+            this.$d = other.$d;
+            this.$memoiseFlags();
+            // take defaults from the new function, which may differ from its
+            // code's if they were reassigned through __defaults__
+            this.$defaults = other.$defaults;
+            this.$kwdefs = other.$kwdefs;
+            this.memoised = other.memoised;
+            if (code.co_fastcall) {
+                this.tp$call = code.bind(this);
+            } else {
+                this.tp$call = Sk.builtin.func.prototype.$funcCall.bind(this);
+            }
+        },
         $memoiseFlags() {
             this.co_varnames = this.func_code.co_varnames;
             this.co_argcount = this.func_code.co_argcount;
