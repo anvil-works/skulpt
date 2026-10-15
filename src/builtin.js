@@ -188,6 +188,9 @@ Sk.builtin.len = function len(item) {
 Sk.builtin.min = function min(args, kwargs) {
     let iter;
     const nargs = args.length;
+    if (nargs === 2 && (!kwargs || kwargs.length === 0)) {
+        return Sk.misceval.richCompareBool(args[1], args[0], "Lt") ? args[1] : args[0];
+    }
     if (!nargs) {
         throw new Sk.builtin.TypeError("min expected 1 argument, got 0");
     }
@@ -251,6 +254,9 @@ Sk.builtin.min = function min(args, kwargs) {
 Sk.builtin.max = function max(args, kwargs) {
     let iter;
     const nargs = args.length;
+    if (nargs === 2 && (!kwargs || kwargs.length === 0)) {
+        return Sk.misceval.richCompareBool(args[1], args[0], "Gt") ? args[1] : args[0];
+    }
 
     if (!nargs) {
         throw new Sk.builtin.TypeError("max expected 1 argument, got 0");
@@ -338,6 +344,9 @@ Sk.builtin.all = function all(iter) {
 
 Sk.builtin.sum = function sum(iter, start) {
     var tot;
+    // While set, nativeTotal owns the result. A type/overflow transition boxes
+    // it into tot once and leaves the remaining iteration on the boxed paths.
+    let nativeTotal;
     // follows the order of CPython checks
     const it = Sk.abstr.iter(iter);
     if (start === undefined) {
@@ -349,7 +358,21 @@ Sk.builtin.sum = function sum(iter, start) {
     }
 
     function fastSumInt() {
+        if (typeof tot.v === "number") {
+            nativeTotal = tot.v;
+        }
         return Sk.misceval.iterFor(it, (i) => {
+            if (nativeTotal !== undefined) {
+                if ((i.ob$type === Sk.builtin.int_ || i.ob$type === Sk.builtin.bool) && typeof i.v === "number") {
+                    const next = nativeTotal + i.v;
+                    if (next <= Number.MAX_SAFE_INTEGER && next >= -Number.MAX_SAFE_INTEGER) {
+                        nativeTotal = next;
+                        return;
+                    }
+                }
+                tot = new Sk.builtin.int_(nativeTotal);
+                nativeTotal = undefined;
+            }
             if (i.constructor === Sk.builtin.int_) {
                 tot = tot.nb$add(i);
             } else if (i.constructor === Sk.builtin.float_) {
@@ -401,7 +424,7 @@ Sk.builtin.sum = function sum(iter, start) {
                 return slowSum();
             }
         },
-        () => tot
+        () => nativeTotal === undefined ? tot : new Sk.builtin.int_(nativeTotal)
     );
 };
 

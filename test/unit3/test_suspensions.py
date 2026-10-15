@@ -64,6 +64,9 @@ class Test_Suspensions(unittest.TestCase):
         self.assertEqual(sum(sleeping_gen([1, 2, 3])), 6)
         self.assertEqual(sum(sleeping_gen([1, 2.0, 3])), 6.0)
         self.assertEqual(sum(sleeping_gen([[1], [2]]), []), [1, 2])
+        self.assertEqual(sum(sleeping_gen([1000, 2, 3])), 1005)
+        self.assertEqual(sum(sleeping_gen([1000, 2.5, 3])), 1005.5)
+        self.assertEqual(sum(sleeping_gen([9007199254740991, 1, -1])), 9007199254740991)
 
     def test_list_extension_suspends(self):
         values = [1]

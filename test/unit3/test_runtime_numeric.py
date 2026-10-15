@@ -105,6 +105,43 @@ class NumericDispatchTests(unittest.TestCase):
         self.assertRaises(TypeError, lambda: 1.0 - [])
 
 
+class SumTests(unittest.TestCase):
+    def test_integer_accumulator_transitions(self):
+        limit = 9007199254740991
+        for values, start, expected in [
+            ([1, 2, 3], 1000, 1006),
+            ([True, False, 3], 0, 4),
+            ([limit, 1, -1], 0, limit),
+            ([-limit, -2, 1], 0, -9007199254740992),
+            ([1, 2], 1 << 100, (1 << 100) + 3),
+            ([1 << 100, -(1 << 100), 3], 0, 3),
+        ]:
+            result = sum(values, start)
+            self.assertEqual(result, expected)
+            self.assertIs(type(result), int)
+        self.assertEqual(sum([1000, 2.5, 3]), 1005.5)
+        self.assertIs(type(sum([1000, 2.5, 3])), float)
+        self.assertEqual(sum([1000, 2, 3], 0.5), 1005.5)
+
+    def test_sum_preserves_custom_addition_and_errors(self):
+        class Int(int):
+            def __radd__(self, other):
+                return ("int", other)
+        class Float(float):
+            def __radd__(self, other):
+                return ("float", other)
+        self.assertEqual(sum([1000, 2, Int(4)]), ("int", 1002))
+        self.assertEqual(sum([1000, 2, Float(4)]), ("float", 1002))
+        self.assertEqual(sum([3, 4], Int(10)), 17)
+        self.assertRaises(TypeError, sum, [1000, 2, "bad"])
+        seen = []
+        def failing():
+            seen.append(1)
+            yield 1000
+            seen.append(2)
+            raise ValueError("iteration failed")
+        self.assertRaises(ValueError, sum, failing())
+        self.assertEqual(seen, [1, 2])
 
 
 class IntegerIndexTests(unittest.TestCase):

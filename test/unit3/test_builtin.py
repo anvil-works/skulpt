@@ -998,6 +998,36 @@ class BuiltinTest(unittest.TestCase):
         self.assertEqual(max(data, key=f),
                          sorted(reversed(data), key=f)[-1])
 
+    def test_minmax_pairs_preserve_comparison_order_and_identity(self):
+        seen = []
+        class Value:
+            def __init__(self, name):
+                self.name = name
+            def __lt__(self, other):
+                seen.append(("lt", self.name, other.name))
+                return False
+            def __gt__(self, other):
+                seen.append(("gt", self.name, other.name))
+                return False
+        first, second = Value("first"), Value("second")
+        self.assertIs(min(first, second), first)
+        self.assertIs(max(first, second), first)
+        self.assertEqual(seen, [("lt", "second", "first"), ("gt", "second", "first")])
+        nan = float("nan")
+        number = 1.0
+        for operation in [min, max]:
+            self.assertIs(operation(nan, number), nan)
+            self.assertIs(operation(number, nan), number)
+            self.assertIs(operation(first, second, key=lambda value: 1), first)
+            self.assertRaises(TypeError, operation, first, second, default=first)
+        class Bad(Value):
+            def __lt__(self, other):
+                raise ValueError("comparison failed")
+            def __gt__(self, other):
+                raise ValueError("comparison failed")
+        self.assertRaises(ValueError, min, first, Bad("bad"))
+        self.assertRaises(ValueError, max, first, Bad("bad"))
+
     def test_min(self):
         self.assertEqual(min('123123'), '1')
         self.assertEqual(min(1, 2, 3), 1)
@@ -1399,6 +1429,30 @@ class BuiltinTest(unittest.TestCase):
                 builtin_type.foo = 'bar'
 
     # test_str(): see test_unicode.py and test_bytes.py for str() tests.
+
+    def test_filter_truth_testing_and_consumption(self):
+        seen = []
+        class Value:
+            def __init__(self, value):
+                self.value = value
+            def __bool__(self):
+                seen.append(self.value)
+                return bool(self.value)
+        values = [Value(0), Value(1), Value(2)]
+        for predicate in [None, bool, lambda item: item]:
+            seen[:] = []
+            source = iter(values)
+            selected = filter(predicate, source)
+            self.assertIs(next(selected), values[1])
+            self.assertEqual(seen, [0, 1])
+            self.assertIs(next(source), values[2])
+        class Bad:
+            def __bool__(self):
+                raise ValueError("truth failed")
+        for predicate in [None, bool, lambda item: item]:
+            source = iter([Bad(), 3])
+            self.assertRaises(ValueError, next, filter(predicate, source))
+            self.assertEqual(next(source), 3)
 
     def test_sum(self):
         self.assertEqual(sum([]), 0)

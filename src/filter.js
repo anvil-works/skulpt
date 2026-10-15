@@ -11,10 +11,13 @@ Sk.builtin.filter_ = Sk.abstr.buildIteratorClass("filter", {
     },
     iternext(canSuspend) {
         // iterate over iterable until we pass the predicate
-        // this.chcek$filter either returns the item or undefined
-        const ret = Sk.misceval.iterFor(this.$iterable, (i) =>
-            Sk.misceval.chain(this.check$filter(i), (i) => (i ? new Sk.misceval.Break(i) : undefined))
-        );
+        // check$filter either returns the item or undefined, possibly suspending.
+        const ret = Sk.misceval.iterFor(this.$iterable, (i) => {
+            const filtered = this.check$filter(i);
+            return filtered && filtered.$isSuspension
+                ? Sk.misceval.chain(filtered, (item) => (item ? new Sk.misceval.Break(item) : undefined))
+                : filtered ? new Sk.misceval.Break(filtered) : undefined;
+        });
         return canSuspend ? ret : Sk.misceval.retryOptionalSuspensionOrThrow(ret);
     },
     slots: {
@@ -22,7 +25,7 @@ Sk.builtin.filter_ = Sk.abstr.buildIteratorClass("filter", {
             "Return an iterator yielding those items of iterable for which function(item)\nis true. If function is None, return the items that are true.",
         tp$new(args, kwargs) {
             let [func, iterable] = Sk.abstr.copyKeywordsToNamedArgs("filter", ["predicate", "iterable"], args, kwargs, []);
-            func = Sk.builtin.checkNone(func) ? null : func;
+            func = Sk.builtin.checkNone(func) || func === Sk.builtin.bool ? null : func;
             iterable = Sk.abstr.iter(iterable);
             // in theory you could subclass
             if (this === Sk.builtin.filter_.prototype) {
@@ -42,7 +45,9 @@ Sk.builtin.filter_ = Sk.abstr.buildIteratorClass("filter", {
             } else {
                 res = Sk.misceval.callsimOrSuspendArray(this.$func, [item]);
             }
-            return Sk.misceval.chain(res, (ret) => (Sk.misceval.isTrue(ret) ? item : undefined));
+            return res && res.$isSuspension
+                ? Sk.misceval.chain(res, (ret) => (Sk.misceval.isTrue(ret) ? item : undefined))
+                : Sk.misceval.isTrue(res) ? item : undefined;
         },
     },
 });
