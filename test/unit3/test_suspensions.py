@@ -78,6 +78,19 @@ class Test_Suspensions(unittest.TestCase):
 
 
 
+    def test_method_lookup_and_arguments_suspend(self):
+        class Value:
+            def method(self, value):
+                sleep(.01)
+                return self, value
+        obj = Value()
+        self.assertEqual(obj.method(sleeping_f(3)), (obj, 3))
+        class Property:
+            @property
+            def method(self):
+                sleep(.01)
+                return lambda value: value + 1
+        self.assertEqual(Property().method(sleeping_f(4)), 5)
 
     def test_bytes(self):
         self.assertEqual(bytes(sleeping_gen([1,2,3])), bytes([1,2,3]))

@@ -692,7 +692,39 @@ Compiler.prototype.ccompare = function (e) {
     return fres;
 };
 
+Compiler.prototype.cmethodcall = function (e) {
+    const obj = this._gr("methodself", this.vexpr(e.func.value));
+    let name = e.func.attr["$r"]().v;
+    name = name.substring(1, name.length - 1);
+    name = mangleName(this.u.private_, new Sk.builtin.str(name)).v;
+    const pyName = this.makeConstant("new Sk.builtin.str('" + name + "')");
+    const func = this._gr("method", "undefined");
+    const direct = this._gr("directmethod", "false");
+    // Fresh lookup preserves class changes and instance shadowing. Only exact
+    // Python function descriptors with ordinary attribute access bypass binding.
+    // Resolve before arguments: they may rebind attributes or suspend.
+    out("if (", obj, ".ob$type.sk$klass&&", obj, ".tp$getattr===Sk.generic.getAttr&&(", func, "=", obj,
+        ".ob$type.$typeLookup(", pyName, "))!==undefined&&", func, ".ob$type===Sk.builtin.func&&(",
+        obj, ".$d===undefined||", obj, ".$d.quick$lookup(", pyName, ")===undefined)) {",
+        direct, "=true;$ret=", func, ";}else{$ret=", obj, ".tp$getattr(", pyName, ",true);}");
+    this._checkSuspension(e.func);
+    out("if($ret===undefined){throw new Sk.builtin.AttributeError(", obj,
+        ".sk$attrError()+\" has no attribute '\"+", pyName, ".$jsstr()+\"'\");}");
+    out(func, "=$ret;");
+    const args = this.cunpackstarstoarray(e.args, !Sk.__future__.python3);
+    const argsWithSelf = "[" + obj + (args === "[]" ? "" : "," + args.slice(1, -1)) + "]";
+    out("$ret=", direct, "?", func, ".tp$call(", argsWithSelf, ",undefined):(", func,
+        ".tp$call?", func, ".tp$call(", args, ",undefined):Sk.misceval.applyOrSuspend(",
+        func, ",undefined,undefined,undefined,", args, "));");
+    this._checkSuspension(e);
+    return this._gr("call", "$ret");
+};
+
 Compiler.prototype.ccall = function (e) {
+    if (e.func.constructor === Sk.astnodes.Attribute && (!e.keywords || e.keywords.length === 0) &&
+        (!e.args || e.args.every(arg => arg.constructor !== Sk.astnodes.Starred))) {
+        return this.cmethodcall(e);
+    }
     var func = this.vexpr(e.func);
     var kwarray = null;
     // Okay, here's the deal. We have some set of positional args
@@ -2885,7 +2917,9 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
         case OP_GLOBAL:
             switch (ctx) {
                 case Sk.astnodes.Load:
-                    return this._gr("loadgbl", "Sk.misceval.loadname('", mangledNoPre, "',$gbl)");
+                    const value = this._gr("loadgbl", "$gbl.", mangledNoPre);
+                    out("if(", value, "===undefined){", value, "=Sk.misceval.loadname('", mangledNoPre, "',$gbl);}");
+                    return value;
                 case Sk.astnodes.Store:
                     out("$gbl.", mangledNoPre, "=", dataToStore, ";");
                     break;
