@@ -79,6 +79,17 @@ class Test_Suspensions(unittest.TestCase):
         self.assertEqual(sleeping_f(3.0) ** 2, 9.0)
         self.assertEqual(sleeping_f(1 << 60) ** 2, 1 << 120)
 
+    def test_keyword_mapping_suspends(self):
+        class Mapping:
+            def keys(self):
+                sleep(.01)
+                return ["second", "first"]
+            def __getitem__(self, key):
+                sleep(.01)
+                return key
+        def capture(**kwargs):
+            return list(kwargs.items())
+        self.assertEqual(capture(**Mapping()), [("second", "second"), ("first", "first")])
 
     def test_builtin_types(self):
         self.assertEqual(list(sleeping_gen([1, 2, 3])), [1, 2, 3])
