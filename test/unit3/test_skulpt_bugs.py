@@ -101,6 +101,50 @@ class Wrapper:
         return self.fn.__get__(obj, ob_type)
 
 
+class TestCompilerLiterals(unittest.TestCase):
+    def test_literal_membership_and_chained_comparisons(self):
+        # CPython test_peepholer's constant-list cases, checked through execution.
+        self.assertTrue(2 in [1, 2, 3])
+        self.assertTrue("z" not in ["a", "b", "c"])
+        self.assertTrue(None in [None, 1, None])
+        self.assertTrue((1, 2) in [(1, 2), 3, 4])
+        self.assertTrue(1 in [1, 2] == [1, 2])
+        self.assertTrue(1 < 2 in [1, 2, 3])
+
+    def test_literal_iteration_and_mutable_elements(self):
+        values = []
+        for value in [None, True, False, (1, 2), b"xy"]:
+            values.append(value)
+        self.assertEqual(values, [None, True, False, (1, 2), b"xy"])
+        self.assertEqual([x * 2 for x in [1, 2, 3]], [2, 4, 6])
+        self.assertEqual(list(x * 2 for x in [1, 2, 3]), [2, 4, 6])
+        self.assertEqual(list((x, y) for x in [1, 2] for y in [3, 4]),
+                         [(1, 3), (1, 4), (2, 3), (2, 4)])
+
+        def make():
+            for value in [[0], ([],)]:
+                yield value
+        first = list(make())
+        first[0].append(1)
+        first[1][0].append(2)
+        self.assertEqual(list(make()), [[0], ([],)])
+
+    def test_literal_evaluation_order_and_ordinary_lists(self):
+        events = []
+        def mark(value):
+            events.append(value)
+            return value
+        self.assertTrue(mark(2) in [mark(1), mark(2), mark(3)])
+        self.assertEqual(events, [2, 1, 2, 3])
+        items = [1, 2]
+        self.assertTrue(2 in [*items, 3])
+        def make():
+            return [1, 2, 3]
+        first = make()
+        first.append(4)
+        self.assertEqual(make(), [1, 2, 3])
+
+
 class TestBugs(unittest.TestCase):
     def test_class_method_bug(self):
         class A:

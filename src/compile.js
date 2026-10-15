@@ -61,6 +61,8 @@ function CompilerUnit () {
     this.curblock = 0;
 
     this.consts = {};
+    // Reverse index of this unit's JS constant initialisers; never emitted.
+    this.constCache = Object.create(null);
 
     this.scopename = null;
 
@@ -174,7 +176,6 @@ Compiler.prototype.makeConstant = function (rest) {
     var i;
     var v;
     var val = "";
-    var cval;
 
     // Construct constant value
     for (i = 0; i < arguments.length; ++i) {
@@ -182,19 +183,15 @@ Compiler.prototype.makeConstant = function (rest) {
     }
 
     // Check if we've already defined this exact constant
-    for (var constant in this.u.consts) {
-        if (this.u.consts.hasOwnProperty(constant)) {
-            cval = this.u.consts[constant];
-            if (cval == val) {
-                // We have, just use it
-                return constant;
-            }
-        }
+    var constant = this.u.constCache[val];
+    if (constant !== undefined) {
+        return constant;
     }
 
     // We have not, build new one
     v = this.u.scopename + "." + this.gensym("const");
     this.u.consts[v] = val;
+    this.u.constCache[val] = v;
     return v;
 };
 
@@ -407,12 +404,8 @@ Compiler.prototype.ctuplelistorset = function(e, data, tuporlist) {
             for (i = 0; i < e.elts.length; ++i) {
                 item = this.vexpr(e.elts[i]);
 
-                // The following is an ugly check to see if item was
-                // turned into a constant.  As vexpr returns a string,
-                // this requires seeing if "$const" is contained
-                // within it.  A better solution would require a
-                // change to vexpr, which would be more invasive.
-                if (allconsts && (item.indexOf("$const") == -1)) {
+                if (allconsts && this.u.consts[item] === undefined &&
+                    item !== "Sk.builtin.none.none$" && item !== "Sk.builtin.bool.true$" && item !== "Sk.builtin.bool.false$") {
                     allconsts = false;
                 }
                 items.push(item);
@@ -434,6 +427,29 @@ Compiler.prototype.ctuplelistorset = function(e, data, tuporlist) {
             return this._gr("load" + tuporlist, "new Sk.builtins['", tuporlist, "']([", items, "])");
         }
     }
+};
+
+// CPython's optimize_lists_and_sets pools constant list literals when only
+// their iteration/membership is observed. Leave lists with mutable or dynamic
+// elements alone, and never use this for intermediate comparison operands.
+Compiler.prototype.citerable = function (e) {
+    function isConstant(expr) {
+        switch (expr.constructor) {
+            case Sk.astnodes.Num:
+            case Sk.astnodes.Str:
+            case Sk.astnodes.Bytes:
+            case Sk.astnodes.NameConstant:
+                return true;
+            case Sk.astnodes.Tuple:
+                return expr.elts.every(isConstant);
+            default:
+                return false;
+        }
+    }
+    if (e.constructor === Sk.astnodes.List && e.elts.every(isConstant)) {
+        return this.ctuplelistorset(e, undefined, "tuple");
+    }
+    return this.vexpr(e);
 };
 
 Compiler.prototype.csubdict = function(e, begin, end) {
@@ -520,7 +536,7 @@ Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, val
     var anchor = this.newBlock(type + " comp anchor");
 
     var l = generators[genIndex];
-    var toiter = this.vexpr(l.iter);
+    var toiter = this.citerable(l.iter);
     var iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
     var lvalue;
     var lkey;
@@ -656,8 +672,9 @@ Compiler.prototype.ccompare = function (e) {
     fres = this._gr("compareres", "null");
 
     for (i = 0; i < n; ++i) {
-        rhs = this.vexpr(e.comparators[i]);
         const op = e.ops[i];
+        rhs = i === n - 1 && (op === Sk.astnodes.In || op === Sk.astnodes.NotIn)
+            ? this.citerable(e.comparators[i]) : this.vexpr(e.comparators[i]);
         if (op === Sk.astnodes.Is) {
             out("$ret = ", cur, "===", rhs, ";");
         } else if (op === Sk.astnodes.IsNot) {
@@ -1451,7 +1468,7 @@ Compiler.prototype.cfor = function (s) {
     this.pushContinueBlock(start);
 
     // get the iterator
-    toiter = this.vexpr(s.iter);
+    toiter = this.citerable(s.iter);
     if (this.u.ste.generator) {
         // if we're in a generator, we have to store the iterator to a local
         // so it's preserved (as we cross blocks here and assume it survives)
@@ -2436,7 +2453,7 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
         // local, which we retrieve here.
         iter = "$loc.$iter0";
     } else {
-        toiter = this.vexpr(ge.iter);
+        toiter = this.citerable(ge.iter);
         iter = "$loc." + this.gensym("iter");
         out(iter, "=", "Sk.abstr.iter(", toiter, ");");
     }
@@ -2495,7 +2512,7 @@ Compiler.prototype.cgenexp = function (e) {
     var gener = this._gr("gener", "Sk.misceval.callsimArray(", gen, ");");
     // stuff the outermost iterator into the generator after evaluating it
     // outside of the function. it's retrieved by the fixed name above.
-    out(gener, ".gi$locals.$iter0=Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ");");
+    out(gener, ".gi$locals.$iter0=Sk.abstr.iter(", this.citerable(e.generators[0].iter), ");");
     return gener;
 };
 
