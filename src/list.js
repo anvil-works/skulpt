@@ -86,11 +86,7 @@ Sk.builtin.list = Sk.abstr.buildNativeClass("list", {
                 i = this.list$inRange(i, "list index out of range");
                 return this.v[i];
             } else if (index instanceof Sk.builtin.slice) {
-                const ret = [];
-                index.sssiter$(this.v.length, (i) => {
-                    ret.push(this.v[i]);
-                });
-                return new Sk.builtin.list(ret);
+                return new Sk.builtin.list(index.slice$asarray(this));
             }
             throw new Sk.builtin.TypeError("list indices must be integers or slices, not " + Sk.abstr.typeName(index));
         },

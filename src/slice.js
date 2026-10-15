@@ -161,6 +161,27 @@ Sk.builtin.slice = Sk.abstr.buildNativeClass("slice", {
             let {start, stop, step} = this.slice$as_indices(true, sized);
             return this.$wrt(length, start, stop, step, sized);
         },
+        // Copy list/tuple storage, after any index conversion has mutated it.
+        slice$asarray(sequence) {
+            const indices = this.slice$as_indices(true);
+            const array = sequence.v;
+            const {start, stop, step} = this.$wrt(array.length, indices.start, indices.stop, indices.step, true);
+            if (step === 1) {
+                // An adjusted stop below zero means empty, not another JS offset.
+                return array.slice(start, stop < 0 ? 0 : stop);
+            }
+            const result = [];
+            if (step > 0) {
+                for (let i = start; i < stop; i += step) {
+                    result.push(array[i]);
+                }
+            } else {
+                for (let i = start; i > stop; i += step) {
+                    result.push(array[i]);
+                }
+            }
+            return result;
+        },
         /**
          * used by objects like str, list, tuple that can return a slice
          * @param {number} len

@@ -84,6 +84,25 @@ class ListTest(list_tests.CommonTest):
         self.assertEqual(values.pop(Index()), 3)
         self.assertEqual(values, [1, 2])
 
+    def test_slice_bounds_follow_index_conversion(self):
+        values = [1, 2, 3]
+        class Clear:
+            def __index__(self):
+                values.clear()
+                return 0
+        self.assertEqual(len(values[Clear():]), 0)
+        values[:] = [1, 2, 3]
+        class Grow:
+            def __index__(self):
+                values.extend([4, 5])
+                return 0
+        self.assertEqual(values[Grow():], [1, 2, 3, 4, 5])
+        values[:] = [1, 2, 3]
+        class Repeat:
+            def __index__(self):
+                values.__imul__(2)
+                return 0
+        self.assertEqual(values[Repeat():], [1, 2, 3, 1, 2, 3])
 
     def test_extended_assignment_materialises_source_before_writing(self):
         values = [0, 1, 2, 3]

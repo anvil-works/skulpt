@@ -216,6 +216,26 @@ class CommonTest(unittest.TestCase):
         self.assertEqual(u[1:None], self.type2test([1, 2, 3, 4]))
         self.assertEqual(u[None:3], self.type2test([0, 1, 2]))
 
+        # Native copies must clamp negative stops and remain shallow.
+        self.assertEqual(u[:-(10 ** 100)], self.type2test())
+        self.assertEqual(u[10 ** 100:], self.type2test())
+        nested = self.type2test([[1], [2]])
+        copied = nested[:]
+        self.assertIs(copied[0], nested[0])
+        copied[0].append(3)
+        self.assertEqual(nested[0], [1, 3])
+
+        seen = []
+        class Index:
+            def __init__(self, name, value):
+                self.name, self.value = name, value
+            def __index__(self):
+                seen.append(self.name)
+                return self.value
+        self.assertEqual(u[Index("start", 1):Index("stop", 4):Index("step", 1)],
+                         self.type2test([1, 2, 3]))
+        self.assertEqual(seen, ["step", "start", "stop"])
+
         # Extended slices
         self.assertEqual(u[::], u)
         self.assertEqual(u[::2], self.type2test([0, 2, 4]))
