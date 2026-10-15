@@ -307,7 +307,11 @@ Sk.builtin.bytes = Sk.abstr.buildNativeClass("bytes", {
             end = end - uint8.length + 1;
             let i = start;
             while (i < end) {
-                if (uint8.every((val, j) => val === this.v[i + j])) {
+                let j = 0;
+                while (j < uint8.length && uint8[j] === this.v[i + j]) {
+                    j++;
+                }
+                if (j === uint8.length) {
                     return i;
                 }
                 i++;
@@ -317,7 +321,11 @@ Sk.builtin.bytes = Sk.abstr.buildNativeClass("bytes", {
         find$subright(uint8, start, end) {
             let i = end - uint8.length;
             while (i >= start) {
-                if (uint8.every((val, j) => val === this.v[i + j])) {
+                let j = 0;
+                while (j < uint8.length && uint8[j] === this.v[i + j]) {
+                    j++;
+                }
+                if (j === uint8.length) {
                     return i;
                 }
                 i--;
@@ -333,7 +341,9 @@ Sk.builtin.bytes = Sk.abstr.buildNativeClass("bytes", {
         },
         sk$asarray() {
             const ret = [];
-            this.v.forEach((x) => {ret.push(new Sk.builtin.int_(x));});
+            for (let i = 0; i < this.v.length; i++) {
+                ret.push(new Sk.builtin.int_(this.v[i]));
+            }
             return ret;
         },
         valueOf() {

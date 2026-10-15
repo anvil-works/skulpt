@@ -1153,7 +1153,10 @@ Sk.misceval.iterFor = function (iter, forFn, initialValue) {
                 return i.brValue;
             }
 
-            i = Sk.misceval.chain(forFn(i, prevValue), breakOrIterNext);
+            const result = forFn(i, prevValue);
+            i = result && result.$isSuspension
+                ? Sk.misceval.chain(result, breakOrIterNext)
+                : breakOrIterNext(result);
         }
         return prevValue;
     })(iter.tp$iternext(true));
@@ -1165,8 +1168,10 @@ Sk.exportSymbol("Sk.misceval.iterFor", Sk.misceval.iterFor);
  * @function
  * @description
  * 
- * As per iterFor but with an array rather than a python iterable
- * Useful for iterating over args where doing so could result in a suspension
+ * As per iterFor, over a JavaScript array. map/zip call this for each output
+ * row, so direct reads avoid a synthetic iterator and next-call per argument.
+ * The closure retains the next index and accumulator if an input or callback
+ * suspends. Undefined entries (including holes) end traversal, as in iterFor.
  *
  * @param {Array} args
  * @param {function(pyObject,*=)} forFn
@@ -1175,7 +1180,31 @@ Sk.exportSymbol("Sk.misceval.iterFor", Sk.misceval.iterFor);
 Sk.misceval.iterArray = function (args, forFn, initialValue) {
     Sk.asserts.assert(Array.isArray(args), "iterArgs requires an array");
     let i = 0;
-    return Sk.misceval.iterFor({tp$iternext: () => args[i++]}, forFn, initialValue);
+    let previous = initialValue;
+    return (function nextStep(item) {
+        while (item !== undefined) {
+            if (item instanceof Sk.misceval.Suspension) {
+                return new Sk.misceval.Suspension(nextStep, item);
+            }
+            if (item === Sk.misceval.Break || item instanceof Sk.misceval.Break) {
+                return item.brValue;
+            }
+            const result = forFn(item, previous);
+            if (result && result.$isSuspension) {
+                // Keep callback completion out of the common synchronous loop.
+                return Sk.misceval.chain(result, (value) => {
+                    previous = value;
+                    return value instanceof Sk.misceval.Break ? value.brValue : nextStep(args[i++]);
+                });
+            }
+            previous = result;
+            if (result instanceof Sk.misceval.Break) {
+                return result.brValue;
+            }
+            item = args[i++];
+        }
+        return previous;
+    })(args[i++]);
 };
 
 /**

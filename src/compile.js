@@ -61,6 +61,8 @@ function CompilerUnit () {
     this.curblock = 0;
 
     this.consts = {};
+    // Reverse index of this unit's JS constant initialisers; never emitted.
+    this.constCache = Object.create(null);
 
     this.scopename = null;
 
@@ -174,7 +176,6 @@ Compiler.prototype.makeConstant = function (rest) {
     var i;
     var v;
     var val = "";
-    var cval;
 
     // Construct constant value
     for (i = 0; i < arguments.length; ++i) {
@@ -182,19 +183,15 @@ Compiler.prototype.makeConstant = function (rest) {
     }
 
     // Check if we've already defined this exact constant
-    for (var constant in this.u.consts) {
-        if (this.u.consts.hasOwnProperty(constant)) {
-            cval = this.u.consts[constant];
-            if (cval == val) {
-                // We have, just use it
-                return constant;
-            }
-        }
+    var constant = this.u.constCache[val];
+    if (constant !== undefined) {
+        return constant;
     }
 
     // We have not, build new one
     v = this.u.scopename + "." + this.gensym("const");
     this.u.consts[v] = val;
+    this.u.constCache[val] = v;
     return v;
 };
 
@@ -407,12 +404,8 @@ Compiler.prototype.ctuplelistorset = function(e, data, tuporlist) {
             for (i = 0; i < e.elts.length; ++i) {
                 item = this.vexpr(e.elts[i]);
 
-                // The following is an ugly check to see if item was
-                // turned into a constant.  As vexpr returns a string,
-                // this requires seeing if "$const" is contained
-                // within it.  A better solution would require a
-                // change to vexpr, which would be more invasive.
-                if (allconsts && (item.indexOf("$const") == -1)) {
+                if (allconsts && this.u.consts[item] === undefined &&
+                    item !== "Sk.builtin.none.none$" && item !== "Sk.builtin.bool.true$" && item !== "Sk.builtin.bool.false$") {
                     allconsts = false;
                 }
                 items.push(item);
@@ -434,6 +427,29 @@ Compiler.prototype.ctuplelistorset = function(e, data, tuporlist) {
             return this._gr("load" + tuporlist, "new Sk.builtins['", tuporlist, "']([", items, "])");
         }
     }
+};
+
+// CPython's optimize_lists_and_sets pools constant list literals when only
+// their iteration/membership is observed. Leave lists with mutable or dynamic
+// elements alone, and never use this for intermediate comparison operands.
+Compiler.prototype.citerable = function (e) {
+    function isConstant(expr) {
+        switch (expr.constructor) {
+            case Sk.astnodes.Num:
+            case Sk.astnodes.Str:
+            case Sk.astnodes.Bytes:
+            case Sk.astnodes.NameConstant:
+                return true;
+            case Sk.astnodes.Tuple:
+                return expr.elts.every(isConstant);
+            default:
+                return false;
+        }
+    }
+    if (e.constructor === Sk.astnodes.List && e.elts.every(isConstant)) {
+        return this.ctuplelistorset(e, undefined, "tuple");
+    }
+    return this.vexpr(e);
 };
 
 Compiler.prototype.csubdict = function(e, begin, end) {
@@ -520,7 +536,7 @@ Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, val
     var anchor = this.newBlock(type + " comp anchor");
 
     var l = generators[genIndex];
-    var toiter = this.vexpr(l.iter);
+    var toiter = this.citerable(l.iter);
     var iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
     var lvalue;
     var lkey;
@@ -656,8 +672,9 @@ Compiler.prototype.ccompare = function (e) {
     fres = this._gr("compareres", "null");
 
     for (i = 0; i < n; ++i) {
-        rhs = this.vexpr(e.comparators[i]);
         const op = e.ops[i];
+        rhs = i === n - 1 && (op === Sk.astnodes.In || op === Sk.astnodes.NotIn)
+            ? this.citerable(e.comparators[i]) : this.vexpr(e.comparators[i]);
         if (op === Sk.astnodes.Is) {
             out("$ret = ", cur, "===", rhs, ";");
         } else if (op === Sk.astnodes.IsNot) {
@@ -675,7 +692,39 @@ Compiler.prototype.ccompare = function (e) {
     return fres;
 };
 
+Compiler.prototype.cmethodcall = function (e) {
+    const obj = this._gr("methodself", this.vexpr(e.func.value));
+    let name = e.func.attr["$r"]().v;
+    name = name.substring(1, name.length - 1);
+    name = mangleName(this.u.private_, new Sk.builtin.str(name)).v;
+    const pyName = this.makeConstant("new Sk.builtin.str('" + name + "')");
+    const func = this._gr("method", "undefined");
+    const direct = this._gr("directmethod", "false");
+    // Fresh lookup preserves class changes and instance shadowing. Only exact
+    // Python function descriptors with ordinary attribute access bypass binding.
+    // Resolve before arguments: they may rebind attributes or suspend.
+    out("if (", obj, ".ob$type.sk$klass&&", obj, ".tp$getattr===Sk.generic.getAttr&&(", func, "=", obj,
+        ".ob$type.$typeLookup(", pyName, "))!==undefined&&", func, ".ob$type===Sk.builtin.func&&(",
+        obj, ".$d===undefined||", obj, ".$d.quick$lookup(", pyName, ")===undefined)) {",
+        direct, "=true;$ret=", func, ";}else{$ret=", obj, ".tp$getattr(", pyName, ",true);}");
+    this._checkSuspension(e.func);
+    out("if($ret===undefined){throw new Sk.builtin.AttributeError(", obj,
+        ".sk$attrError()+\" has no attribute '\"+", pyName, ".$jsstr()+\"'\");}");
+    out(func, "=$ret;");
+    const args = this.cunpackstarstoarray(e.args, !Sk.__future__.python3);
+    const argsWithSelf = "[" + obj + (args === "[]" ? "" : "," + args.slice(1, -1)) + "]";
+    out("$ret=", direct, "?", func, ".tp$call(", argsWithSelf, ",undefined):(", func,
+        ".tp$call?", func, ".tp$call(", args, ",undefined):Sk.misceval.applyOrSuspend(",
+        func, ",undefined,undefined,undefined,", args, "));");
+    this._checkSuspension(e);
+    return this._gr("call", "$ret");
+};
+
 Compiler.prototype.ccall = function (e) {
+    if (e.func.constructor === Sk.astnodes.Attribute && (!e.keywords || e.keywords.length === 0) &&
+        (!e.args || e.args.every(arg => arg.constructor !== Sk.astnodes.Starred))) {
+        return this.cmethodcall(e);
+    }
     var func = this.vexpr(e.func);
     var kwarray = null;
     // Okay, here's the deal. We have some set of positional args
@@ -757,6 +806,16 @@ Compiler.prototype.vslicesub = function (s) {
 
 Compiler.prototype.vslice = function (s, ctx, obj, dataToStore) {
     var subs = this.vslicesub(s);
+    if (ctx === Sk.astnodes.Load && s.constructor === Sk.astnodes.Index &&
+        s.value.constructor === Sk.astnodes.Num && s.value.n instanceof Sk.builtin.int_ &&
+        typeof s.value.n.v === "number" && s.value.n.v >= 0) {
+        const index = s.value.n.v;
+        // Exact lists with an in-range literal index need no Python slot call.
+        out("$ret=", obj, ".ob$type===Sk.builtin.list&&", obj, ".v.length>", index,
+            "?", obj, ".v[", index, "]:Sk.abstr.objectGetItem(", obj, ",", subs, ",true);");
+        this._checkSuspension();
+        return this._gr("lsubscr", "$ret");
+    }
     return this.chandlesubscr(ctx, obj, subs, dataToStore);
 };
 
@@ -865,6 +924,45 @@ function getJsLiteralForString(s) {
     return r;
 }
 
+// Numeric literal operands let the JS engine specialise each site with fewer
+// guards. Subclasses and arbitrary-precision integers retain normal dispatch.
+Compiler.prototype.cbinop = function (e) {
+    const op = e.op.prototype._astname;
+    const literal = e.right.constructor === Sk.astnodes.Num ? e.right.n : null;
+    const square = op === "Pow" && literal !== null && literal.ob$type === Sk.builtin.int_ && literal.v === 2;
+    // Integer subtraction's extra guards slowed the recursive tree benchmark.
+    const symbol = (square ? "*" : { Add: "+", Mult: "*" }[op]) ||
+        (op === "Sub" && literal !== null && literal.ob$type === Sk.builtin.float_ ? "-" : undefined);
+    if (symbol === undefined || literal === null || typeof literal.v !== "number" ||
+        (literal.ob$type !== Sk.builtin.int_ && literal.ob$type !== Sk.builtin.float_)) {
+        return this._gr("binop", "Sk.abstr.numberBinOp(", this.vexpr(e.left), ",", this.vexpr(e.right), ",'", op, "')");
+    }
+    const left = this._gr("binleft", this.vexpr(e.left));
+    const right = this.vexpr(e.right);
+    const result = this._gr("binop", "undefined");
+    const fallback = "Sk.abstr.numberBinOp(" + left + "," + right + ",'" + op + "')";
+    out("if((", left, ".ob$type===Sk.builtin.int_||", left,
+        ".ob$type===Sk.builtin.float_)&&typeof ", left, ".v==='number'){");
+    const value = this._gr("number", left, ".v", symbol, square ? left : right, ".v");
+    if (square) {
+        // Float power raises on finite overflow, unlike float multiplication.
+        out("if(", left, ".ob$type===Sk.builtin.float_&&", value, "===Infinity&&",
+            left, ".v!==Infinity&&", left, ".v!==-Infinity){", result, "=", fallback, ";}else{");
+    }
+    if (literal instanceof Sk.builtin.int_) {
+        out("if(", left, ".ob$type===Sk.builtin.int_){", result,
+            "=(", value, "<=9007199254740991&&", value, ">=-9007199254740991)?new Sk.builtin.int_(", value, "):", fallback, ";",
+            "}else{", result, "=new Sk.builtin.float_(", value, ");}");
+    } else {
+        out(result, "=new Sk.builtin.float_(", value, ");");
+    }
+    if (square) {
+        out("}");
+    }
+    out("}else{", result, "=", fallback, ";}");
+    return result;
+};
+
 /**
  *
  * compiles an expression. to 'return' something, it'll gensym a var and store
@@ -892,7 +990,7 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
         case Sk.astnodes.BoolOp:
             return this.cboolop(e);
         case Sk.astnodes.BinOp:
-            return this._gr("binop", "Sk.abstr.numberBinOp(", this.vexpr(e.left), ",", this.vexpr(e.right), ",'", e.op.prototype._astname, "')");
+            return this.cbinop(e);
         case Sk.astnodes.UnaryOp:
             return this._gr("unaryop", "Sk.abstr.numberUnaryOp(", this.vexpr(e.operand), ",'", e.op.prototype._astname, "')");
         case Sk.astnodes.Lambda:
@@ -1451,7 +1549,7 @@ Compiler.prototype.cfor = function (s) {
     this.pushContinueBlock(start);
 
     // get the iterator
-    toiter = this.vexpr(s.iter);
+    toiter = this.citerable(s.iter);
     if (this.u.ste.generator) {
         // if we're in a generator, we have to store the iterator to a local
         // so it's preserved (as we cross blocks here and assume it survives)
@@ -2436,7 +2534,7 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
         // local, which we retrieve here.
         iter = "$loc.$iter0";
     } else {
-        toiter = this.vexpr(ge.iter);
+        toiter = this.citerable(ge.iter);
         iter = "$loc." + this.gensym("iter");
         out(iter, "=", "Sk.abstr.iter(", toiter, ");");
     }
@@ -2495,7 +2593,7 @@ Compiler.prototype.cgenexp = function (e) {
     var gener = this._gr("gener", "Sk.misceval.callsimArray(", gen, ");");
     // stuff the outermost iterator into the generator after evaluating it
     // outside of the function. it's retrieved by the fixed name above.
-    out(gener, ".gi$locals.$iter0=Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ");");
+    out(gener, ".gi$locals.$iter0=Sk.abstr.iter(", this.citerable(e.generators[0].iter), ");");
     return gener;
 };
 
@@ -2819,7 +2917,9 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
         case OP_GLOBAL:
             switch (ctx) {
                 case Sk.astnodes.Load:
-                    return this._gr("loadgbl", "Sk.misceval.loadname('", mangledNoPre, "',$gbl)");
+                    const value = this._gr("loadgbl", "$gbl.", mangledNoPre);
+                    out("if(", value, "===undefined){", value, "=Sk.misceval.loadname('", mangledNoPre, "',$gbl);}");
+                    return value;
                 case Sk.astnodes.Store:
                     out("$gbl.", mangledNoPre, "=", dataToStore, ";");
                     break;

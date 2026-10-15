@@ -12,14 +12,22 @@ Sk.builtin.map_ = Sk.abstr.buildIteratorClass("map", {
     iternext(canSuspend) {
         const args = [];
         const ret = Sk.misceval.chain(
-            Sk.misceval.iterArray(this.$iters, (it) =>
-                Sk.misceval.chain(it.tp$iternext(canSuspend), (i) => {
+            Sk.misceval.iterArray(this.$iters, (it) => {
+                const next = it.tp$iternext(canSuspend);
+                if (!next || !next.$isSuspension) {
+                    if (next === undefined) {
+                        return new Sk.misceval.Break(true);
+                    }
+                    args.push(next);
+                    return;
+                }
+                return Sk.misceval.chain(next, (i) => {
                     if (i === undefined) {
                         return new Sk.misceval.Break(true);
                     }
                     args.push(i);
-                })
-            ),
+                });
+            }),
             (endmap) => (endmap ? undefined : Sk.misceval.callsimOrSuspendArray(this.$func, args))
         );
         return canSuspend ? ret : Sk.misceval.retryOptionalSuspensionOrThrow(ret);

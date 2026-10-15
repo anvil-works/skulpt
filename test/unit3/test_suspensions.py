@@ -64,10 +64,72 @@ class Test_Suspensions(unittest.TestCase):
         self.assertEqual(sum(sleeping_gen([1, 2, 3])), 6)
         self.assertEqual(sum(sleeping_gen([1, 2.0, 3])), 6.0)
         self.assertEqual(sum(sleeping_gen([[1], [2]]), []), [1, 2])
+        self.assertEqual(sum(sleeping_gen([1000, 2, 3])), 1005)
+        self.assertEqual(sum(sleeping_gen([1000, 2.5, 3])), 1005.5)
+        self.assertEqual(sum(sleeping_gen([9007199254740991, 1, -1])), 9007199254740991)
+
+    def test_list_extension_suspends(self):
+        values = [1]
+        alias = values
+        values.extend(sleeping_gen([2, 3]))
+        self.assertIs(values, alias)
+        self.assertEqual(values, [1, 2, 3])
+
+    def test_literal_square_waits_for_operand(self):
+        self.assertEqual(sleeping_f(3.0) ** 2, 9.0)
+        self.assertEqual(sleeping_f(1 << 60) ** 2, 1 << 120)
+
+    def test_keyword_mapping_suspends(self):
+        class Mapping:
+            def keys(self):
+                sleep(.01)
+                return ["second", "first"]
+            def __getitem__(self, key):
+                sleep(.01)
+                return key
+        def capture(**kwargs):
+            return list(kwargs.items())
+        self.assertEqual(capture(**Mapping()), [("second", "second"), ("first", "first")])
 
     def test_builtin_types(self):
         self.assertEqual(list(sleeping_gen([1, 2, 3])), [1, 2, 3])
         self.assertEqual(tuple(sleeping_gen([1, 2, 3])), (1, 2, 3))
+
+    def test_iterator_adaptors(self):
+        self.assertEqual(list(enumerate(sleeping_gen([4, 5]), 7)), [(7, 4), (8, 5)])
+        self.assertEqual(list(zip(sleeping_gen([1, 2]), [3, 4])), [(1, 3), (2, 4)])
+        self.assertEqual(list(zip([1, 2], sleeping_gen([3, 4]))), [(1, 3), (2, 4)])
+        self.assertEqual(list(map(sleeping_f, sleeping_gen([1, 2]))), [1, 2])
+        self.assertEqual(list(filter(sleeping_f, sleeping_gen([0, 1, 0, 2]))), [1, 2])
+        self.assertEqual(list(filter(None, sleeping_gen([0, 1, 0, 2]))), [1, 2])
+
+    def test_zip_stops_before_consuming_later_iterator(self):
+        remaining = sleeping_gen([3, 4])
+        self.assertEqual(list(zip([1], remaining)), [(1, 3)])
+        self.assertEqual(list(remaining), [4])
+        self.assertEqual(list(zip(SleepingEmptyIter(), sleeping_gen([1]))), [])
+
+    def test_map_function_and_later_input_suspend(self):
+        def add(left, right):
+            sleep(.01)
+            return left + right
+        remaining = sleeping_gen([3, 4, 5])
+        self.assertEqual(list(map(add, [1, 2], remaining)), [4, 6])
+        self.assertEqual(list(remaining), [5])
+
+    def test_method_lookup_and_arguments_suspend(self):
+        class Value:
+            def method(self, value):
+                sleep(.01)
+                return self, value
+        obj = Value()
+        self.assertEqual(obj.method(sleeping_f(3)), (obj, 3))
+        class Property:
+            @property
+            def method(self):
+                sleep(.01)
+                return lambda value: value + 1
+        self.assertEqual(Property().method(sleeping_f(4)), 5)
 
     def test_bytes(self):
         self.assertEqual(bytes(sleeping_gen([1,2,3])), bytes([1,2,3]))

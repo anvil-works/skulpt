@@ -13,14 +13,22 @@ Sk.builtin.zip_ = Sk.abstr.buildIteratorClass("zip", {
     iternext(canSuspend) {
         const tup = [];
         const ret = Sk.misceval.chain(
-            Sk.misceval.iterArray(this.$iters, (it) =>
-                Sk.misceval.chain(it.tp$iternext(canSuspend), (i) => {
+            Sk.misceval.iterArray(this.$iters, (it) => {
+                const next = it.tp$iternext(canSuspend);
+                if (!next || !next.$isSuspension) {
+                    if (next === undefined) {
+                        return new Sk.misceval.Break(true);
+                    }
+                    tup.push(next);
+                    return;
+                }
+                return Sk.misceval.chain(next, (i) => {
                     if (i === undefined) {
                         return new Sk.misceval.Break(true);
                     }
                     tup.push(i);
-                })
-            ),
+                });
+            }),
             (endzip) => (endzip ? undefined : new Sk.builtin.tuple(tup))
         );
         return canSuspend ? ret : Sk.misceval.retryOptionalSuspensionOrThrow(ret);

@@ -306,23 +306,7 @@ Sk.builtin.dict = Sk.abstr.buildNativeClass("dict", {
             }
         },
         dict$copy() {
-            const newCopy = new Sk.builtin.dict([]);
-            newCopy.size = this.size;
-            const entries = Object.entries(this.entries); // do it this way for mappingproxy
-            for (let i in entries) {
-                const key = entries[i][0];
-                const item = entries[i][1];
-                newCopy.entries[key] = [item[0], item[1]];
-            }
-            let bucket, this_bucket;
-            for (let i in this.buckets) {
-                this_bucket = this.buckets[i];
-                newCopy.buckets[i] = bucket = [];
-                for (let j = 0; j < this_bucket.length; j++) {
-                    bucket.push(newCopy.entries["#" + i + "_" + j]);
-                }
-            }
-            return newCopy;
+            return copyDictEntries(this, new Sk.builtin.dict([]));
         },
         $items() {
             return Object.values(this.entries);
@@ -499,6 +483,25 @@ function mp$lookup(key) {
     return undefined;
 };
 
+// Copy into a fresh or empty dictionary, retaining the source's cached hashes.
+function copyDictEntries(source, target) {
+    target.size = source.size;
+    // Read once: mappingproxy may supply entries through a getter.
+    const entries = source.entries;
+    for (const key in entries) {
+        const item = entries[key];
+        target.entries[key] = [item[0], item[1]];
+    }
+    for (const hash in source.buckets) {
+        const sourceBucket = source.buckets[hash];
+        const bucket = target.buckets[hash] = [];
+        for (let i = 0; i < sourceBucket.length; i++) {
+            bucket.push(target.entries["#" + hash + "_" + i]);
+        }
+    }
+    return target;
+}
+
 /**
  * @function
  *
@@ -513,6 +516,13 @@ function mp$lookup(key) {
  * @private
  */
 function dict$merge(b) {
+    if (this.ob$type === Sk.builtin.dict && this.size === 0 && b.ob$type === Sk.builtin.dict) {
+        if (b.size !== 0) {
+            copyDictEntries(b, this);
+            this.$version++;
+        }
+        return;
+    }
     // we don't use mp$ass_subscript incase a subclass overrides __setitem__ we just ignore that like Cpython does
     // so use this.dict$setItem instead which can't be overridden by a subclass
     if (b.tp$iter === Sk.builtin.dict.prototype.tp$iter) {

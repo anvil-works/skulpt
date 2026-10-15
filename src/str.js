@@ -68,7 +68,7 @@ Sk.builtin.str = Sk.abstr.buildNativeClass("str", {
 
         this.$mangled = fixReserved(ret);
         // used by dict key hash function $savedKeyHash
-        this.$savedKeyHash = ret.replace(keyhash_regex, "!$&");
+        this.$savedKeyHash = keyhash_regex.test(ret) ? "!" + ret : ret;
         this.v = ret;
         this.$hash = -1;
     },

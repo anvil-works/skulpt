@@ -26,6 +26,19 @@ class DictTest(unittest.TestCase):
         self.assertEqual(dict(), {})
         self.assertIsNot(dict(), {})
 
+    def test_dynamic_string_key_prefixes(self):
+        # String hashes escape prefixes used for numeric/collision buckets.
+        keys = ["", "0", "1", "9", "!", "!!", "#0_0", "!#0_0",
+                "_", "!_", "plain", "__proto__"]
+        values = {0: "integer zero", 1: "integer one"}
+        for index, key in enumerate(keys):
+            values["".join([key[:1], key[1:]])] = index
+        for index, key in enumerate(keys):
+            self.assertEqual(values["".join([key, ""])], index)
+        self.assertEqual(len(values), len(keys) + 2)
+        self.assertEqual(values[0], "integer zero")
+        self.assertEqual(values[1], "integer one")
+
     # def test_literal_constructor(self):
     # Skulpt does not support eval TODO
     #     # check literal constructor for different sized dicts
@@ -317,6 +330,43 @@ class DictTest(unittest.TestCase):
 
         self.assertEqual({}.copy(), {})
         self.assertRaises(TypeError, d.copy, None)
+
+    def test_exact_dict_initialisation_reuses_hashes_and_copies_buckets(self):
+        blocked = [False]
+        class Key:
+            def __init__(self, value):
+                self.value = value
+            def __hash__(self):
+                if blocked[0]:
+                    raise ValueError("hash must not be repeated")
+                return 42
+            def __eq__(self, other):
+                return self.value == other.value
+        first, second, removed = Key(1), Key(2), Key(0)
+        original = {first: "first", removed: "removed", second: "second"}
+        del original[removed]
+        blocked[0] = True
+        updated = {}
+        updated.update(original)
+        copies = [original.copy(), dict(original), updated]
+        for copied in copies:
+            keys = list(copied)
+            self.assertIs(keys[0], first)
+            self.assertIs(keys[1], second)
+            self.assertEqual(list(copied.values()), ["first", "second"])
+        blocked[0] = False
+        for copied in copies:
+            del copied[first]
+            copied[second] = "changed"
+            self.assertEqual(copied[second], "changed")
+            self.assertEqual(original[first], "first")
+            self.assertEqual(original[second], "second")
+        class Namespace:
+            marker = [1]
+        for copied in [Namespace.__dict__.copy(), dict(Namespace.__dict__)]:
+            self.assertIs(copied["marker"], Namespace.marker)
+            copied["marker"] = [2]
+            self.assertEqual(Namespace.marker, [1])
 
     def test_copy_fuzz(self):
         for dict_size in [10, 100, 1000, ]:

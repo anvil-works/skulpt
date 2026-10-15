@@ -91,11 +91,7 @@ Sk.builtin.tuple = Sk.abstr.buildNativeClass("tuple", {
                 }
                 return this.v[i];
             } else if (index instanceof Sk.builtin.slice) {
-                const ret = [];
-                index.sssiter$(this.v.length, (i) => {
-                    ret.push(this.v[i]);
-                });
-                return new Sk.builtin.tuple(ret);
+                return new Sk.builtin.tuple(index.slice$asarray(this));
             }
             throw new Sk.builtin.TypeError("tuple indices must be integers or slices, not " + Sk.abstr.typeName(index));
         },
@@ -204,7 +200,7 @@ Sk.exportSymbol("Sk.builtin.tuple", Sk.builtin.tuple);
 var tuple_iter_ = Sk.abstr.buildIteratorClass("tuple_iterator", {
     constructor: function tuple_iter_(tuple) {
         this.$index = 0;
-        this.$seq = tuple.sk$asarray();
+        this.$seq = tuple.v;
     },
     iternext: Sk.generic.iterNextWithArray,
     methods: {

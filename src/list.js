@@ -86,11 +86,7 @@ Sk.builtin.list = Sk.abstr.buildNativeClass("list", {
                 i = this.list$inRange(i, "list index out of range");
                 return this.v[i];
             } else if (index instanceof Sk.builtin.slice) {
-                const ret = [];
-                index.sssiter$(this.v.length, (i) => {
-                    ret.push(this.v[i]);
-                });
-                return new Sk.builtin.list(ret);
+                return new Sk.builtin.list(index.slice$asarray(this));
             }
             throw new Sk.builtin.TypeError("list indices must be integers or slices, not " + Sk.abstr.typeName(index));
         },
@@ -102,17 +98,8 @@ Sk.builtin.list = Sk.abstr.buildNativeClass("list", {
             }
         },
         sq$inplace_concat(other) {
-            if (other === this) {
-                // prevent an infinite loop
-                this.v.push(...this.v);
-                return this;
-            }
-            return Sk.misceval.chain(
-                Sk.misceval.iterFor(Sk.abstr.iter(other), (i) => {
-                    this.v.push(i);
-                }),
-                () => this
-            );
+            const result = list$extend.call(this, other);
+            return result && result.$isSuspension ? Sk.misceval.chain(result, () => this) : this;
         },
         sq$inplace_repeat(n) {
             if (!Sk.misceval.isIndex(n)) {
@@ -181,19 +168,7 @@ Sk.builtin.list = Sk.abstr.buildNativeClass("list", {
             $doc: "Insert object before index.",
         },
         extend: {
-            $meth(iterable) {
-                if (iterable === this) {
-                    // prevent an infinite loop
-                    this.v.push(...this.v);
-                    return Sk.builtin.none.none$;
-                }
-                return Sk.misceval.chain(
-                    Sk.misceval.iterFor(Sk.abstr.iter(iterable), (i) => {
-                        this.v.push(i);
-                    }),
-                    () => Sk.builtin.none.none$
-                );
-            },
+            $meth: list$extend,
             $flags: { OneArg: true },
             $textsig: "($self, iterable, /)",
             $doc: "Extend list by appending elements from the iterable.",
@@ -206,6 +181,9 @@ Sk.builtin.list = Sk.abstr.buildNativeClass("list", {
                     i = Sk.misceval.asIndexSized(i, Sk.builtin.OverflowError);
                 }
                 i = this.list$inRange(i, "pop index out of range");
+                if (i === this.v.length - 1) {
+                    return this.v.pop();
+                }
                 const res = this.v[i];
                 this.v.splice(i, 1);
                 return res;
@@ -349,7 +327,13 @@ Sk.builtin.list = Sk.abstr.buildNativeClass("list", {
                 throw new Sk.builtin.ValueError("attempt to assign sequence of size " + vals.length + " to extended slice of size " + indices.length);
             }
             for (let i = 0; i < indices.length; i++) {
-                this.v.splice(indices[i], 1, vals[i]);
+                const index = indices[i];
+                if (index < this.v.length) {
+                    this.v[index] = vals[i];
+                } else {
+                    // Source iteration may have shortened the target list.
+                    this.v.splice(index, 1, vals[i]);
+                }
             }
         },
         del$subscript(index) {
@@ -398,6 +382,24 @@ Sk.exportSymbol("Sk.builtin.list", Sk.builtin.list);
  * 
  * @private
  */
+function list$extend(iterable) {
+    if (iterable === this || iterable.ob$type === Sk.builtin.list || iterable.ob$type === Sk.builtin.tuple) {
+        // Snapshot the length so extending a list with itself terminates.
+        const source = iterable.v;
+        const length = source.length;
+        for (let i = 0; i < length; i++) {
+            this.v.push(source[i]);
+        }
+        return Sk.builtin.none.none$;
+    }
+    return Sk.misceval.chain(
+        Sk.misceval.iterFor(Sk.abstr.iter(iterable), (i) => {
+            this.v.push(i);
+        }),
+        () => Sk.builtin.none.none$
+    );
+}
+
 function list$sort(cmp, key, reverse) {
     const has_key = key != null && key !== Sk.builtin.none.none$;
     const has_cmp = cmp != null && cmp !== Sk.builtin.none.none$;
