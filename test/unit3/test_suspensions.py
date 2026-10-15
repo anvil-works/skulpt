@@ -65,9 +65,19 @@ class Test_Suspensions(unittest.TestCase):
         self.assertEqual(sum(sleeping_gen([1, 2.0, 3])), 6.0)
         self.assertEqual(sum(sleeping_gen([[1], [2]]), []), [1, 2])
 
+
+    def test_literal_square_waits_for_operand(self):
+        self.assertEqual(sleeping_f(3.0) ** 2, 9.0)
+        self.assertEqual(sleeping_f(1 << 60) ** 2, 1 << 120)
+
+
     def test_builtin_types(self):
         self.assertEqual(list(sleeping_gen([1, 2, 3])), [1, 2, 3])
         self.assertEqual(tuple(sleeping_gen([1, 2, 3])), (1, 2, 3))
+
+
+
+
 
     def test_bytes(self):
         self.assertEqual(bytes(sleeping_gen([1,2,3])), bytes([1,2,3]))

@@ -774,6 +774,16 @@ Compiler.prototype.vslicesub = function (s) {
 
 Compiler.prototype.vslice = function (s, ctx, obj, dataToStore) {
     var subs = this.vslicesub(s);
+    if (ctx === Sk.astnodes.Load && s.constructor === Sk.astnodes.Index &&
+        s.value.constructor === Sk.astnodes.Num && s.value.n instanceof Sk.builtin.int_ &&
+        typeof s.value.n.v === "number" && s.value.n.v >= 0) {
+        const index = s.value.n.v;
+        // Exact lists with an in-range literal index need no Python slot call.
+        out("$ret=", obj, ".ob$type===Sk.builtin.list&&", obj, ".v.length>", index,
+            "?", obj, ".v[", index, "]:Sk.abstr.objectGetItem(", obj, ",", subs, ",true);");
+        this._checkSuspension();
+        return this._gr("lsubscr", "$ret");
+    }
     return this.chandlesubscr(ctx, obj, subs, dataToStore);
 };
 
@@ -882,6 +892,45 @@ function getJsLiteralForString(s) {
     return r;
 }
 
+// Numeric literal operands let the JS engine specialise each site with fewer
+// guards. Subclasses and arbitrary-precision integers retain normal dispatch.
+Compiler.prototype.cbinop = function (e) {
+    const op = e.op.prototype._astname;
+    const literal = e.right.constructor === Sk.astnodes.Num ? e.right.n : null;
+    const square = op === "Pow" && literal !== null && literal.ob$type === Sk.builtin.int_ && literal.v === 2;
+    // Integer subtraction's extra guards slowed the recursive tree benchmark.
+    const symbol = (square ? "*" : { Add: "+", Mult: "*" }[op]) ||
+        (op === "Sub" && literal !== null && literal.ob$type === Sk.builtin.float_ ? "-" : undefined);
+    if (symbol === undefined || literal === null || typeof literal.v !== "number" ||
+        (literal.ob$type !== Sk.builtin.int_ && literal.ob$type !== Sk.builtin.float_)) {
+        return this._gr("binop", "Sk.abstr.numberBinOp(", this.vexpr(e.left), ",", this.vexpr(e.right), ",'", op, "')");
+    }
+    const left = this._gr("binleft", this.vexpr(e.left));
+    const right = this.vexpr(e.right);
+    const result = this._gr("binop", "undefined");
+    const fallback = "Sk.abstr.numberBinOp(" + left + "," + right + ",'" + op + "')";
+    out("if((", left, ".ob$type===Sk.builtin.int_||", left,
+        ".ob$type===Sk.builtin.float_)&&typeof ", left, ".v==='number'){");
+    const value = this._gr("number", left, ".v", symbol, square ? left : right, ".v");
+    if (square) {
+        // Float power raises on finite overflow, unlike float multiplication.
+        out("if(", left, ".ob$type===Sk.builtin.float_&&", value, "===Infinity&&",
+            left, ".v!==Infinity&&", left, ".v!==-Infinity){", result, "=", fallback, ";}else{");
+    }
+    if (literal instanceof Sk.builtin.int_) {
+        out("if(", left, ".ob$type===Sk.builtin.int_){", result,
+            "=(", value, "<=9007199254740991&&", value, ">=-9007199254740991)?new Sk.builtin.int_(", value, "):", fallback, ";",
+            "}else{", result, "=new Sk.builtin.float_(", value, ");}");
+    } else {
+        out(result, "=new Sk.builtin.float_(", value, ");");
+    }
+    if (square) {
+        out("}");
+    }
+    out("}else{", result, "=", fallback, ";}");
+    return result;
+};
+
 /**
  *
  * compiles an expression. to 'return' something, it'll gensym a var and store
@@ -909,7 +958,7 @@ Compiler.prototype.vexpr = function (e, data, augvar, augsubs) {
         case Sk.astnodes.BoolOp:
             return this.cboolop(e);
         case Sk.astnodes.BinOp:
-            return this._gr("binop", "Sk.abstr.numberBinOp(", this.vexpr(e.left), ",", this.vexpr(e.right), ",'", e.op.prototype._astname, "')");
+            return this.cbinop(e);
         case Sk.astnodes.UnaryOp:
             return this._gr("unaryop", "Sk.abstr.numberUnaryOp(", this.vexpr(e.operand), ",'", e.op.prototype._astname, "')");
         case Sk.astnodes.Lambda:
