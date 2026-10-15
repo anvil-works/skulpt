@@ -19,6 +19,45 @@ def pyrange_reversed(start, stop, step):
 
 #
 class RangeTest(unittest.TestCase):
+    def test_numeric_search_matches_sequence(self):
+        ranges = [range(-15, 17, 3), range(17, -15, -3), range(0), range(4, 5)]
+        ranges += [range(-15, 17, 3)[::2], range(-15, 17, 3)[::-1],
+                   range(-15, 17, 3)[1:9:3]]
+        limit = 9007199254740991
+        ranges += [range(limit - 3, limit + 4), range(-limit - 3, -limit + 4),
+                   range(-limit, limit, limit), range(10 ** 30, 10 ** 30 + 7, 2)]
+        for values in ranges:
+            sequence = list(values)
+            for item in list(range(-20, 20)) + sequence + [False, True, 4.0, -3.0, 10 ** 100]:
+                self.assertEqual(item in values, item in sequence)
+                self.assertEqual(values.count(item), sequence.count(item))
+                if item in sequence:
+                    self.assertEqual(values.index(item), sequence.index(item))
+                else:
+                    self.assertRaises(ValueError, values.index, item)
+
+    def test_search_preserves_custom_equality(self):
+        seen = []
+        class Equal:
+            def __eq__(self, other):
+                seen.append(other)
+                return other % 2 == 0
+        values = range(4)
+        item = Equal()
+        self.assertIn(item, values)
+        self.assertEqual(seen, [0])
+        seen[:] = []
+        self.assertEqual(values.count(item), 2)
+        self.assertEqual(seen, [0, 1, 2, 3])
+        seen[:] = []
+        self.assertEqual(values.index(item), 0)
+        self.assertEqual(seen, [0])
+        class Int(int):
+            def __eq__(self, other):
+                return other % 2 == 0
+        self.assertEqual(values.count(Int(1)), 2)
+        self.assertEqual(values.index(Int(1)), 0)
+
     # def assert_iterators_equal(self, xs, ys, test_id, limit=None):
     #     # check that an iterator xs matches the expected results ys,
     #     # up to a given limit.

@@ -45,6 +45,10 @@ Sk.builtin.range_ = Sk.abstr.buildNativeClass("range", {
         },
         // sequence and mapping slots
         sq$contains(item) {
+            const index = rangeNumberIndex(this, item);
+            if (index !== undefined) {
+                return index !== -1;
+            }
             const lst = this.v;
             for (let i = 0; i < lst.length; i++) {
                 if (Sk.misceval.richCompareBool(item, lst[i], "Eq")) {
@@ -118,6 +122,10 @@ Sk.builtin.range_ = Sk.abstr.buildNativeClass("range", {
         //     $doc: "" },
         count: {
             $meth(item) {
+                const index = rangeNumberIndex(this, item);
+                if (index !== undefined) {
+                    return new Sk.builtin.int_(index === -1 ? 0 : 1);
+                }
                 let count = 0;
                 for (let i = 0; i < this.v.length; i++) {
                     if (Sk.misceval.richCompareBool(item, this.v[i], "Eq")) {
@@ -132,6 +140,13 @@ Sk.builtin.range_ = Sk.abstr.buildNativeClass("range", {
         },
         index: {
             $meth(item) {
+                const index = rangeNumberIndex(this, item);
+                if (index !== undefined) {
+                    if (index !== -1) {
+                        return new Sk.builtin.int_(index);
+                    }
+                    throw new Sk.builtin.ValueError(Sk.misceval.objectRepr(item) + "is not in range");
+                }
                 for (let i = 0; i < this.v.length; i++) {
                     if (Sk.misceval.richCompareBool(item, this.v[i], "Eq")) {
                         return new Sk.builtin.int_(i);
@@ -153,6 +168,35 @@ Sk.builtin.range_ = Sk.abstr.buildNativeClass("range", {
         sk$unacceptableBase: true,
     },
 });
+
+// undefined requests the generic equality scan; -1 means a definite miss.
+function rangeNumberIndex(range, item) {
+    if ((item.ob$type !== Sk.builtin.int_ && item.ob$type !== Sk.builtin.bool) || typeof item.v !== "number") {
+        return undefined;
+    }
+    const length = range.v.length;
+    if (length === 0) {
+        return -1;
+    }
+    // Use the stored first element: a slice may have different start metadata.
+    const first = range.v[0].v;
+    if (typeof first !== "number") {
+        return undefined;
+    }
+    if (length === 1) {
+        return item.v === first ? 0 : -1;
+    }
+    const offset = item.v - first;
+    const step = range.step;
+    if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(step)) {
+        return undefined;
+    }
+    if (offset % step !== 0) {
+        return -1;
+    }
+    const index = offset / step;
+    return index >= 0 && index < length ? index : -1;
+}
 
 function rangeFromPy(start, stop, step) {
     start = start === undefined ? start : Sk.misceval.asIndexOrThrow(start);
