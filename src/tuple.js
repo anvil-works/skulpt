@@ -204,7 +204,7 @@ Sk.exportSymbol("Sk.builtin.tuple", Sk.builtin.tuple);
 var tuple_iter_ = Sk.abstr.buildIteratorClass("tuple_iterator", {
     constructor: function tuple_iter_(tuple) {
         this.$index = 0;
-        this.$seq = tuple.sk$asarray();
+        this.$seq = tuple.v;
     },
     iternext: Sk.generic.iterNextWithArray,
     methods: {

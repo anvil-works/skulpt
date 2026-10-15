@@ -470,6 +470,9 @@ Sk.abstr.sequenceSetSlice = function (seq, i1, i2, x) {
  * 
  */
 Sk.abstr.sequenceUnpack = function (seq, breakIdx, numvals, hasStar) {
+    if (!hasStar && (seq.ob$type === Sk.builtin.tuple || seq.ob$type === Sk.builtin.list) && seq.v.length === breakIdx) {
+        return seq.v.slice();
+    }
     if (!Sk.builtin.checkIterable(seq)) {
         throw new Sk.builtin.TypeError("cannot unpack non-iterable " + Sk.abstr.typeName(seq) + " object");
     }

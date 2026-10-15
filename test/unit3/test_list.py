@@ -54,6 +54,111 @@ class ListTest(list_tests.CommonTest):
             list(sequence=[])
         self.assertIn(msg, c.exception.args[0])
 
+    def test_extend_preserves_custom_iteration(self):
+        class List(list):
+            def __iter__(self):
+                return iter([7, 8])
+        class Tuple(tuple):
+            def __iter__(self):
+                return iter([9])
+        values = [1]
+        self.assertIsNone(values.extend([2, 3]))
+        values.extend((4, 5))
+        values.extend(List([0]))
+        values.extend(Tuple((0,)))
+        self.assertEqual(values, [1, 2, 3, 4, 5, 7, 8, 9])
+
+        def failing():
+            yield 10
+            raise ValueError("iteration failed")
+        with self.assertRaises(ValueError):
+            values.extend(failing())
+        self.assertEqual(values[-1], 10)
+
+    def test_pop_index_can_mutate_list(self):
+        values = [1, 2]
+        class Index:
+            def __index__(self):
+                values.append(3)
+                return -1
+        self.assertEqual(values.pop(Index()), 3)
+        self.assertEqual(values, [1, 2])
+
+
+    def test_extended_assignment_materialises_source_before_writing(self):
+        values = [0, 1, 2, 3]
+        seen = []
+        def source():
+            seen.append(values[:])
+            yield 10
+            seen.append(values[:])
+            yield 20
+        values[::2] = source()
+        self.assertEqual(seen, [[0, 1, 2, 3], [0, 1, 2, 3]])
+        self.assertEqual(values, [10, 1, 20, 3])
+        with self.assertRaises(ValueError):
+            values[::2] = iter([99])
+        self.assertEqual(values, [10, 1, 20, 3])
+        def failing():
+            yield 99
+            raise ValueError("source failed")
+        with self.assertRaises(ValueError):
+            values[::-2] = failing()
+        self.assertEqual(values, [10, 1, 20, 3])
+        def shrinking():
+            values.pop()
+            yield 30
+            yield 40
+        values[::2] = shrinking()
+        self.assertEqual(values, [30, 1, 40])
+
+    def test_inplace_extend_preserves_iteration_and_identity(self):
+        class List(list):
+            def __iter__(self):
+                return iter([7, 8])
+        class Tuple(tuple):
+            def __iter__(self):
+                return iter([9])
+        values = [1]
+        alias = values
+        values += [2, 3]
+        values += (4, 5)
+        values += List([0])
+        values += Tuple((0,))
+        self.assertIs(values, alias)
+        self.assertEqual(values, [1, 2, 3, 4, 5, 7, 8, 9])
+        def failing():
+            yield 10
+            raise ValueError("iteration failed")
+        with self.assertRaises(ValueError):
+            values += failing()
+        self.assertEqual(values[-1], 10)
+
+        # Self-extension must not depend on the JS function argument limit.
+        values = [None] * 150000
+        values += values
+        self.assertEqual(len(values), 300000)
+        self.assertIsNone(values[-1])
+
+    def test_unpack_preserves_subclass_iteration(self):
+        class List(list):
+            def __iter__(self):
+                return iter([7, 8])
+        class Tuple(tuple):
+            def __iter__(self):
+                return iter([9, 10])
+        left, right = List([1, 2, 3])
+        self.assertEqual((left, right), (7, 8))
+        left, right = Tuple((1,))
+        self.assertEqual((left, right), (9, 10))
+        for values in [[], [1], [1, 2, 3], (), (1,), (1, 2, 3)]:
+            with self.assertRaises(ValueError):
+                left, right = values
+        values = [[1], [2]]
+        left, right = values
+        left.append(3)
+        self.assertEqual(values, [[1, 3], [2]])
+
     def test_truth(self):
         super().test_truth()
         self.assertTrue(not [])

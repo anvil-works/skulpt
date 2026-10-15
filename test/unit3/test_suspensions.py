@@ -65,6 +65,12 @@ class Test_Suspensions(unittest.TestCase):
         self.assertEqual(sum(sleeping_gen([1, 2.0, 3])), 6.0)
         self.assertEqual(sum(sleeping_gen([[1], [2]]), []), [1, 2])
 
+    def test_list_extension_suspends(self):
+        values = [1]
+        alias = values
+        values.extend(sleeping_gen([2, 3]))
+        self.assertIs(values, alias)
+        self.assertEqual(values, [1, 2, 3])
 
     def test_literal_square_waits_for_operand(self):
         self.assertEqual(sleeping_f(3.0) ** 2, 9.0)
