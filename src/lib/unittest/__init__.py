@@ -36,7 +36,8 @@ class _AssertRaisesContext(object):
         try:
             self.obj_name = callable_obj.__name__
         except AttributeError:
-            self.obj_name = str(callable_obj)
+            # Diagnostic formatting must not prevent the callable from running.
+            self.obj_name = _safe_repr(callable_obj)
         with self:
             callable_obj(*args[1:], **kwargs)
 
@@ -95,14 +96,14 @@ class TestCase(object):
     def cleanName(self,funcName):
         return funcName.__func__.__name__
 
-    def _runTestPart(self, func):
+    def _runTestPart(self, func, testName):
         # Record each failing phase separately, so a teardown error does not
         # hide the original failure and setup errors prevent the test body.
         try:
             func()
         except Exception as error:
             self.assertFailed += 1
-            print('Test threw exception in %s (%s)' % (self.cleanName(func), error))
+            self.appendResult('Error', testName, None, error)
             return False
         return True
 
@@ -112,9 +113,10 @@ class TestCase(object):
                 print('Running %s' % self.cleanName(func))
             self.assertPassed = 0
             self.assertFailed = 0
-            if self._runTestPart(self.setUp):
-                self._runTestPart(func)
-                self._runTestPart(self.tearDown)
+            testName = self.cleanName(func)
+            if self._runTestPart(self.setUp, testName):
+                self._runTestPart(func, testName)
+                self._runTestPart(self.tearDown, testName)
             if self.assertFailed:
                 self.numFailed += 1
             else:
@@ -251,7 +253,7 @@ class TestCase(object):
 
     def assertRegex(self, text, expected_regex, msg=None):
         """Fail the test unless the text matches the regular expression."""
-        if isinstance(expected_regex, (str, bytes)):
+        if isinstance(expected_regex, (str,)):
             assert expected_regex, "expected_regex must not be empty."
             expected_regex = re.compile(expected_regex)
         if not expected_regex.search(text):
@@ -264,7 +266,7 @@ class TestCase(object):
 
     def assertNotRegex(self, text, unexpected_regex, msg=None):
         """Fail the test if the text matches the regular expression."""
-        if isinstance(unexpected_regex, (str, bytes)):
+        if isinstance(unexpected_regex, (str,)):
             unexpected_regex = re.compile(unexpected_regex)
         match = unexpected_regex.search(text)
         if match:
@@ -364,7 +366,9 @@ class TestCase(object):
 
     def appendResult(self, res, actual, expected, feedback):
         # unittest.gui overrides this hook to display every assertion.
-        if res:
+        if res == "Error":
+            print('Test threw exception in %s (%s)' % (actual, feedback))
+        elif res:
             self.assertPassed += 1
         else:
             self.fail(feedback)
