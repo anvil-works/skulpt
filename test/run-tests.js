@@ -70,6 +70,7 @@ function runModernTests() {
 switch (process.argv[2] || "all") {
     case "all":
         runJSBITests();
+        run("test/unittest_runner.js");
         run("test/configure_builtins.js");
         run("test/generator_suspensions.js");
         run("test/testwrapper.js");
