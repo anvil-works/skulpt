@@ -94,7 +94,7 @@ class TestCase(object):
         pass
 
     def cleanName(self,funcName):
-        return funcName.__func__.__name__
+        return getattr(funcName, "__func__", funcName).__name__
 
     def _runTestPart(self, func, testName):
         # Record each failing phase separately, so a teardown error does not
