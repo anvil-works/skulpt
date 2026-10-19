@@ -92,6 +92,16 @@ case.main()
 assert events == ['setUp']
 assert case.numPassed == 0 and case.numFailed == 1
 
+events = []
+class StaticBody(unittest.TestCase):
+    @staticmethod
+    def test_body():
+        events.append('static body')
+case = StaticBody()
+case.main()
+assert events == ['static body']
+assert case.numPassed == 1 and case.numFailed == 0
+
 # Exercise the real GUI runner with an in-memory document. No browser is needed.
 import sys
 class Element:
