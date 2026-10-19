@@ -1,20 +1,23 @@
-__author__ = 'bmiller'
-'''
-This is the start of something that behaves like
-the unittest module from cpython.
-
-'''
+# Assertion behaviour follows CPython 3.14 Lib/unittest/case.py at 18ef0f0cb52.
+# This module retains Skulpt's lightweight runner and unittest.gui result hook.
 import re
 
+
+def _safe_repr(obj):
+    try:
+        return repr(obj)
+    except Exception:
+        return object.__repr__(obj)
+
+
 class _AssertRaisesContext(object):
-    """A context manager used to implement TestCase.assertRaises* methods."""
     def __init__(self, expected, test_case, expected_regex=None):
-        self.test_case = test_case
         self.expected = expected
+        self.test_case = test_case
         self.exception = None
-        if expected_regex is not None:
-            expected_regex = re.compile(expected_regex)
-        self.expected_regex = expected_regex
+        self.expected_regex = re.compile(expected_regex) if expected_regex is not None else None
+        self.msg = None
+        self.obj_name = None
 
     def _is_subtype(self, expected, basetype):
         if isinstance(expected, tuple):
@@ -22,62 +25,54 @@ class _AssertRaisesContext(object):
         return isinstance(expected, type) and issubclass(expected, basetype)
 
     def handle(self, name, args, kwargs):
-        """
-        If args is empty, assertRaises is being used as a
-        context manager, so return self.
-        If args is not empty, call a callable passing positional and keyword
-        arguments.
-        """
+        if not self._is_subtype(self.expected, BaseException):
+            raise TypeError('%s() arg 1 must be an exception type or tuple of exception types' % name)
+        if not args:
+            self.msg = kwargs.pop('msg', None)
+            if kwargs:
+                raise TypeError('%r is an invalid keyword argument for this function' % next(iter(kwargs)))
+            return self
+        callable_obj = args[0]
         try:
-            if not self._is_subtype(self.expected, BaseException):
-                raise TypeError('%s() arg 1 must be an exception type or tuple of exception types'.format(name))
-            if not args:
-                return self
-
-            callable_obj = args[0]
-            args = args[1:]
-            with self:
-                callable_obj(*args, **kwargs) 
-
-        finally:
-            # bpo-23890: manually break a reference cycle
-            self = None
+            self.obj_name = callable_obj.__name__
+        except AttributeError:
+            self.obj_name = str(callable_obj)
+        with self:
+            callable_obj(*args[1:], **kwargs)
 
     def __enter__(self):
         return self
 
+    def _raiseFailure(self, message):
+        message = self.test_case._formatMessage(self.msg, message)
+        self.test_case.appendResult(False, None, self.expected, message)
+
     def __exit__(self, exc_type, exc_value, tb):
-        res = True
-        feedback = ""
-        self.exception = exc_value
-        try:
-            act_exc = exc_type.__name__
-        except AttributeError:
-            act_exc = str(exc_type)
-        try:
-            exp_exc = self.expected.__name__
-        except AttributeError:
-            exp_exc = str(self.expected)
-
         if exc_type is None:
-            res = False
-            feedback = "{} not raised".format(exp_exc)
-        elif not issubclass(exc_type, self.expected):
-            res = False
-            feedback = "Expected {} but got {}".format(exp_exc, act_exc)
-
-        elif self.expected_regex is not None:
-            expected_regex = self.expected_regex
-            if not expected_regex.search(str(exc_value)):
-                res = False
-                feedback = '"{}" does not match "{}"'.format(expected_regex.pattern, str(exc_value))
-
-        self.test_case.appendResult(res, act_exc, exp_exc, feedback)
-
+            try:
+                name = self.expected.__name__
+            except AttributeError:
+                name = str(self.expected)
+            message = '%s not raised' % name
+            if self.obj_name:
+                message += ' by %s' % self.obj_name
+            self._raiseFailure(message)
+            return True
+        if not issubclass(exc_type, self.expected):
+            return False
+        # Native traceback objects are available; traceback.clear_frames is not.
+        self.exception = exc_value.with_traceback(None)
+        if self.expected_regex is not None and not self.expected_regex.search(str(exc_value)):
+            self._raiseFailure('"%s" does not match "%s"' % (self.expected_regex.pattern, exc_value))
+            return True
+        self.test_case.appendResult(True, exc_type, self.expected, self.msg)
         return True
 
 
 class TestCase(object):
+    failureException = AssertionError
+    longMessage = True
+
     def __init__(self):
         self.numPassed = 0
         self.numFailed = 0
@@ -96,211 +91,293 @@ class TestCase(object):
 
     def tearDown(self):
         pass
-    
+
     def cleanName(self,funcName):
         return funcName.__func__.__name__
 
-    def main(self):
+    def _runTestPart(self, func):
+        # Record each failing phase separately, so a teardown error does not
+        # hide the original failure and setup errors prevent the test body.
+        try:
+            func()
+        except Exception as error:
+            self.assertFailed += 1
+            print('Test threw exception in %s (%s)' % (self.cleanName(func), error))
+            return False
+        return True
 
+    def main(self):
         for func in self.tlist:
             if self.verbosity > 1:
                 print('Running %s' % self.cleanName(func))
-            try:
-                self.setUp()
-                self.assertPassed = 0
-                self.assertFailed = 0
-                func()
-                self.tearDown()
-                if self.assertFailed == 0:
-                    self.numPassed += 1
-                else:
-                    self.numFailed += 1
-                    print('Tests failed in %s ' % self.cleanName(func))
-            except Exception as e:
-                self.assertFailed += 1
+            self.assertPassed = 0
+            self.assertFailed = 0
+            if self._runTestPart(self.setUp):
+                self._runTestPart(func)
+                self._runTestPart(self.tearDown)
+            if self.assertFailed:
                 self.numFailed += 1
-                print('Test threw exception in %s (%s)' % (self.cleanName(func), e))
+            else:
+                self.numPassed += 1
         self.showSummary()
 
-    def assertEqual(self, actual, expected, feedback=""):
-        res = actual==expected
-        if not res and feedback == "":
-            feedback = "Expected %s to equal %s" % (str(actual),str(expected))
-        self.appendResult(res, actual ,expected, feedback)
+    def _formatMessage(self, msg, standardMsg):
+        """Honour the longMessage attribute when generating failure messages.
+        If longMessage is False this means:
+        * Use only an explicit message if it is provided
+        * Otherwise use the standard message for the assert
 
-    def assertNotEqual(self, actual, expected, feedback=""):
-        res = actual != expected
-        if not res and feedback == "":
-            feedback = "Expected %s to not equal %s" % (str(actual),str(expected))
-        self.appendResult(res, actual, expected, feedback)
+        If longMessage is True:
+        * Use the standard message
+        * If an explicit message is provided, plus ' : ' and the explicit message
+        """
+        if not self.longMessage:
+            return msg or standardMsg
+        if msg is None:
+            return standardMsg
+        try:
+            # don't switch to '{}' formatting in Python 2.X
+            # it changes the way unicode input is handled
+            return '%s : %s' % (standardMsg, msg)
+        except UnicodeDecodeError:
+            return  '%s : %s' % (_safe_repr(standardMsg), _safe_repr(msg))
 
-    def assertTrue(self,x, feedback=""):
-        res = bool(x) is True
-        if not res and feedback == "":
-            feedback = "Expected %s to be True" % (str(x))
-        self.appendResult(res, x, True, feedback)
+    def assertEqual(self, first, second, msg=None):
+        res = bool(first == second)
+        if not res:
+            msg = self._formatMessage(msg, '%s != %s' % (_safe_repr(first), _safe_repr(second)))
+        self.appendResult(res, first, second, msg)
 
-    def assertFalse(self,x, feedback=""):
-        res = not bool(x)
-        if not res and feedback == "":
-            feedback = "Expected %s to be False" % (str(x))
-        self.appendResult(res, x, False, feedback)
+    def assertNotEqual(self, first, second, msg=None):
+        res = bool(first != second)
+        if not res:
+            msg = self._formatMessage(msg, '%s == %s' % (_safe_repr(first), _safe_repr(second)))
+        self.appendResult(res, first, second, msg)
 
-    def assertIs(self,a,b, feedback=""):
-        res = a is b
-        if not res and feedback == "":
-            feedback = "Expected %s to be the same object as %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
+    def assertTrue(self, expr, msg=None):
+        res = bool(expr)
+        if not res:
+            msg = self._formatMessage(msg, '%s is not true' % _safe_repr(expr))
+        self.appendResult(res, expr, True, msg)
 
-    def assertIsNot(self,a,b, feedback=""):
-        res = a is not b
-        if not res and feedback == "":
-            feedback = "Expected %s to not be the same object as %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
+    def assertFalse(self, expr, msg=None):
+        res = not expr
+        if not res:
+            msg = self._formatMessage(msg, '%s is not false' % _safe_repr(expr))
+        self.appendResult(res, expr, False, msg)
 
-    def assertIsNone(self,x, feedback=""):
-        res = x is None
-        if not res and feedback == "":
-            feedback = "Expected %s to be None" % (str(x))
-        self.appendResult(res, x, None, feedback)
+    def assertIs(self, expr1, expr2, msg=None):
+        res = expr1 is expr2
+        if not res:
+            msg = self._formatMessage(msg, '%s is not %s' % (_safe_repr(expr1), _safe_repr(expr2)))
+        self.appendResult(res, expr1, expr2, msg)
 
-    def assertIsNotNone(self,x, feedback=""):
-        res = x is not None
-        if not res and feedback == "":
-            feedback = "Expected %s to not be None" % (str(x))
-        self.appendResult(res, x, None, feedback)
+    def assertIsNot(self, expr1, expr2, msg=None):
+        res = expr1 is not expr2
+        if not res:
+            msg = self._formatMessage(msg, 'unexpectedly identical: %s' % _safe_repr(expr1))
+        self.appendResult(res, expr1, expr2, msg)
 
-    def assertIn(self, a, b, feedback=""):
-        res = a in b
-        if not res and feedback == "":
-            feedback = "Expected %s to be in %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
+    def assertIsNone(self, obj, msg=None):
+        res = obj is None
+        if not res:
+            msg = self._formatMessage(msg, '%s is not None' % _safe_repr(obj))
+        self.appendResult(res, obj, None, msg)
 
-    def assertNotIn(self, a, b, feedback=""):
-        res = a not in b
-        if not res and feedback == "":
-            feedback = "Expected %s to not be in %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
+    def assertIsNotNone(self, obj, msg=None):
+        res = obj is not None
+        if not res:
+            msg = self._formatMessage(msg, 'unexpectedly None')
+        self.appendResult(res, obj, None, msg)
 
-    def assertIsInstance(self,a,b, feedback=""):
-        res = isinstance(a,b)
-        if not res and feedback == "":
-            feedback = "Expected %s to be an instance of %s" % (str(a), str(b))
-        self.appendResult(res, a, b, feedback)
+    def assertIn(self, member, container, msg=None):
+        res = member in container
+        if not res:
+            msg = self._formatMessage(msg, '%s not found in %s' % (_safe_repr(member), _safe_repr(container)))
+        self.appendResult(res, member, container, msg)
 
-    def assertNotIsInstance(self,a,b, feedback=""):
-        res = not isinstance(a,b)
-        if not res and feedback == "":
-            feedback = "Expected %s to not be an instance of %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
+    def assertNotIn(self, member, container, msg=None):
+        res = member not in container
+        if not res:
+            msg = self._formatMessage(msg, '%s unexpectedly found in %s' % (_safe_repr(member), _safe_repr(container)))
+        self.appendResult(res, member, container, msg)
 
-    def assertRegex(self, text, expected_regex, feedback=""):
+    def assertGreater(self, a, b, msg=None):
+        res = bool(a > b)
+        if not res:
+            msg = self._formatMessage(msg, '%s not greater than %s' % (_safe_repr(a), _safe_repr(b)))
+        self.appendResult(res, a, b, msg)
+
+    def assertGreaterEqual(self, a, b, msg=None):
+        res = bool(a >= b)
+        if not res:
+            msg = self._formatMessage(msg, '%s not greater than or equal to %s' % (_safe_repr(a), _safe_repr(b)))
+        self.appendResult(res, a, b, msg)
+
+    def assertLess(self, a, b, msg=None):
+        res = bool(a < b)
+        if not res:
+            msg = self._formatMessage(msg, '%s not less than %s' % (_safe_repr(a), _safe_repr(b)))
+        self.appendResult(res, a, b, msg)
+
+    def assertLessEqual(self, a, b, msg=None):
+        res = bool(a <= b)
+        if not res:
+            msg = self._formatMessage(msg, '%s not less than or equal to %s' % (_safe_repr(a), _safe_repr(b)))
+        self.appendResult(res, a, b, msg)
+
+    def assertIsInstance(self, obj, cls, msg=None):
+        """Same as self.assertTrue(isinstance(obj, cls)), with a nicer
+        default message."""
+        if not isinstance(obj, cls):
+            if isinstance(cls, tuple):
+                standardMsg = '%s is not an instance of any of %r' % (_safe_repr(obj), cls)
+            else:
+                standardMsg = '%s is not an instance of %r' % (_safe_repr(obj), cls)
+            return self.appendResult(False, obj, cls, self._formatMessage(msg, standardMsg))
+        self.appendResult(True, obj, cls, msg)
+
+    def assertNotIsInstance(self, obj, cls, msg=None):
+        """Included for symmetry with assertIsInstance."""
+        if isinstance(obj, cls):
+            if isinstance(cls, tuple):
+                for x in cls:
+                    if isinstance(obj, x):
+                        cls = x
+                        break
+            standardMsg = '%s is an instance of %r' % (_safe_repr(obj), cls)
+            return self.appendResult(False, obj, cls, self._formatMessage(msg, standardMsg))
+        self.appendResult(True, obj, cls, msg)
+
+    def assertRegex(self, text, expected_regex, msg=None):
         """Fail the test unless the text matches the regular expression."""
-        if isinstance(expected_regex, (str, )): #bytes
+        if isinstance(expected_regex, (str, bytes)):
             assert expected_regex, "expected_regex must not be empty."
             expected_regex = re.compile(expected_regex)
         if not expected_regex.search(text):
-            res = False
-            if feedback == "":
-                feedback = "Regex didn't match: %r not found in %r" % (
-                    repr(expected_regex), text)
-        else:
-            res = True
-        self.appendResult(res, text, expected_regex, feedback)
+            standardMsg = "Regex didn't match: %r not found in %r" % (
+                expected_regex.pattern, text)
+            # _formatMessage ensures the longMessage option is respected
+            msg = self._formatMessage(msg, standardMsg)
+            return self.appendResult(False, text, expected_regex, msg)
+        self.appendResult(True, text, expected_regex, msg)
 
-    def assertNotRegex(self, text, unexpected_regex, feedback=""):
+    def assertNotRegex(self, text, unexpected_regex, msg=None):
         """Fail the test if the text matches the regular expression."""
-        if isinstance(unexpected_regex, (str, )): # bytes
+        if isinstance(unexpected_regex, (str, bytes)):
             unexpected_regex = re.compile(unexpected_regex)
         match = unexpected_regex.search(text)
         if match:
-            feedback = 'Regex matched: %r matches %r in %r' % (
+            standardMsg = 'Regex matched: %r matches %r in %r' % (
                 text[match.start() : match.end()],
-                repr(unexpected_regex),
+                unexpected_regex.pattern,
                 text)
             # _formatMessage ensures the longMessage option is respected
-        self.appendResult(not bool(match), text, unexpected_regex, feedback)
+            msg = self._formatMessage(msg, standardMsg)
+            return self.appendResult(False, text, unexpected_regex, msg)
+        self.appendResult(True, text, unexpected_regex, msg)
 
-    def assertAlmostEqual(self, a, b, places=7, feedback="", delta=None):
+    def assertAlmostEqual(self, first, second, places=None, msg=None,
+                          delta=None):
+        """Fail if the two objects are unequal as determined by their
+           difference rounded to the given number of decimal places
+           (default 7) and comparing to zero, or by comparing that the
+           difference between the two objects is more than the given
+           delta.
 
+           Note that decimal places (from zero) are usually not the same
+           as significant digits (measured from the most significant digit).
+
+           If the two objects compare equal then they will automatically
+           compare almost equal.
+        """
+        if first == second:
+            # shortcut
+            self.appendResult(True, first, second, msg)
+            return
+        if delta is not None and places is not None:
+            raise TypeError("specify delta or places not both")
+
+        diff = abs(first - second)
         if delta is not None:
-            res = abs(a-b) <= delta
+            if diff <= delta:
+                self.appendResult(True, first, second, msg)
+                return
+
+            standardMsg = '%s != %s within %s delta (%s difference)' % (
+                _safe_repr(first),
+                _safe_repr(second),
+                _safe_repr(delta),
+                _safe_repr(diff))
         else:
             if places is None:
                 places = 7
-            res = round(a-b, places) == 0
-        
-        if not res and feedback == "":
-            feedback = "Expected %s to equal %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
 
-    def assertNotAlmostEqual(self, a, b, places=7, feedback="", delta=None):
+            if round(diff, places) == 0:
+                self.appendResult(True, first, second, msg)
+                return
 
+            standardMsg = '%s != %s within %r places (%s difference)' % (
+                _safe_repr(first),
+                _safe_repr(second),
+                places,
+                _safe_repr(diff))
+        msg = self._formatMessage(msg, standardMsg)
+        return self.appendResult(False, first, second, msg)
+
+    def assertNotAlmostEqual(self, first, second, places=None, msg=None,
+                             delta=None):
+        """Fail if the two objects are equal as determined by their
+           difference rounded to the given number of decimal places
+           (default 7) and comparing to zero, or by comparing that the
+           difference between the two objects is less than the given delta.
+
+           Note that decimal places (from zero) are usually not the same
+           as significant digits (measured from the most significant digit).
+
+           Objects that are equal automatically fail.
+        """
+        if delta is not None and places is not None:
+            raise TypeError("specify delta or places not both")
+        diff = abs(first - second)
         if delta is not None:
-            res = not (a == b) and abs(a - b) > delta
+            if not (first == second) and diff > delta:
+                self.appendResult(True, first, second, msg)
+                return
+            standardMsg = '%s == %s within %s delta (%s difference)' % (
+                _safe_repr(first),
+                _safe_repr(second),
+                _safe_repr(delta),
+                _safe_repr(diff))
         else:
             if places is None:
                 places = 7
+            if not (first == second) and round(diff, places) != 0:
+                self.appendResult(True, first, second, msg)
+                return
+            standardMsg = '%s == %s within %r places' % (_safe_repr(first),
+                                                         _safe_repr(second),
+                                                         places)
 
-            res = round(a-b, places) != 0
+        msg = self._formatMessage(msg, standardMsg)
+        return self.appendResult(False, first, second, msg)
 
-        if not res and feedback == "":
-            feedback = "Expected %s to not equal %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
-
-    def assertGreater(self,a,b, feedback=""):
-        res = a > b
-        if not res and feedback == "":
-            feedback = "Expected %s to be greater than %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
-
-    def assertGreaterEqual(self,a,b, feedback=""):
-        res = a >= b
-        if not res and feedback == "":
-            feedback = "Expected %s to be >= %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
-
-    def assertLess(self, a, b, feedback=""):
-        res = a < b
-        if not res and feedback == "":
-            feedback = "Expected %s to be less than %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
-
-    def assertLessEqual(self,a,b, feedback=""):
-        res = a <= b
-        if not res and feedback == "":
-            feedback = "Expected %s to be <= %s" % (str(a),str(b))
-        self.appendResult(res, a, b, feedback)
-
-    def appendResult(self,res,actual,expected,feedback):
+    def appendResult(self, res, actual, expected, feedback):
+        # unittest.gui overrides this hook to display every assertion.
         if res:
-            msg = 'Pass'
             self.assertPassed += 1
         else:
-            msg = 'Fail: ' +  feedback
-            print(msg)
-            self.assertFailed += 1
+            self.fail(feedback)
 
     def assertRaises(self, expected_exception, *args, **kwargs):
-        context = _AssertRaisesContext(expected_exception, self)
-        try:
-            return context.handle('assertRaises', args, kwargs)
-        finally:
-            # bpo-23890: manually break a reference cycle
-            context = None
+        return _AssertRaisesContext(expected_exception, self).handle('assertRaises', args, kwargs)
 
-    def assertRaisesRegex(self, expected_exception, expected_regex,
-                          *args, **kwargs):
+    def assertRaisesRegex(self, expected_exception, expected_regex, *args, **kwargs):
         context = _AssertRaisesContext(expected_exception, self, expected_regex)
         return context.handle('assertRaisesRegex', args, kwargs)
 
     def fail(self, msg=None):
-        if msg is None:
-            msg = 'Fail'
-        else:
-            msg = 'Fail: ' + msg
-        print(msg)
-        self.assertFailed += 1
+        raise self.failureException(msg)
 
     def showSummary(self):
         # don't divde by zero

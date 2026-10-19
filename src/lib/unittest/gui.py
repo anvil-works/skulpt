@@ -35,14 +35,21 @@ class TestCaseGui(TestCase):
          for func in self.tlist:
              try:
                  self.setUp()
-                 func()
-                 self.tearDown()
+                 try:
+                     func()
+                 finally:
+                     self.tearDown()
              except Exception as e:
                  self.appendResult('Error', None, None, e)
                  self.numFailed += 1
                  self.showSummary()
 
+     def fail(self, msg=None):
+         self.appendResult(False, None, None, msg)
+
      def appendResult(self,res,actual,expected,param):
+         if param is None:
+             param = ""
          trimActual = False
          if len(str(actual)) > 15:
              trimActual = True
