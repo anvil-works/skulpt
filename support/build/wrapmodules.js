@@ -176,7 +176,15 @@ async function processDirectories(dirs, exts, ret, options) {
     }
 }
 
-const group0Paths = new Set(["src/builtin/sys.js", "src/lib/time.js", "src/lib/datetime.js", "src/lib/json.js"]);
+// DatePicker's synchronous property setters and DOM callbacks use locale-aware strptime.
+const group0Paths = new Set([
+    "src/builtin/sys.js",
+    "src/lib/time.js",
+    "src/lib/datetime.js",
+    "src/lib/json.js",
+    "src/lib/_locale.js",
+    "src/lib/_strptime.js",
+]);
 const group1Paths = new Set([
     "src/lib/math.js",
     "src/lib/itertools.js",
@@ -187,11 +195,12 @@ const group1Paths = new Set([
     "src/lib/keyword.js",
     "src/lib/string.js",
     "src/lib/re.js",
+    "src/lib/locale.py",
     "src/lib/uuid.js",
     "src/lib/bisect.py",
     "src/lib/random.py",
 ]);
-const group2Paths = new Set(["src/lib/_strptime.js", "src/lib/calendar.js", "src/lib/fractions.js"]);
+const group2Paths = new Set(["src/lib/calendar.js", "src/lib/fractions.js"]);
 
 function loadSkulptFastSlow(ret, name, outfile) {
     const retFiles = ret.files;
