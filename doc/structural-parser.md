@@ -1,3 +1,6 @@
+> Historical notes for compatibility checkpoint #9. For the current direct-AST
+> API and migration boundary, see [parser-rollout.md](parser-rollout.md).
+
 # Structural parser compatibility checkpoint
 
 This branch can feed the Python 3.14 structural AST from `skulpt-parser/core` into

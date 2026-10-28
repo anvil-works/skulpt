@@ -5,8 +5,8 @@ var $builtinmodule = function (name) {
 
     mod.__file__ = new Sk.builtin.str("/src/lib/token.py");
 
-    // Keep the old compiler's numeric table isolated from the Python 3.14 API.
-    if (Sk["sourceTokenizer"]) {
+    // The stdlib can be shared by old and new runtime builds during rollout.
+    if (Sk["$scanSource"]) {
         return modernTokenModule();
     }
     const tok_name_values = [];

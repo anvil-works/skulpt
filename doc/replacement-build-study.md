@@ -1,5 +1,5 @@
-> Historical experiment, not the current replacement-build contract. The current
-> build preserves `Sk.parse` / `Sk.astFromParse`; see [parser-rollout.md](parser-rollout.md).
+> Historical experiment, not the current replacement-build contract. The compatibility
+> checkpoint preserves `Sk.parse` / `Sk.astFromParse`; for the current API see [parser-rollout.md](parser-rollout.md).
 > Reproduce these measurements with the historical helpers pinned below.
 
 # Replacing the old compiler frontend
