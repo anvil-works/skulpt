@@ -1418,6 +1418,10 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
             get(target, name) {
                 // Generated Python identifiers are reserved-name mangled; these
                 // unmangled properties belong to the JS execution machinery.
+                if (typeof name === "string" && name[0] === "$" && namespace.mp$subscript === undefined) {
+                    // Native module helpers stay outside the Python dictionary.
+                    return Reflect.get(namespace, name);
+                }
                 if (typeof name !== "string" || name === "constructor" || name[0] === "$") {
                     return Reflect.get(target, name);
                 }
