@@ -120,6 +120,18 @@ class An:
 
 
 class TestAnnotations(unittest.TestCase):
+    def test_annotated_variables_remain_local(self):
+        def first():
+            rows: list = []
+            second()
+            return rows
+
+        def second():
+            rows: list = []
+            rows.append(7)
+
+        self.assertEqual(first(), [])
+
     def test_bug_1428(self):
         annotations = An.__annotations__
         self.assertEqual(annotations, {"name": str, "_An__foo": int})
@@ -192,6 +204,47 @@ class TestBugs(unittest.TestCase):
         a = C()
         self.assertFalse(a == a)
         self.assertTrue(a != a)
+
+
+class TestImports(unittest.TestCase):
+    def test_missing_import_name(self):
+        import sys
+
+        with self.assertRaises(ImportError) as caught:
+            from sys import _skulpt_missing_name
+        self.assertIn("_skulpt_missing_name", str(caught.exception))
+
+        with self.assertRaises(AttributeError):
+            sys._skulpt_missing_name
+
+        with self.assertRaises(ImportError):
+            from t221_sub import _skulpt_missing_name as missing
+
+    def test_module_getattr_error(self):
+        import sys
+
+        module = type(sys)("_skulpt_import_getattr")
+
+        def getattr_error(name):
+            raise RuntimeError("module lookup failed")
+
+        module.__getattr__ = getattr_error
+        sys.modules[module.__name__] = module
+        try:
+            with self.assertRaises(RuntimeError):
+                from _skulpt_import_getattr import missing
+        finally:
+            del sys.modules[module.__name__]
+
+
+class TestSys(unittest.TestCase):
+    def test_implementation_metadata(self):
+        import sys
+        from sys import implementation
+
+        self.assertIs(implementation, sys.implementation)
+        self.assertEqual(implementation.name, "skulpt")
+        self.assertIsNone(implementation.cache_tag)
 
 
 if __name__ == "__main__":

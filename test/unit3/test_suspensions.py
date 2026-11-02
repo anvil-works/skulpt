@@ -42,6 +42,26 @@ class SleepingObjectGetatttr:
         return object.__getattribute__(self, "_foo")
 
 class Test_Suspensions(unittest.TestCase):
+    def test_expression_temporaries_survive_suspending_finally(self):
+        cleanup = []
+
+        def calculate():
+            try:
+                return sleeping_f(3) + sleeping_f(4) * sleeping_f(5)
+            finally:
+                cleanup.append(sleeping_f(6) + sleeping_f(7))
+
+        self.assertEqual(calculate(), 23)
+        self.assertEqual(cleanup, [13])
+
+    def test_dictionary_temporaries_survive_suspensions(self):
+        values = {
+            sleeping_f(1): sleeping_f(2) + sleeping_f(3),
+            sleeping_f(4): sleeping_f(5) * sleeping_f(6),
+            sleeping_f(7): {sleeping_f(8): sleeping_f(9)},
+        }
+        self.assertEqual(values, {1: 5, 4: 30, 7: {8: 9}})
+
     def test_min_max(self):
         x = [4, 1, 5]
         self.assertEqual(min(sleeping_gen(x)), 1)

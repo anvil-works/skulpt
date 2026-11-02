@@ -1,7 +1,7 @@
 /** @param {...*} x */
 var out;
 
-Sk.gensymcount = 0; // to be removed but temporarily here because Sk is sensitive
+// Keep the counter off Sk so compilation works when the public object is frozen.
 var gensymcount = 0;
 
 /**
@@ -280,7 +280,10 @@ Compiler.prototype._checkSuspension = function(e) {
         out ("if ($ret && $ret.$isSuspension) { return $saveSuspension($ret,'"+this.filename+"',"+e.lineno+","+e.col_offset+"); }");
 
         this.u.doesSuspend = true;
-        this.u.tempsToSave = this.u.tempsToSave.concat(this.u.localtemps);
+        // Append in place: copying the accumulated list at every check is costly.
+        for (var i = 0; i < this.u.localtemps.length; i++) {
+            this.u.tempsToSave.push(this.u.localtemps[i]);
+        }
 
     } else {
         out ("if ($ret && $ret.$isSuspension) { $ret = Sk.misceval.retryOptionalSuspensionOrThrow($ret); }");
@@ -1250,8 +1253,17 @@ Compiler.prototype.outputLocals = function (unit) {
 Compiler.prototype.outputSuspensionHelpers = function (unit) {
     var i, t;
     var localSaveCode = [];
-    var localsToSave = unit.localnames.concat(unit.tempsToSave);
-    var seenTemps = {};
+    var names = unit.localnames.concat(unit.tempsToSave);
+    var localsToSave = [];
+    var seenTemps = Object.create(null);
+    // Reuse unique names for declarations and both suspension helpers.
+    for (i = 0; i < names.length; i++) {
+        t = names[i];
+        if (seenTemps[t] === undefined) {
+            localsToSave.push(t);
+            seenTemps[t] = true;
+        }
+    }
     var hasCell = unit.ste.blockType === Sk.SYMTAB_CONSTS.FunctionBlock && unit.ste.childHasFree;
     var output = (localsToSave.length > 0 ? ("var " + localsToSave.join(",") + ";") : "") +
                  "var $wakeFromSuspension = function() {" +
@@ -1262,10 +1274,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
 
     for (i = 0; i < localsToSave.length; i++) {
         t = localsToSave[i];
-        if (seenTemps[t]===undefined) {
-            output += t + "=susp.$tmps." + t + ";";
-            seenTemps[t] = true;
-        }
+        output += t + "=susp.$tmps." + t + ";";
     }
 
     output +=  "try { $ret=susp.child.resume(); } catch(err) { if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
@@ -1279,13 +1288,9 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
                 "susp.optional=susp.child.optional;" +
                 (hasCell ? "susp.$cell=$cell;" : "");
 
-    seenTemps = {};
     for (i = 0; i < localsToSave.length; i++) {
         t = localsToSave[i];
-        if (seenTemps[t]===undefined) {
-            localSaveCode.push("\"" + t + "\":" + t);
-            seenTemps[t]=true;
-        }
+        localSaveCode.push("\"" + t + "\":" + t);
     }
     output +=   "susp.$tmps={" + localSaveCode.join(",") + "};" +
                 "return susp;" +
@@ -1871,9 +1876,8 @@ Compiler.prototype.cfromimport = function (s) {
             return;
         }
 
-        //out("print(\"getting Sk.abstr.gattr(", mod, ",", alias.name["$r"]().v, ")\");");
-        got = this._gr("item", "Sk.abstr.gattr(", mod, ", new Sk.builtin.str(", aliasOut, "), undefined)");
-        //out("print('got');");
+        got = this._gr("item", mod, ".tp$getattr(new Sk.builtin.str(", aliasOut, "))");
+        out("if (", got, " === undefined) { throw new Sk.builtin.ImportError(\"cannot import name '\" + ", aliasOut, " + \"' from \" + ", mod, ".sk$attrError()); }");
         storeName = alias.name;
         if (alias.asname) {
             storeName = alias.asname;
