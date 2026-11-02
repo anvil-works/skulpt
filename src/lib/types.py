@@ -66,6 +66,9 @@ if sys.version_info[0] >= 3:
     exec("async def _c(): pass")
     _coro = _c()
     CoroutineType = type(_coro)
+    exec("async def _ag(): yield")
+    AsyncGeneratorType = type(_ag())
+    del _ag
     _coro.close()
     del _coro, _c
 
