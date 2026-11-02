@@ -216,6 +216,111 @@ def get_original_bases(cls, /):
 
 
 del sys, _f, _g, _C, _x                           # Not for export
-__all__ = list(n for n in globals() if n[:1] != '_')
 
 GenericAlias = type(type[int])
+# Generator-based coroutines from CPython 3.14 at 18ef0f0cb52.
+# CPython _collections_abc._check_methods, without ABC registration machinery.
+# Structural protocol checks cover native and Python generator-like objects.
+def _has_methods(cls, *methods):
+    for method in methods:
+        for base in cls.__mro__:
+            if method in base.__dict__:
+                if base.__dict__[method] is None:
+                    return False
+                break
+        else:
+            return False
+    return True
+
+class _GeneratorWrapper:
+    # TODO: Implement this in C.
+    def __init__(self, gen):
+        self.__wrapped = gen
+        self.__isgen = gen.__class__ is GeneratorType
+        self.__name__ = getattr(gen, '__name__', None)
+        self.__qualname__ = getattr(gen, '__qualname__', None)
+    def send(self, val):
+        return self.__wrapped.send(val)
+    def throw(self, tp, *rest):
+        return self.__wrapped.throw(tp, *rest)
+    def close(self):
+        return self.__wrapped.close()
+    @property
+    def gi_code(self):
+        return self.__wrapped.gi_code
+    @property
+    def gi_frame(self):
+        return self.__wrapped.gi_frame
+    @property
+    def gi_running(self):
+        return self.__wrapped.gi_running
+    @property
+    def gi_yieldfrom(self):
+        return self.__wrapped.gi_yieldfrom
+    @property
+    def gi_suspended(self):
+        return self.__wrapped.gi_suspended
+    cr_code = gi_code
+    cr_frame = gi_frame
+    cr_running = gi_running
+    cr_await = gi_yieldfrom
+    cr_suspended = gi_suspended
+    def __next__(self):
+        return next(self.__wrapped)
+    def __iter__(self):
+        if self.__isgen:
+            return self.__wrapped
+        return self
+    __await__ = __iter__
+
+def coroutine(func):
+    """Convert regular generator function to a coroutine."""
+
+    if not callable(func):
+        raise TypeError('types.coroutine() expects a callable')
+
+    if (func.__class__ is FunctionType and
+        getattr(func, '__code__', None).__class__ is CodeType):
+
+        co_flags = func.__code__.co_flags
+
+        # Check if 'func' is a coroutine function.
+        # (0x180 == CO_COROUTINE | CO_ITERABLE_COROUTINE)
+        if co_flags & 0x180:
+            return func
+
+        # Check if 'func' is a generator function.
+        # (0x20 == CO_GENERATOR)
+        if co_flags & 0x20:
+            # TODO: Implement this in C.
+            co = func.__code__
+            # 0x100 == CO_ITERABLE_COROUTINE
+            func.__code__ = co.replace(co_flags=co.co_flags | 0x100)
+            return func
+
+    # The following code is primarily to support functions that
+    # return generator-like objects (for instance generators
+    # compiled with Cython).
+
+    # Delay functools and _collections_abc import for speeding up types import.
+    import functools
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        coro = func(*args, **kwargs)
+        if (coro.__class__ is CoroutineType or
+            coro.__class__ is GeneratorType and coro.gi_code.co_flags & 0x100):
+            # 'coro' is a native coroutine object or an iterable coroutine
+            return coro
+        if (_has_methods(type(coro), '__iter__', '__next__', 'send', 'throw', 'close') and
+            not _has_methods(type(coro), '__await__', 'send', 'throw', 'close')):
+            # 'coro' is either a pure Python generator iterator, or it
+            # implements collections.abc.Generator (and does not implement
+            # collections.abc.Coroutine).
+            return _GeneratorWrapper(coro)
+        # 'coro' is either an instance of collections.abc.Coroutine or
+        # some other object -- pass it through.
+        return coro
+
+    return wrapped
+
+__all__ = list(n for n in globals() if n[:1] != '_')
