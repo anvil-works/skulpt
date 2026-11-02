@@ -4,12 +4,13 @@
  * scope is the compiled function, and name/qualname are Python function names.
  */
 Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
-    constructor: function generator(scope, name, qualname) {
+    constructor: function generator(scope, name, qualname, kind) {
         if (!(this instanceof Sk.builtin.generator)) {
             throw new TypeError("bad internal call to generator, use 'new'");
         }
 
         this.gi$scope = scope;
+        this.gi$kind = kind || "generator";
         this.$name = name;
         this.$qualname = qualname;
         const susp = new Sk.misceval.Suspension();
@@ -43,7 +44,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         return this.gi$run(() => {
             value = value === undefined ? Sk.builtin.none.none$ : value;
             if (!this.gi$started && value !== Sk.builtin.none.none$ && !this.gi$closed) {
-                throw new Sk.builtin.TypeError("can't send non-None value to a just-started generator");
+                throw new Sk.builtin.TypeError("can't send non-None value to a just-started " + this.gi$kind);
             }
             this.gi$data.send = value;
             return this.gi$resume();
@@ -103,7 +104,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                 return this.gi$run(() => Sk.misceval.tryCatch(
                     () => Sk.misceval.chain(this.gi$throw(new Sk.builtin.GeneratorExit()), (ret) => {
                         if (ret !== undefined) {
-                            throw new Sk.builtin.RuntimeError("generator ignored GeneratorExit");
+                            throw new Sk.builtin.RuntimeError(this.gi$kind + " ignored GeneratorExit");
                         }
                         return Sk.__future__.python3 && this.gi$ret !== null ? this.gi$ret : Sk.builtin.none.none$;
                     }),
@@ -158,7 +159,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
     proto: {
         gi$run(action, canSuspend) {
             if (this.gi$running) {
-                throw new Sk.builtin.ValueError("generator already executing");
+                throw new Sk.builtin.ValueError(this.gi$kind + " already executing");
             }
             this.gi$running = true;
             const result = Sk.misceval.tryCatch(action, (error) => { throw error; }, () => {
@@ -194,7 +195,7 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
                             this.gi$ret = error.$value;
                             return undefined;
                         }
-                        const wrapped = new Sk.builtin.RuntimeError("generator raised StopIteration");
+                        const wrapped = new Sk.builtin.RuntimeError(this.gi$kind + " raised StopIteration");
                         wrapped.$cause = error;
                         throw wrapped;
                     }
@@ -265,8 +266,11 @@ Sk.builtin.generator = Sk.abstr.buildIteratorClass("generator", {
         gi$yield(wrapSuspension, value) {
             return [this.gi$makeSuspension(wrapSuspension), value];
         },
-        gi$startYieldFrom(iterable) {
-            this.gi$yieldfrom = Sk.abstr.iter(iterable);
+        gi$startYieldFrom(iterable, awaitIterator) {
+            if (iterable instanceof Sk.builtin.coroutine) {
+                throw new Sk.builtin.TypeError("cannot 'yield from' a coroutine object in a non-coroutine generator");
+            }
+            this.gi$yieldfrom = awaitIterator ? iterable : Sk.abstr.iter(iterable);
             this.gi$data.send = Sk.builtin.none.none$;
         },
         gi$stepYieldFrom() {

@@ -62,6 +62,12 @@ CellType = type(_cell_factory())
 def _g():
     yield 1
 GeneratorType = type(_g())
+if sys.version_info[0] >= 3:
+    exec("async def _c(): pass")
+    _coro = _c()
+    CoroutineType = type(_coro)
+    _coro.close()
+    del _coro, _c
 
 class _C:
     def _m(self): pass
