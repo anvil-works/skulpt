@@ -373,3 +373,42 @@ Initial raises are distinguished from propagation through caller frames, so a
 generator reraising an exception with no context does not acquire the current
 caller's handled exception. Catch emitters share this policy. PEP 479 and invalid-__anext__ wrappers retain their original cause/context and
 set suppression before propagation.
+
+
+## Traceback objects and exception information
+
+`stu-dev/compiler/tracebacks` adds native traceback nodes with frame/code/line
+identity, mutable cycle-checked tb_next, TracebackType construction,
+BaseException.__traceback__/with_traceback, sys.exc_info and the traceback
+argument passed to context-manager exit. Compiler catch lowering prepends
+call-site nodes once per propagation/frame; bare raise preserves the existing
+node and explicit raise adds its location. Exception group subsets share native
+traceback identity, while later propagation prepends independent nodes. Existing
+JavaScript error rendering retains its legacy array without mutating siblings.
+Frame identity survives suspension; code, line, globals, builtins and back-frame
+getters are provided. Returned ordinary frames retain their back frame; inactive
+generator/coroutine frames have no caller back frame.
+
+Fourteen unchanged CPython 3.14 methods from test_exceptions, test_types, test_sys
+and test_exception_group at 18ef0f0cb5278fa6583b753ffaaef7f46e416ab9 plus seven
+CPython-checked regressions cover the native descriptor, frame and group contracts.
+JavaScript-generated traceback/frame bytecode offsets and frame locals proxies
+raise explicit NotImplementedError until those compiler metadata/runtime
+increments land. Frame tracing/line jumps, frame clearing, sys._getframe and
+traceback formatting modules remain separate work.
+
+Traceback propagation compares persistent Python frame identity across resume,
+so a pending error passing through a yielding finally block gains no duplicate
+node. TracebackType arguments use CPython's signed C-int bounds; negative stored
+line numbers require bytecode line mapping and have an explicit getter guard.
+
+Fresh generator.throw injection resets propagation location so injecting an
+exception into its original frame still prepends the current yield location.
+
+Throw and close injections chain against only the generator's own handled state,
+not its current caller's inherited state. Existing supplied context is preserved
+when the generator has no local handler.
+
+As in _gen_throw/gen_send_ex2, delegation runs first; each generator chains its
+own handler only when its frame actually resumes with the resulting error.
+A delegate that handles injection does not acquire its outer generator's state.
