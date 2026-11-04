@@ -555,4 +555,161 @@ class TestContextDecorator(ContextAssertions):
         self.assertEqual(state, [1, 'something else', 999])
 
 
+class TestSuppress(unittest.TestCase):
+
+    # @support.requires_docstrings
+    def test_instance_docs(self):
+        # Issue 19330: ensure context manager instances have good docstrings
+        cm_docstring = suppress.__doc__
+        obj = suppress()
+        self.assertEqual(obj.__doc__, cm_docstring)
+
+    def test_no_result_from_enter(self):
+        with suppress(ValueError) as enter_result:
+            self.assertIsNone(enter_result)
+
+    def test_no_exception(self):
+        with suppress(ValueError):
+            self.assertEqual(pow(2, 5), 32)
+
+    def test_exact_exception(self):
+        with suppress(TypeError):
+            len(5)
+
+    def test_exception_hierarchy(self):
+        with suppress(LookupError):
+            'Hello'[50]
+
+    def test_other_exception(self):
+        with self.assertRaises(ZeroDivisionError):
+            with suppress(TypeError):
+                1/0
+
+    def test_no_args(self):
+        with self.assertRaises(ZeroDivisionError):
+            with suppress():
+                1/0
+
+    def test_multiple_exception_args(self):
+        with suppress(ZeroDivisionError, TypeError):
+            1/0
+        with suppress(ZeroDivisionError, TypeError):
+            len(5)
+
+    def test_cm_is_reentrant(self):
+        ignore_exceptions = suppress(Exception)
+        with ignore_exceptions:
+            pass
+        with ignore_exceptions:
+            len(5)
+        with ignore_exceptions:
+            with ignore_exceptions: # Check nested usage
+                len(5)
+            outer_continued = True
+            1/0
+        self.assertTrue(outer_continued)
+
+
+class ContextManagerProtocolTests(unittest.TestCase):
+    def test_second_yield_cleanup_failure_propagates(self):
+        original = StopIteration('body failed')
+
+        @contextmanager
+        def manager():
+            try:
+                yield
+            except StopIteration as error:
+                try:
+                    yield
+                finally:
+                    raise RuntimeError('cleanup failed') from error
+
+        with self.assertRaises(RuntimeError) as caught:
+            with manager():
+                raise original
+        self.assertEqual(str(caught.exception), 'cleanup failed')
+        self.assertIs(caught.exception.__cause__, original)
+
+    # CPython v3.7.9 Lib/test/test_contextlib.py, issue #11647.
+    def test_contextmanager_as_decorator(self):
+        @contextmanager
+        def woohoo(y):
+            state.append(y)
+            yield
+            state.append(999)
+
+        state = []
+        @woohoo(1)
+        def test(x):
+            self.assertEqual(state, [1])
+            state.append(x)
+        test('something')
+        self.assertEqual(state, [1, 'something', 999])
+
+        # Issue #11647: Ensure the decorated function is 'reusable'
+        state = []
+        test('something else')
+        self.assertEqual(state, [1, 'something else', 999])
+
+    def test_decorator_returns_and_metadata(self):
+        @contextmanager
+        def manager():
+            yield
+        @manager()
+        def answer(value=42):
+            """Wrapped documentation."""
+            return value
+        self.assertEqual(answer(), 42)
+        self.assertEqual(answer(value=7), 7)
+        self.assertEqual(answer.__name__, "answer")
+        self.assertEqual(answer.__doc__, "Wrapped documentation.")
+
+    def test_failed_entry_preserves_error(self):
+        error = ValueError("entry")
+        @contextmanager
+        def manager():
+            raise error
+            yield
+        @manager()
+        def answer():
+            self.fail("body must not run")
+        with self.assertRaises(ValueError) as caught:
+            answer()
+        self.assertIs(caught.exception, error)
+
+    def test_decorated_exception_suppression_and_exit_failure(self):
+        @contextmanager
+        def suppress_value_error():
+            try:
+                yield
+            except ValueError:
+                pass
+        @suppress_value_error()
+        def fail():
+            raise ValueError
+        self.assertIsNone(fail())
+        error = RuntimeError("exit")
+        @contextmanager
+        def bad_exit():
+            yield
+            raise error
+        @bad_exit()
+        def answer():
+            return 42
+        with self.assertRaises(RuntimeError) as caught:
+            answer()
+        self.assertIs(caught.exception, error)
+
+    def test_closing_keyword_argument(self):
+        events = []
+        class Resource:
+            def close(self):
+                events.append("closed")
+        resource = Resource()
+        with closing(thing=resource) as entered:
+            self.assertIs(entered, resource)
+        self.assertEqual(events, ["closed"])
+
+
+
 if __name__ == '__main__': unittest.main()
