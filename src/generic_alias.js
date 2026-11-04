@@ -6,8 +6,14 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         }
         this.$args = args;
         this.$params = null;
+        this.$starred = false;
     },
     slots: {
+        tp$iter() {
+            const starred = new Sk.builtin.GenericAlias(this.$origin, this.$args);
+            starred.$starred = true;
+            return new Sk.builtin.tuple([starred]).tp$iter();
+        },
         tp$as_number: true,
         nb$or(other) { return Sk.builtin.typeUnion(this, other); },
         nb$reflected_or(other) { return Sk.builtin.typeUnion(other, this); },
@@ -34,7 +40,7 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
             if (!arg_repr) {
                 arg_repr = "()";
             }
-            return new Sk.builtin.str(origin_repr + "[" + arg_repr + "]");
+            return new Sk.builtin.str((this.$starred ? "*" : "") + origin_repr + "[" + arg_repr + "]");
         },
         tp$doc: "Represent a PEP 585 generic type\n\nE.g. for t = list[int], t.origin is list and t.args is (int,).",
         tp$hash() {
@@ -63,6 +69,7 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
             if (!(other instanceof Sk.builtin.GenericAlias) || (op !== "Eq" && op !== "NotEq")) {
                 return Sk.builtin.NotImplemented.NotImplemented$;
             }
+            if (this.$starred !== other.$starred) return op === "NotEq";
             const eq = Sk.misceval.richCompareBool(this.$origin, other.$origin, "Eq");
             if (!eq) {
                 return op === "Eq" ? eq : !eq;
@@ -74,7 +81,11 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         mp$subscript(item) {
             if (this.$params === null) this.mk$params();
             return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(this, this.$args, this.$params, item),
-                args => new Sk.builtin.GenericAlias(this.$origin, args));
+                args => {
+                    const alias = new Sk.builtin.GenericAlias(this.$origin, args);
+                    alias.$starred = this.$starred;
+                    return alias;
+                });
         },
     },
     methods: {
@@ -98,6 +109,8 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         },
     },
     getsets: {
+        __unpacked__: { $get() { return new Sk.builtin.bool(this.$starred); } },
+        __typing_unpacked_tuple_args__: { $get() { return this.$starred && this.$origin === Sk.builtin.tuple ? this.$args : Sk.builtin.none.none$; } },
         __parameters__: {
             $get() {
                 if (this.$params === null) {
@@ -147,9 +160,12 @@ Sk.builtin.GenericAlias = Sk.abstr.buildNativeClass("types.GenericAlias", {
         str$orig: new Sk.builtin.str("__origin__"),
         str$args: new Sk.builtin.str("__args__"),
         attr$exc: [
+            "__class__",
             "__origin__",
             "__args__",
             "__parameters__",
+            "__unpacked__",
+            "__typing_unpacked_tuple_args__",
             "__mro_entries__",
             "__reduce_ex__", // needed so we don't look up object.__reduce_ex__
             "__reduce__",
@@ -181,7 +197,7 @@ Sk.builtin.makeTypeParameters = function (args) {
 // _Py_subs_parameters: prepare defaults, then substitute in argument order.
 Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
     if (!parameters.v.length) throw new Sk.builtin.TypeError(Sk.misceval.objectRepr(self) + " is not a generic class");
-    let items = item instanceof Sk.builtin.tuple ? item : new Sk.builtin.tuple([item]);
+    let items = Sk.builtin.unpackTypeArguments(item);
     let result;
     for (const param of parameters.v) {
         result = Sk.misceval.chain(result, () => {
@@ -202,12 +218,15 @@ Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
         let pending;
         const argumentsArray = args instanceof Sk.builtin.list ? Sk.misceval.arrayFromIterable(args) : args.v;
         for (const arg of argumentsArray) {
+            let unpacked;
             pending = Sk.misceval.chain(pending, () => {
                 if (Sk.builtin.checkClass(arg)) return arg;
                 if (arg instanceof Sk.builtin.tuple || arg instanceof Sk.builtin.list) {
                     return Sk.misceval.chain(Sk.builtin.substituteTypeParameters(self, arg, parameters, items),
                         value => arg instanceof Sk.builtin.list ? new Sk.builtin.list(value.v) : value);
                 }
+                unpacked = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_is_unpacked_typevartuple__"));
+                unpacked = unpacked !== undefined && Sk.misceval.isTrue(unpacked);
                 const subst = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__typing_subst__"));
                 if (subst !== undefined) {
                     const index = parameters.v.indexOf(arg);
@@ -216,13 +235,33 @@ Sk.builtin.substituteTypeParameters = function (self, args, parameters, item) {
                 }
                 const nested = Sk.abstr.lookupAttr(arg, new Sk.builtin.str("__parameters__"));
                 if (!(nested instanceof Sk.builtin.tuple) || !nested.v.length) return arg;
-                const replacements = nested.v.map(param => {
+                const replacements = [];
+                for (const param of nested.v) {
                     const index = parameters.v.indexOf(param);
-                    return index < 0 ? param : values[index];
-                });
+                    const value = index < 0 ? param : values[index];
+                    if (index >= 0 && param.tp$iter && value instanceof Sk.builtin.tuple) replacements.push(...value.v);
+                    else replacements.push(value);
+                }
                 return Sk.abstr.objectGetItem(arg, new Sk.builtin.tuple(replacements), true);
-            }, value => { substituted.push(value); });
+            }, value => {
+                if (unpacked) {
+                    if (!(value instanceof Sk.builtin.tuple)) throw new Sk.builtin.TypeError("expected __typing_subst__ to return a tuple");
+                    substituted.push(...value.v);
+                } else substituted.push(value);
+            });
         }
         return Sk.misceval.chain(pending, () => new Sk.builtin.tuple(substituted));
     });
+};
+
+// genericaliasobject.c: _unpack_args expands finite starred tuple arguments.
+Sk.builtin.unpackTypeArguments = function (item) {
+    const values = item instanceof Sk.builtin.tuple ? item.v : [item];
+    const result = [];
+    for (const value of values) {
+        const args = !Sk.builtin.checkClass(value) && Sk.abstr.lookupAttr(value, new Sk.builtin.str("__typing_unpacked_tuple_args__"));
+        if (args instanceof Sk.builtin.tuple && args.v[args.v.length - 1] !== Sk.builtin.Ellipsis) result.push(...args.v);
+        else result.push(value);
+    }
+    return new Sk.builtin.tuple(result);
 };

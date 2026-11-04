@@ -61,7 +61,7 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             let validate = Sk.builtin.none.none$;
             for (const param of params.v) {
                 validate = Sk.misceval.chain(validate, () => {
-                    if (!(param instanceof Sk.builtin.TypeVar)) {throw new Sk.builtin.TypeError("Expected a type param, got " + Sk.misceval.objectRepr(param));}
+                    if (![Sk.builtin.TypeVar, Sk.builtin.ParamSpec, Sk.builtin.TypeVarTuple].some(type => param instanceof type)) {throw new Sk.builtin.TypeError("Expected a type param, got " + Sk.misceval.objectRepr(param));}
                     return param.$getValue("default");
                 }, defaultValue => {
                     if (defaultValue === Sk.builtin.NoDefault) {
@@ -72,6 +72,7 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             return Sk.misceval.chain(validate, () => new Sk.builtin.TypeAliasType(name, value, null, module || Sk.builtin.none.none$, params));
         },
         $r() { return this.$name; },
+        tp$iter() { return new Sk.builtin.tuple([new Sk.builtin.UnpackAlias(this)]).tp$iter(); },
         tp$as_number: true,
         nb$or(other) { return Sk.builtin.typeUnion(this, other); },
         nb$reflected_or(other) { return Sk.builtin.typeUnion(other, this); },
@@ -86,7 +87,10 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
         __module__: { $get() {
             return this.$compute ? this.$compute.tp$getattr(Sk.builtin.str.$module) : this.$module;
         } },
-        __parameters__: { $get() { return this.$params; } },
+        __parameters__: { $get() {
+            if (!this.$params.v.some(param => param instanceof Sk.builtin.TypeVarTuple)) {return this.$params;}
+            return new Sk.builtin.tuple(this.$params.v.map(param => param instanceof Sk.builtin.TypeVarTuple ? new Sk.builtin.UnpackAlias(param) : param));
+        } },
         __type_params__: { $get() { return this.$params; } },
         __value__: { $get() {
             if (this.$value !== undefined) {return this.$value;}

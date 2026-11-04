@@ -544,3 +544,19 @@ recursive bounds and constructor/default-order validation. All 30 pass in both
 interpreters. Generic classes, ParamSpec, TypeVarTuple, ForwardRef and annotation
 formats above VALUE_WITH_FAKE_GLOBALS remain separate increments with explicit
 unsupported guards where their compiler paths are not implemented.
+
+### Variadic type parameters
+
+`stu-dev/compiler/variadic-parameters` adds native ParamSpec, ParamSpecArgs,
+ParamSpecKwargs, TypeVarTuple and Unpack objects. Function/alias lowering now
+handles all three parameter kinds and lazy defaults, including starred defaults.
+CPython's ParamSpec and TypeVarTuple preparation helpers are ported directly from
+`Lib/typing.py`. GenericAlias supports starred iteration, finite unpacking and
+variadic nested substitution, including arbitrary-length tuples. Its attribute
+exception list now retains `__class__`, fixing alias/type misclassification.
+
+Twenty-three complete upstream methods from `test_typing.py`,
+`test_type_params.py` and `test_genericalias.py`, plus three CPython-checked
+compiler/substitution regressions, pass in both runtimes. Generic classes,
+Concatenate, Callable typing aliases, ForwardRef and serialization remain later
+work; string type arguments continue to raise an explicit unsupported error.

@@ -11,22 +11,27 @@ Sk.builtin.NoDefaultType = Sk.abstr.buildNativeClass("NoDefaultType", {
 });
 Sk.builtin.NoDefault = Object.create(Sk.builtin.NoDefaultType.prototype);
 
+// Shared managed state for the three native type-parameter kinds.
+Sk.builtin.initTypeParameter = function (parameter, name, defaultValue) {
+    parameter.$name = name;
+    parameter.$default = defaultValue;
+    parameter.$evaluate = {};
+    parameter.$d = new Sk.builtin.dict();
+    const frame = Sk.misceval.currentFrame;
+    const globals = frame && frame.getGlobals();
+    const module = globals && (globals instanceof Sk.builtin.dict ? globals.quick$lookup(Sk.builtin.str.$name) : globals.__name__);
+    parameter.$d.dict$setItem(Sk.builtin.str.$module, module || Sk.builtin.none.none$);
+};
+
 // Objects/typevarobject.c: typevar_alloc and lazy bound/default/constraint getters.
 Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
     constructor: function TypeVar(name, values) {
-        this.$name = name;
+        Sk.builtin.initTypeParameter(this, name, values.default);
         this.$bound = values.bound;
         this.$constraints = values.constraints;
-        this.$default = values.default;
         this.$covariant = values.covariant;
         this.$contravariant = values.contravariant;
         this.$inferVariance = values.inferVariance;
-        this.$evaluate = {};
-        this.$d = new Sk.builtin.dict();
-        const frame = Sk.misceval.currentFrame;
-        const globals = frame && frame.getGlobals();
-        const module = globals && (globals instanceof Sk.builtin.dict ? globals.quick$lookup(Sk.builtin.str.$name) : globals.__name__);
-        this.$d.dict$setItem(Sk.builtin.str.$module, module || Sk.builtin.none.none$);
     },
     slots: {
         tp$new(args, kwargs) {
