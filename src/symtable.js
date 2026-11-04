@@ -28,6 +28,7 @@ var DEF_ANNOT = 2 << 11;
 /* this name is annotated */
 var DEF_COMP_ITER = 1 << 16;
 /* comprehension iteration target; above the encoded scope bits */
+var DEF_TYPE_PARAM = 1 << 17;
 
 var DEF_BOUND = (DEF_LOCAL | DEF_PARAM | DEF_IMPORT);
 
@@ -61,6 +62,7 @@ var ClassBlock = "class";
 var SYMTAB_CONSTS = {
     DEF_GLOBAL: DEF_GLOBAL,
     DEF_LOCAL: DEF_LOCAL,
+    DEF_TYPE_PARAM: DEF_TYPE_PARAM,
     DEF_PARAM: DEF_PARAM,
     USE: USE,
     DEF_STAR: DEF_STAR,
@@ -454,6 +456,64 @@ SymbolTable.prototype.visitAnnotation = function (annotation, statement) {
     this.cur.children.pop();
 };
 
+// symtable_enter_type_param_block and symtable_visit_type_param: parameter
+// bindings enclose the function/alias, with separate lazy bound/default blocks.
+SymbolTable.prototype.visitTypeParameters = function (owner) {
+    const name = owner._type === "TypeAlias" ? owner.name.id : owner.name;
+    const args = { posonlyargs: [], args: [], defaults: [], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null };
+    if (owner.args && owner.args.defaults.length) args.posonlyargs.push({ _type: "arg", arg: "$typeDefaults", annotation: null });
+    if (owner.args && owner.args.kw_defaults.some(e => e)) args.posonlyargs.push({ _type: "arg", arg: "$typeKwdefaults", annotation: null });
+    const key = owner.typeParamScope = { _type: "TypeParameters", args, lineno: owner.lineno };
+    const classScope = this.cur.blockType === ClassBlock ? this.cur : this.cur.classScope;
+    this.enterBlock("<generic parameters of " + name + ">", FunctionBlock, key, owner.lineno);
+    this.cur.annotationScope = true;
+    this.cur.annotationKind = "generic";
+    this.cur.isMethod = false;
+    if (classScope) {
+        this.cur.classScope = classScope;
+        classScope.needsClassdict = true;
+        this.addDef("__classdict__", USE, owner.lineno);
+    }
+    this.visitArguments(args, owner.lineno);
+    const names = new Set();
+    let seenDefault = false;
+    for (const param of owner.type_params) {
+        const mangled = Sk.mangleName(this.curClass, param.name).v;
+        if (names.has(mangled)) throw new Sk.builtin.SyntaxError("duplicate type parameter '" + param.name + "'", this.filename, param.lineno);
+        names.add(mangled);
+        if (param.name === "__classdict__") throw new Sk.builtin.SyntaxError("reserved name '__classdict__' cannot be used for type parameter", this.filename, param.lineno);
+        if (param._type !== "TypeVar") throw new Sk.builtin.SyntaxError(param._type + " parameters are not supported by the Skulpt compiler", this.filename, param.lineno);
+        this.addDef(param.name, DEF_LOCAL | DEF_TYPE_PARAM, param.lineno);
+        if (param.bound) param.boundScope = this.visitTypeVariable(param, param.bound, param.bound._type === "Tuple" ? "a TypeVar constraint" : "a TypeVar bound");
+        if (param.default_value) {
+            seenDefault = true;
+            param.defaultScope = this.visitTypeVariable(param, param.default_value, "a TypeVar default");
+        } else if (seenDefault) {
+            throw new Sk.builtin.SyntaxError("non-default type parameter '" + param.name + "' follows default type parameter", this.filename, param.lineno);
+        }
+    }
+};
+
+SymbolTable.prototype.visitTypeVariable = function (param, expression, kind) {
+    const key = { _type: "TypeVariable", lineno: param.lineno,
+        args: { posonlyargs: [{ _type: "arg", arg: "$typeFormat", annotation: null }], args: [],
+            defaults: [{ _type: "Constant", value: { type: "int", value: 1 } }], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null } };
+    const classScope = this.cur.classScope;
+    this.enterBlock(param.name, FunctionBlock, key, param.lineno);
+    this.cur.annotationScope = true;
+    this.cur.annotationKind = kind;
+    this.cur.isMethod = false;
+    if (classScope) {
+        this.cur.classScope = classScope;
+        classScope.needsClassdict = true;
+        this.addDef("__classdict__", USE, param.lineno);
+    }
+    this.visitArguments(key.args, param.lineno);
+    this.visitExpr(expression);
+    this.exitBlock();
+    return key;
+};
+
 SymbolTable.prototype.visitAnnotations = function (a, returns, owner) {
     const annotations = a.args.concat(a.posonlyargs, a.vararg ? [a.vararg] : [], a.kwonlyargs, a.kwarg ? [a.kwarg] : []).filter(arg => arg.annotation);
     if (Sk.__future__.python3 && annotations.length + Number(!!returns)) {
@@ -461,7 +521,7 @@ SymbolTable.prototype.visitAnnotations = function (a, returns, owner) {
             args: { posonlyargs: [{ _type: "arg", arg: "$annotationFormat", annotation: null }], args: [],
                 defaults: [], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null } };
         a.annotationScope = key;
-        const classScope = this.cur.blockType === ClassBlock ? this.cur : null;
+        const classScope = this.cur.blockType === ClassBlock ? this.cur : this.cur.classScope;
         this.enterBlock("__annotate__", FunctionBlock, key, owner.lineno);
         this.cur.annotationScope = true;
         if (classScope && !(this.flags & 0x1000000)) {
@@ -612,7 +672,7 @@ SymbolTable.prototype.visitStmt = function (s) {
     }
     switch (s._type) {
         case "FunctionDef":
-            if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
+            if (s.type_params.length && !Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
             this.addDef(s.name, DEF_LOCAL, s.lineno);
             if (s.args.defaults) {
                 this.SEQExpr(s.args.defaults);
@@ -621,11 +681,14 @@ SymbolTable.prototype.visitStmt = function (s) {
             if (s.decorator_list) {
                 this.SEQExpr(s.decorator_list);
             }
+            if (s.type_params.length) this.visitTypeParameters(s);
             this.visitAnnotations(s.args, s.returns, s);
             this.enterBlock(s.name, FunctionBlock, s, s.lineno);
+            this.cur.isMethod = parent.blockType === ClassBlock && !s.type_params.length;
             this.visitArguments(s.args, s.lineno);
             this.SEQStmt(s.body);
             this.exitBlock();
+            if (s.type_params.length) this.exitBlock();
             break;
         case "ClassDef":
             if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
@@ -649,11 +712,11 @@ SymbolTable.prototype.visitStmt = function (s) {
             break;
         case "TypeAlias": {
             if (!Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
-            if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
             this.visitExpr(s.name);
+            if (s.type_params.length) this.visitTypeParameters(s);
             s.args = { posonlyargs: [{ _type: "arg", arg: "$aliasFormat", annotation: null }], args: [],
                 defaults: [{ _type: "Constant", value: { type: "int", value: 1 } }], kwonlyargs: [], kw_defaults: [], vararg: null, kwarg: null };
-            const classScope = this.cur.blockType === ClassBlock ? this.cur : null;
+            const classScope = this.cur.blockType === ClassBlock ? this.cur : this.cur.classScope;
             this.enterBlock(s.name.id, FunctionBlock, s, s.lineno);
             this.cur.annotationScope = true;
             this.cur.annotationKind = "type alias";
@@ -667,6 +730,7 @@ SymbolTable.prototype.visitStmt = function (s) {
             this.visitArguments(s.args, s.lineno);
             this.visitExpr(s.value);
             this.exitBlock();
+            if (s.type_params.length) this.exitBlock();
             break;
         }
         case "Delete":
@@ -864,7 +928,7 @@ SymbolTable.prototype.visitExpr = function (e) {
     Sk.asserts.assert(e !== undefined, "visitExpr called with undefined");
     if (this.cur.annotationScope && ["Yield", "YieldFrom", "Await", "NamedExpr"].includes(e._type)) {
         const name = { Yield: "yield expression", YieldFrom: "yield expression", Await: "await expression", NamedExpr: "named expression" }[e._type];
-        throw new Sk.builtin.SyntaxError(name + " cannot be used within " + (this.cur.annotationKind === "type alias" ? "a type alias" : "an annotation"), this.filename, e.lineno);
+        throw new Sk.builtin.SyntaxError(name + " cannot be used within " + (this.cur.annotationKind === "type alias" ? "a type alias" : this.cur.annotationKind || "an annotation"), this.filename, e.lineno);
     }
     // console.log("  e: ", e._type);
     switch (e._type) {
@@ -1064,6 +1128,10 @@ SymbolTable.prototype.visitNamedExpr = function (e) {
             if (scope.annotationKind === "type alias") {
                 throw new Sk.builtin.SyntaxError("assignment expression within a comprehension cannot be used in a type alias", this.filename, e.lineno);
             }
+            if (scope.annotationKind === "generic" || (scope.annotationKind || "").startsWith("a TypeVar")) {
+                throw new Sk.builtin.SyntaxError("assignment expression within a comprehension cannot be used " +
+                    (scope.annotationKind === "generic" ? "within the definition of a generic" : "in a TypeVar bound"), this.filename, e.lineno);
+            }
             if (scope.annotationScope) continue;
             const flags = scope.symFlags[mangled] || 0;
             if (scope.comprehension) {
@@ -1166,11 +1234,11 @@ SymbolTable.prototype.analyzeBlock = function (ste, bound, free, global) {
     }
 
     if (ste.blockType !== ClassBlock) {
-        if (ste.blockType === FunctionBlock) {
-            _dictUpdate(newbound, local);
-        }
         if (bound) {
             _dictUpdate(newbound, bound);
+        }
+        if (ste.blockType === FunctionBlock) {
+            _dictUpdate(newbound, local);
         }
         _dictUpdate(newglobal, global);
     }
@@ -1305,6 +1373,9 @@ SymbolTable.prototype.analyzeName = function (ste, dict, name, flags, bound, loc
         if (bound[name] === undefined) {
             throw new Sk.builtin.SyntaxError("no binding for nonlocal '" + name + "' found", this.filename, ste.lineno);
         }
+        if (bound[name] === "type parameter") {
+            throw new Sk.builtin.SyntaxError("nonlocal binding not allowed for type parameter '" + name + "'", this.filename, ste.lineno);
+        }
         dict[name] = FREE;
         ste.hasFree = true;
         free[name] = null;
@@ -1312,7 +1383,7 @@ SymbolTable.prototype.analyzeName = function (ste, dict, name, flags, bound, loc
     }
     if (flags & DEF_BOUND) {
         dict[name] = LOCAL;
-        local[name] = null;
+        local[name] = flags & DEF_TYPE_PARAM ? "type parameter" : null;
         delete global[name];
         return;
     }

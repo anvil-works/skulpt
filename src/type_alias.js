@@ -38,11 +38,12 @@ Sk.builtin.typingTypeRepr = function (value) {
 
 // Objects/typevarobject.c: typealias_get_value / typealias_alloc.
 Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
-    constructor: function TypeAliasType(name, value, compute, module) {
+    constructor: function TypeAliasType(name, value, compute, module, params) {
         this.$name = name;
         this.$value = value;
         this.$compute = compute;
         this.$module = module;
+        this.$params = params || new Sk.builtin.tuple([]);
     },
     slots: {
         tp$new(args, kwargs) {
@@ -53,26 +54,40 @@ Sk.builtin.TypeAliasType = Sk.abstr.buildNativeClass("typing.TypeAliasType", {
             }
             if (!Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("name must be a str");}
             if (!(params instanceof Sk.builtin.tuple)) {throw new Sk.builtin.TypeError("type_params must be a tuple");}
-            if (params.v.length) {throw new Sk.builtin.NotImplementedError("generic type aliases require type-parameter support");}
             const frame = Sk.misceval.currentFrame;
             const globals = frame && frame.getGlobals();
             const module = globals && (globals instanceof Sk.builtin.dict ? globals.quick$lookup(Sk.builtin.str.$name) : globals.__name__);
-            return new Sk.builtin.TypeAliasType(name, value, null, module || Sk.builtin.none.none$);
+            let seenDefault = false;
+            let validate = Sk.builtin.none.none$;
+            for (const param of params.v) {
+                validate = Sk.misceval.chain(validate, () => {
+                    if (!(param instanceof Sk.builtin.TypeVar)) {throw new Sk.builtin.TypeError("Expected a type param, got " + Sk.misceval.objectRepr(param));}
+                    return param.$getValue("default");
+                }, defaultValue => {
+                    if (defaultValue === Sk.builtin.NoDefault) {
+                        if (seenDefault) {throw new Sk.builtin.TypeError("non-default type parameter '" + Sk.misceval.objectRepr(param) + "' follows default type parameter");}
+                    } else {seenDefault = true;}
+                });
+            }
+            return Sk.misceval.chain(validate, () => new Sk.builtin.TypeAliasType(name, value, null, module || Sk.builtin.none.none$, params));
         },
         $r() { return this.$name; },
         tp$as_number: true,
         nb$or(other) { return Sk.builtin.typeUnion(this, other); },
         nb$reflected_or(other) { return Sk.builtin.typeUnion(other, this); },
         tp$as_sequence_or_mapping: true,
-        mp$subscript() { throw new Sk.builtin.TypeError("Only generic type aliases are subscriptable"); },
+        mp$subscript(item) {
+            if (!this.$params.v.length) {throw new Sk.builtin.TypeError("Only generic type aliases are subscriptable");}
+            return new Sk.builtin.GenericAlias(this, item);
+        },
     },
     getsets: {
         __name__: { $get() { return this.$name; } },
         __module__: { $get() {
             return this.$compute ? this.$compute.tp$getattr(Sk.builtin.str.$module) : this.$module;
         } },
-        __parameters__: { $get() { return new Sk.builtin.tuple([]); } },
-        __type_params__: { $get() { return new Sk.builtin.tuple([]); } },
+        __parameters__: { $get() { return this.$params; } },
+        __type_params__: { $get() { return this.$params; } },
         __value__: { $get() {
             if (this.$value !== undefined) {return this.$value;}
             return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(this.$compute), value => {
