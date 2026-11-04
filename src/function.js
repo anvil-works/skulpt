@@ -80,6 +80,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             func.func_defaults = defaults;
             func.$defaults = defaults === none ? null : defaults.v;
             func.func_kwdefaults = kwdefaults === none ? null : kwdefaults;
+            func.memoised = true;
             return func;
         },
         tp$descr_get(obj, objtype) {
@@ -131,11 +132,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         },
         __closure__: {
             $get() {
-                if (!this.func_code.$metadata) {throw new Sk.builtin.AttributeError("function has no attribute '__closure__'");}
-                if (this.$closure !== undefined) {return this.$closure;}
-                const names = this.func_code.$metadata.freevars;
-                return this.$closure = names.length ? new Sk.builtin.tuple(names.map(name =>
-                    Sk.builtin.cell.fromClosure(this.func_closure, Sk.fixReserved(name)))) : Sk.builtin.none.none$;
+                return this.$getClosure();
             },
         },
         __kwdefaults__: {
@@ -149,6 +146,28 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
                 const code = this.func_code;
                 if (!code.$metadata) {throw new Sk.builtin.AttributeError("function has no attribute '__code__'");}
                 return code.$code || (code.$code = new Sk.builtin.code(code.$metadata.filename, null, code));
+            },
+            $set(value) {
+                // Objects/funcobject.c: func_set_code; closure cells retain their order.
+                if (!(value instanceof Sk.builtin.code)) {throw new Sk.builtin.TypeError("__code__ must be set to a code object");}
+                const closure = this.$getClosure();
+                const cells = closure === Sk.builtin.none.none$ ? [] : closure.v;
+                const metadata = value.$jsCode.$metadata;
+                if (cells.length !== metadata.freevars.length) {
+                    throw new Sk.builtin.ValueError(this.$name + "() requires a code object with " + cells.length + " free vars, not " + metadata.freevars.length);
+                }
+                if ((this.func_code.$metadata.flags & 0x2a0) !== (metadata.flags & 0x2a0)) {
+                    throw new Sk.builtin.NotImplementedError("code replacement with a different generator/coroutine kind requires warning support");
+                }
+                const defaults = this.$defaults;
+                const kwdefaults = this.$getKwDefaults();
+                this.func_code = value.$jsCode;
+                this.func_closure = closureBindings(metadata.freevars, cells);
+                this.$memoiseFlags();
+                this.$defaults = defaults;
+                this.func_kwdefaults = kwdefaults;
+                this.memoised = true;
+                this.tp$call = this.func_code.co_fastcall ? this.func_code.bind(this) : this.$funcCall.bind(this);
             },
         },
         __annotations__: {
@@ -208,6 +227,13 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         }
     },
     proto: {
+        $getClosure() {
+            if (!this.func_code.$metadata) {throw new Sk.builtin.AttributeError("function has no attribute '__closure__'");}
+            if (this.$closure !== undefined) {return this.$closure;}
+            const names = this.func_code.$metadata.freevars;
+            return this.$closure = names.length ? new Sk.builtin.tuple(names.map(name =>
+                Sk.builtin.cell.fromClosure(this.func_closure, Sk.fixReserved(name)))) : Sk.builtin.none.none$;
+        },
         $memoiseFlags() {
             this.co_varnames = this.func_code.co_varnames;
             this.co_argcount = this.func_code.co_argcount;
