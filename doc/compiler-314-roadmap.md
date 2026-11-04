@@ -695,3 +695,36 @@ in both runtimes. Test bodies are
 unchanged; docstring decorators and assertion/support infrastructure are adapted.
 Slots, traceback formatting and weakref/GC cases remain deferred. ExitStack,
 stream redirection and filesystem context helpers are outside this increment.
+
+### Runtime prerequisites for CPython's AST unparser
+
+The real CPython unparse/AST-comparison paths require strict zip and Unicode
+quoting. zip(strict=True) follows Python/bltinmodule.c's exhaustion checks and
+preserves iteration exception identity. Five unchanged upstream zip methods
+pass in CPython and Skulpt. str.encode accepts unicode_escape, with control,
+BMP, non-BMP and backslash cases from CPython's UnicodeEscapeTest adapted only
+to the str.encode API (two cases). The full codecs module remains separate.
+Named Unicode source escapes load the parser's bundled name resolver on first
+use; ordinary parsing avoids initializing its 639 kB data table. The resolver
+is bundled so the same source contract works in Node and the browser.
+
+### CPython AST source generation
+
+ast.unparse uses CPython 3.14's complete Lib/_ast_unparse.py visitor unchanged.
+Its private precedence IntEnum is represented by integer instances with the
+same named values/next behavior; this requires no public enum implementation.
+The public lazy-import ast.unparse function is unchanged. Seventy-three complete
+upstream unparse, cosmetic and manually-created-AST methods pass in both
+runtimes, with upstream fixtures and full AST comparison helpers unchanged.
+Only subTest infrastructure is adapted. Whole-stdlib directory scans, parser
+type comments/func_type and invalid-escape warning tests follow those features.
+The remaining template round-trip method is staged with template support:
+it requires the reviewed dev.8 parser metadata fixes, still awaiting release.
+It also passes locally with that parser (74 unparse methods in total).
+
+The Unicode-escape encoder retains argument-type validation but skips unused
+error-handler lookup, like CPython. A regression covers both supported and
+unknown error-handler names (three encoding cases total). Adjacent explicit
+surrogate characters still share the existing Skulpt UTF-16 string-storage
+limitation: they cannot be distinguished from one genuine non-BMP character.
+Full CPython Unicode string storage remains outside this AST-tooling increment.

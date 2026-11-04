@@ -1,7 +1,8 @@
 /* Parse source into the modern AST using the configured Python compatibility mode. */
 
-const { parseExpression, parseModule, scan } = require("@anvil-works/skulpt-parser/dist-core/index.js");
+const { parseExpression, parseModule, scan, UnicodeNameDatabaseRequired } = require("@anvil-works/skulpt-parser/dist-core/index.js");
 Sk["$scanSource"] = scan;
+let resolveUnicodeName;
 
 /**
  * Parse a module into plain AST nodes with UTF-8 byte columns.
@@ -15,9 +16,14 @@ function parseSource(source, filename, expression) {
             filename,
             pythonVersion: Sk.__future__.python3 ? 3 : 2,
             asyncAwaitAsIdentifiers: !Sk.__future__.python3,
-            printFunction: Sk.__future__.print_function
+            printFunction: Sk.__future__.print_function,
+            resolveUnicodeName,
         });
     } catch (error) {
+        if (error instanceof UnicodeNameDatabaseRequired) {
+            resolveUnicodeName = require("@anvil-works/skulpt-parser/dist-core/unicode-names.js").unicodeName;
+            return parseSource(source, filename, expression);
+        }
         // Missing optional capabilities and implementation failures are not Python syntax errors.
         if (!["SyntaxError", "IndentationError", "TabError"].includes(error.name)) {
             throw error;
