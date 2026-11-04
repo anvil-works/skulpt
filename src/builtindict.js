@@ -264,8 +264,8 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
             const [tmp_globals, tmp_locals] = executionNamespaces(globals, locals);
             return Sk.builtin.eval(source, tmp_globals, tmp_locals);
         },
-        $flags: { MinArgs: 1, MaxArgs: 3 },
-        $textsig: "($module, source, globals=None, locals=None, /)",
+        $flags: { NamedArgs: [null, "globals", "locals"], Defaults: [Sk.builtin.none.none$, Sk.builtin.none.none$] },
+        $textsig: "($module, source, /, globals=None, locals=None)",
         $doc:
             "Evaluate the given source in the context of globals and locals.\n\nThe source may be a string representing a Python expression\nor a code object as returned by compile().\nThe globals must be a dictionary and locals can be any mapping,\ndefaulting to the current globals and locals.\nIf only globals is given, locals defaults to it.",
     },
@@ -277,8 +277,8 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
                 return Sk.builtin.none.none$;
             });
         },
-        $flags: { MinArgs: 1, MaxArgs: 3 },
-        $textsig: "($module, source, globals=None, locals=None, /)",
+        $flags: { NamedArgs: [null, "globals", "locals"], Defaults: [Sk.builtin.none.none$, Sk.builtin.none.none$] },
+        $textsig: "($module, source, /, globals=None, locals=None)",
         $doc:
             "Execute the given source in the context of globals and locals.\n\nThe source may be a string representing one or more Python statements\nor a code object as returned by compile().\nThe globals must be a dictionary and locals can be any mapping,\ndefaulting to the current globals and locals.\nIf only globals is given, locals defaults to it.",
     },
@@ -518,10 +518,13 @@ function executionNamespaces(globals, locals) {
     if (locals === undefined || Sk.builtin.checkNone(locals)) {
         locals = implicitGlobals ? Sk.builtin.locals() : globals;
     }
-    for (const [name, namespace] of [["globals", globals], ["locals", locals]]) {
-        if (!(namespace instanceof Sk.builtin.dict)) {
-            throw new Sk.builtin.TypeError(name + " must be a dict or None, not " + Sk.abstr.typeName(namespace));
-        }
+    if (!(globals instanceof Sk.builtin.dict)) {
+        throw new Sk.builtin.TypeError("globals must be a dict or None, not " + Sk.abstr.typeName(globals));
+    }
+    // CPython builtin_exec/builtin_eval accept any mapping for locals, without
+    // requiring keys() until an operation such as dir() actually requests it.
+    if (locals.mp$subscript === undefined) {
+        throw new Sk.builtin.TypeError("locals must be a mapping or None, not " + Sk.abstr.typeName(locals));
     }
     if (globals.quick$lookup(new Sk.builtin.str("__builtins__")) === undefined) {
         globals.dict$setItem(new Sk.builtin.str("__builtins__"), Sk.misceval.namespaceDict(Sk.builtins));
