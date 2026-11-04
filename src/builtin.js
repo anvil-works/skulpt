@@ -806,6 +806,9 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     if (flags & ~(mandatoryMask | (Sk.__future__.python3 ? 0x8400 : 0))) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
+    if (mode.v === "func_type" && !(flags & 0x400)) {
+        throw new Sk.builtin.ValueError("compile() mode 'func_type' requires flag PyCF_ONLY_AST");
+    }
     if (Sk.builtin.astType && source && source.ob$type.$isSubType(Sk.builtin.astType)) {
         return Sk.misceval.chain(Sk.importModule("_ast", false, true), module =>
             Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_compile_ast")),
@@ -813,11 +816,8 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     source = compilerSource(source, filename.$jsstr(), "compile");
     if (flags & 0x400) {
-        if (mode.v === "func_type") {
-            throw new Sk.builtin.NotImplementedError("function-type AST grammar is not yet supported");
-        }
-        if (!["exec", "eval", "single"].includes(mode.v)) {
-            throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval' or 'single'");
+        if (!["exec", "eval", "single", "func_type"].includes(mode.v)) {
+            throw new Sk.builtin.ValueError("compile() mode must be 'exec', 'eval', 'single' or 'func_type'");
         }
         return Sk.misceval.chain(Sk.importModule("ast", false, true), module =>
             Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(module, new Sk.builtin.str("_parse_ast")),

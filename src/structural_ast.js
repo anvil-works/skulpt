@@ -1,6 +1,6 @@
 /* Parse source into the modern AST using the configured Python compatibility mode. */
 
-const { parseExpression, parseModule, scan, UnicodeNameDatabaseRequired } = require("@anvil-works/skulpt-parser/dist-core/index.js");
+const { parseExpression, parseModule, parseFunctionType, scan, UnicodeNameDatabaseRequired } = require("@anvil-works/skulpt-parser/dist-core/index.js");
 Sk["$scanSource"] = scan;
 let resolveUnicodeName;
 
@@ -10,9 +10,10 @@ let resolveUnicodeName;
  * @param {string} source
  * @param {string} filename
  */
-function parseSource(source, filename, expression) {
+function parseSource(source, filename, mode) {
     try {
-        return (expression ? parseExpression : parseModule)(source, {
+        const parse = mode === "eval" ? parseExpression : mode === "func_type" ? parseFunctionType : parseModule;
+        return parse(source, {
             filename,
             pythonVersion: Sk.__future__.python3 ? 3 : 2,
             asyncAwaitAsIdentifiers: !Sk.__future__.python3,
@@ -22,7 +23,7 @@ function parseSource(source, filename, expression) {
     } catch (error) {
         if (error instanceof UnicodeNameDatabaseRequired) {
             resolveUnicodeName = require("@anvil-works/skulpt-parser/dist-core/unicode-names.js").unicodeName;
-            return parseSource(source, filename, expression);
+            return parseSource(source, filename, mode);
         }
         // Missing optional capabilities and implementation failures are not Python syntax errors.
         if (!["SyntaxError", "IndentationError", "TabError"].includes(error.name)) {
@@ -39,13 +40,17 @@ function parseSource(source, filename, expression) {
 }
 
 Sk.parseModule = function (source, filename) {
-    return parseSource(source, filename, false);
+    return parseSource(source, filename, "exec");
 };
 Sk.parseExpression = function (source, filename) {
-    return parseSource(source, filename, true);
+    return parseSource(source, filename, "eval");
 };
 Sk.exportSymbol("Sk.parseModule", Sk.parseModule);
 Sk.exportSymbol("Sk.parseExpression", Sk.parseExpression);
+Sk.parseFunctionType = function (source, filename) {
+    return parseSource(source, filename, "func_type");
+};
+Sk.exportSymbol("Sk.parseFunctionType", Sk.parseFunctionType);
 
 // The parser currently exports module/expression entry points. Apply the
 // interactive single_input boundary to its module AST and lexical newlines.
