@@ -1,3 +1,5 @@
+const { isIdentifier } = require("./identifier");
+
 //"""Token constants (from somewhere)."""
 
 var __all__ = ["tok_name", "ISTERMINAL", "ISNONTERMINAL", "ISEOF"];
@@ -153,6 +155,7 @@ function ISEOF(x) {
 }
 
 Sk.token = {};
+Sk.token.isIdentifier = isIdentifier;
 Sk.token.tokens = tokens;
 Sk.token.tok_name = tok_name;
 Sk.token.EXACT_TOKEN_TYPES = EXACT_TOKEN_TYPES;
