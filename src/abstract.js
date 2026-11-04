@@ -805,6 +805,9 @@ Sk.abstr.objectGetItem = function (o, key, canSuspend) {
             const res = Sk.misceval.callsimOrSuspendArray(meth, [key]);
             return canSuspend ? res : Sk.misceval.retryOptionalSuspensionOrThrow(res);
         }
+        if (Sk.__future__.python3) {
+            throw new Sk.builtin.TypeError("type '" + o.prototype.tp$name + "' is not subscriptable");
+        }
     }
 
     throw new Sk.builtin.TypeError("'" + Sk.abstr.typeName(o) + "' does not support indexing");
