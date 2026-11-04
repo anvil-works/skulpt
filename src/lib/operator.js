@@ -43,6 +43,7 @@ function $builtinmodule(name) {
         },
         misceval: {
             richCompareBool,
+            richCompare,
             asIndexOrThrow,
             chain: chainOrSuspend,
             callsimArray: pyCall,
@@ -226,12 +227,12 @@ function $builtinmodule(name) {
     }
 
     setUpModuleMethods("operator", operator, {
-        lt: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "Lt")), sameAs("a < b")),
-        le: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "LtE")), sameAs("a <= b")),
-        eq: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "Eq")), sameAs("a == b")),
-        ne: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "NotEq")), sameAs("a != b")),
-        ge: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "GtE")), sameAs("a >= b")),
-        gt: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "Gt")), sameAs("a > b")),
+        lt: makeModuleMethod((a, b) => richCompare(a, b, "Lt"), sameAs("a < b")),
+        le: makeModuleMethod((a, b) => richCompare(a, b, "LtE"), sameAs("a <= b")),
+        eq: makeModuleMethod((a, b) => richCompare(a, b, "Eq"), sameAs("a == b")),
+        ne: makeModuleMethod((a, b) => richCompare(a, b, "NotEq"), sameAs("a != b")),
+        ge: makeModuleMethod((a, b) => richCompare(a, b, "GtE"), sameAs("a >= b")),
+        gt: makeModuleMethod((a, b) => richCompare(a, b, "Gt"), sameAs("a > b")),
         not_: makeModuleMethod((a) => numberUnaryOp(a, "Not"), sameAs("not a")),
         truth: makeModuleMethod((a) => pyBool(a), "Return True if a is true, False otherwise."),
         is_: makeModuleMethod((a, b) => pyBool(richCompareBool(a, b, "Is")), sameAs("a is b")),
