@@ -67,6 +67,7 @@ class TestSuper(unittest.TestCase):
         self.assertEqual(G.cm(), (G, 'A'))
         self.assertEqual(G().cm(), (G, 'A'))
 
+    # CPython 3.14 test_super.py at 18ef0f0cb52; unchanged method.
     def test_super_in_class_methods_working(self):
         d = D()
         self.assertEqual(d.cm(), (d, (D, (D, (D, 'A'), 'B'), 'C'), 'D'))
@@ -317,21 +318,44 @@ class TestSuper(unittest.TestCase):
                     return __class__
 
 
+    # CPython 3.14 test_super.py at 18ef0f0cb52; unchanged method.
+    def test_shadowed_local(self):
+        class super:
+            msg = "quite super"
+
+        class C:
+            def method(self):
+                return super().msg
+
+        self.assertEqual(C().method(), "quite super")
+
+    # Dynamic patch-based upstream tests await unittest.mock support.
+
     def test_obscure_super_errors(self):
         def f():
             super()
-        self.assertRaises(RuntimeError, f)
+        with self.assertRaisesRegex(RuntimeError, r"no arguments"):
+            f()
+
+        class C:
+            def f():
+                super()
+        with self.assertRaisesRegex(RuntimeError, r"no arguments"):
+            C.f()
+
         def f(x):
             del x
             super()
-        # skulpt implementation - this will be easier when we can reference $loc inside the scope
-        # self.assertRaises(RuntimeError, f, None)
-        # class X:
-        #     def f(x):
-        #         nonlocal __class__
-        #         del __class__
-        #         super()
-        # self.assertRaises(RuntimeError, X().f)
+        with self.assertRaisesRegex(RuntimeError, r"arg\[0\] deleted"):
+            f(None)
+
+        class X:
+            def f(x):
+                nonlocal __class__
+                del __class__
+                super()
+        with self.assertRaisesRegex(RuntimeError, r"empty __class__ cell"):
+            X().f()
 
     # def test_cell_as_self(self):
     #     class X:
