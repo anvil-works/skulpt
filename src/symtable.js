@@ -465,6 +465,10 @@ SymbolTable.prototype.visitTypeParameters = function (owner) {
     if (owner.args && owner.args.kw_defaults.some(e => e)) args.posonlyargs.push({ _type: "arg", arg: "$typeKwdefaults", annotation: null });
     const key = owner.typeParamScope = { _type: "TypeParameters", args, lineno: owner.lineno };
     const classScope = this.cur.blockType === ClassBlock ? this.cur : this.cur.classScope;
+    if (owner._type === "ClassDef") {
+        key.privateClass = { v: owner.name, mangledNames: new Set(owner.type_params.map(param => param.name)) };
+        this.curClass = key.privateClass;
+    }
     this.enterBlock("<generic parameters of " + name + ">", FunctionBlock, key, owner.lineno);
     this.cur.annotationScope = true;
     this.cur.annotationKind = "generic";
@@ -475,6 +479,7 @@ SymbolTable.prototype.visitTypeParameters = function (owner) {
         this.addDef("__classdict__", USE, owner.lineno);
     }
     this.visitArguments(args, owner.lineno);
+    if (owner._type === "ClassDef") this.addDef("$typeParams", DEF_LOCAL, owner.lineno);
     const names = new Set();
     let seenDefault = false;
     for (const param of owner.type_params) {
@@ -690,18 +695,23 @@ SymbolTable.prototype.visitStmt = function (s) {
             if (s.type_params.length) this.exitBlock();
             break;
         case "ClassDef":
-            if (s.type_params.length) throw new Sk.builtin.SyntaxError("Type parameters are not supported by the Skulpt compiler", this.filename, s.lineno);
+            if (s.type_params.length && !Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
             this.addDef(s.name, DEF_LOCAL, s.lineno);
+            this.SEQExpr(s.decorator_list);
+            tmp = this.curClass;
+            if (s.type_params.length) this.visitTypeParameters(s);
             this.SEQExpr(s.bases);
             this.visitKeywords(s.keywords);
-            if (s.decorator_list) {
-                this.SEQExpr(s.decorator_list);
-            }
             this.enterBlock(s.name, ClassBlock, s, s.lineno);
-            tmp = this.curClass;
             this.curClass = s.name;
+            if (s.type_params.length) {
+                this.addDef("__type_params__", DEF_LOCAL, s.lineno);
+                this.addDef("$typeParams", USE, s.lineno);
+            }
             this.SEQStmt(s.body);
             this.exitBlock();
+            if (s.type_params.length) this.exitBlock();
+            this.curClass = tmp;
             break;
         case "Return":
             if (s.value) {
