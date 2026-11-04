@@ -92,6 +92,117 @@ NotImplementedType = type(NotImplemented)
 # GetSetDescriptorType = type(FunctionType.func_code)
 # MemberDescriptorType = type(FunctionType.func_globals)
 
+# Class construction helpers from CPython 3.14 at 18ef0f0cb52.
+# Provide a PEP 3115 compliant mechanism for class creation
+def new_class(name, bases=(), kwds=None, exec_body=None):
+    """Create a class object dynamically using the appropriate metaclass."""
+    resolved_bases = resolve_bases(bases)
+    meta, ns, kwds = prepare_class(name, resolved_bases, kwds)
+    if exec_body is not None:
+        exec_body(ns)
+    if resolved_bases is not bases:
+        ns['__orig_bases__'] = bases
+    return meta(name, resolved_bases, ns, **kwds)
+
+def resolve_bases(bases):
+    """Resolve MRO entries dynamically as specified by PEP 560."""
+    new_bases = list(bases)
+    updated = False
+    shift = 0
+    for i, base in enumerate(bases):
+        if isinstance(base, type):
+            continue
+        if not hasattr(base, "__mro_entries__"):
+            continue
+        new_base = base.__mro_entries__(bases)
+        updated = True
+        if not isinstance(new_base, tuple):
+            raise TypeError("__mro_entries__ must return a tuple")
+        else:
+            new_bases[i+shift:i+shift+1] = new_base
+            shift += len(new_base) - 1
+    if not updated:
+        return bases
+    return tuple(new_bases)
+
+def prepare_class(name, bases=(), kwds=None):
+    """Call the __prepare__ method of the appropriate metaclass.
+
+    Returns (metaclass, namespace, kwds) as a 3-tuple
+
+    *metaclass* is the appropriate metaclass
+    *namespace* is the prepared class namespace
+    *kwds* is an updated copy of the passed in kwds argument with any
+    'metaclass' entry removed. If no kwds argument is passed in, this will
+    be an empty dict.
+    """
+    if kwds is None:
+        kwds = {}
+    else:
+        kwds = dict(kwds) # Don't alter the provided mapping
+    if 'metaclass' in kwds:
+        meta = kwds.pop('metaclass')
+    else:
+        if bases:
+            meta = type(bases[0])
+        else:
+            meta = type
+    if isinstance(meta, type):
+        # when meta is a type, we first determine the most-derived metaclass
+        # instead of invoking the initial candidate directly
+        meta = _calculate_meta(meta, bases)
+    if hasattr(meta, '__prepare__'):
+        ns = meta.__prepare__(name, bases, **kwds)
+    else:
+        ns = {}
+    return meta, ns, kwds
+
+def _calculate_meta(meta, bases):
+    """Calculate the most derived metaclass."""
+    winner = meta
+    for base in bases:
+        base_meta = type(base)
+        if issubclass(winner, base_meta):
+            continue
+        if issubclass(base_meta, winner):
+            winner = base_meta
+            continue
+        # else:
+        raise TypeError("metaclass conflict: "
+                        "the metaclass of a derived class "
+                        "must be a (non-strict) subclass "
+                        "of the metaclasses of all its bases")
+    return winner
+
+
+def get_original_bases(cls, /):
+    """Return the class's "original" bases prior to modification by `__mro_entries__`.
+
+    Examples::
+
+        from typing import TypeVar, Generic, NamedTuple, TypedDict
+
+        T = TypeVar("T")
+        class Foo(Generic[T]): ...
+        class Bar(Foo[int], float): ...
+        class Baz(list[str]): ...
+        Eggs = NamedTuple("Eggs", [("a", int), ("b", str)])
+        Spam = TypedDict("Spam", {"a": int, "b": str})
+
+        assert get_original_bases(Bar) == (Foo[int], float)
+        assert get_original_bases(Baz) == (list[str],)
+        assert get_original_bases(Eggs) == (NamedTuple,)
+        assert get_original_bases(Spam) == (TypedDict,)
+        assert get_original_bases(int) == (object,)
+    """
+    try:
+        return cls.__dict__.get("__orig_bases__", cls.__bases__)
+    except AttributeError:
+        raise TypeError(
+            f"Expected an instance of type, not {type(cls).__name__!r}"
+        ) from None
+
+
 del sys, _f, _g, _C, _x                           # Not for export
 __all__ = list(n for n in globals() if n[:1] != '_')
 
