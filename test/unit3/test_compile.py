@@ -418,7 +418,7 @@ class TestSpecifics(unittest.TestCase):
         self.assertEqual(eval('len([1, 2])', {'__builtins__': builtins}), 2)
         ns = {'__builtins__': builtins}
         exec('def f(): return len([1, 2])', ns)
-        # Native module.__dict__ identity is covered by its separate increment.
+        self.assertIs(ns['f'].__builtins__, vars(builtins))
         self.assertEqual(ns['f'](), 2)
 
     def test_import_hook_namespace_and_arguments(self):
@@ -538,6 +538,23 @@ class TestSpecifics(unittest.TestCase):
         self.assertEqual(seen, [True])
         self.assertEqual(ns['x'], 42)
         self.assertIs(ns['C'], object)
+
+    def test_live_native_module_builtins(self):
+        import sys
+        ns = {'__builtins__': sys}
+        try:
+            sys.compiler_builtin_probe = 1
+            exec('def f(): return compiler_builtin_probe', ns)
+            self.assertIs(ns['f'].__builtins__, sys.__dict__)
+            sys.compiler_builtin_probe = 2
+            self.assertEqual(ns['f'](), 2)
+            sys.__dict__['compiler_builtin_probe'] = 3
+            self.assertEqual(sys.compiler_builtin_probe, 3)
+            self.assertEqual(ns['f'](), 3)
+            del sys.compiler_builtin_probe
+            self.assertRaises(NameError, ns['f'])
+        finally:
+            sys.__dict__.pop('compiler_builtin_probe', None)
 
 if __name__ == "__main__":
     unittest.main()
