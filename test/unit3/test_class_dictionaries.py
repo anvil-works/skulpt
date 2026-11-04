@@ -1,0 +1,106 @@
+# CPython 3.14 dictionary proxy method and CPython-checked class namespace regressions.
+import types
+import unittest
+
+class ClassDictionaryTests(unittest.TestCase):
+    # Unchanged Lib/test/test_descr.py DictProxyTests method at 18ef0f0cb52.
+    def test_dict_type_with_metaclass(self):
+        # Testing type of __dict__ when metaclass set...
+        class B(object):
+            pass
+        class M(type):
+            pass
+        class C(metaclass=M):
+            # In 2.3a1, C.__dict__ was a real dict rather than a dict proxy
+            pass
+        self.assertEqual(type(C.__dict__), type(B.__dict__))
+
+    def test_builtin_namespaces_and_string_subclasses(self):
+        self.assertIn('upper', str.__dict__)
+        self.assertIn('upper', dir(str))
+        self.assertEqual(str.__module__, 'builtins')
+        class Text(str):
+            value = 1
+        self.assertEqual(Text('abc').upper(), 'ABC')
+        self.assertEqual(Text.value, 1)
+        self.assertEqual(Text.__module__, __name__)
+        Text.__module__ = 'elsewhere'
+        self.assertEqual(Text.__dict__['__module__'], 'elsewhere')
+
+    def test_live_proxy_mutation_and_inheritance(self):
+        class Base:
+            value = 1
+            def method(self): return 1
+        class Child(Base): pass
+        view = Base.__dict__
+        self.assertIs(type(view), types.MappingProxyType)
+        self.assertEqual(view['value'], 1)
+        self.assertNotIn('value', Child.__dict__)
+        Base.value = 2
+        self.assertEqual(view['value'], 2)
+        self.assertEqual(Child.value, 2)
+        self.assertEqual(Child().value, 2)
+        Child.value = 3
+        self.assertEqual(Child().value, 3)
+        del Child.value
+        self.assertEqual(Child.value, 2)
+        with self.assertRaises(AttributeError): del Child.value
+        def method(self): return 4
+        Base.method = method
+        self.assertIs(view['method'], method)
+        self.assertEqual(Child().method(), 4)
+        del Base.method
+        with self.assertRaises(AttributeError): Child().method
+        with self.assertRaises(TypeError): view['value'] = 5
+
+    def test_type_copies_input_and_preserves_nonstring_keys(self):
+        class Key(str): pass
+        key = Key('value')
+        body = {key: 1, 42: 'nonstring', '__qualname__': 'Qualified'}
+        cls = type('Name', (), body)
+        body[key] = 2
+        self.assertEqual(cls.value, 1)
+        self.assertIs(next(k for k in cls.__dict__ if k == key), key)
+        self.assertEqual(cls.__dict__[42], 'nonstring')
+        self.assertNotIn('__qualname__', cls.__dict__)
+        self.assertEqual(cls.__qualname__, 'Qualified')
+
+    def test_namespace_copy_retains_hashes_and_descriptor_names(self):
+        calls = []
+        class HashKey:
+            def __hash__(self):
+                calls.append('hash')
+                if len(calls) > 1:
+                    raise RuntimeError('key was rehashed')
+                return 17
+        class Name(str): pass
+        names = []
+        class Descriptor:
+            def __set_name__(self, owner, name):
+                names.append((owner, name))
+        hash_key = HashKey()
+        name = Name('value')
+        body = {hash_key: 1, name: Descriptor(), 42: Descriptor()}
+        cls = type('C', (), body)
+        self.assertEqual(calls, ['hash'])
+        self.assertEqual(len(names), 2)
+        self.assertIs(names[0][0], cls)
+        self.assertIs(names[0][1], name)
+        self.assertEqual(names[1], (cls, 42))
+
+    def test_module_doc_and_implicit_method_descriptors(self):
+        class C:
+            'original'
+            def __new__(cls): return object.__new__(cls)
+            def __init_subclass__(cls): pass
+        view = C.__dict__
+        C.__doc__ = 'updated'
+        C.__module__ = 'elsewhere'
+        self.assertEqual(view['__doc__'], 'updated')
+        self.assertEqual(view['__module__'], 'elsewhere')
+        self.assertIsInstance(view['__new__'], staticmethod)
+        self.assertIsInstance(view['__init_subclass__'], classmethod)
+        self.assertEqual(C.__doc__, 'updated')
+        self.assertEqual(C.__module__, 'elsewhere')
+
+if __name__ == '__main__': unittest.main()

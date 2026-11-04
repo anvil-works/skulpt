@@ -268,3 +268,13 @@ The Spec review also found future annotation blocks must be skipped when compreh
 Function __annotate__/__annotations__ getters and setters follow funcobject.c cache invalidation, deletion, callable validation and result checking. Two unchanged upstream deferred evaluation methods and the unchanged manual-annotation helper cover evaluation after late bindings and setter behavior. CPython-checked regressions cover generated code/signatures/formats, evaluation order, cache identity, explicit callbacks, future functions and starred annotations.
 
 The function-annotation Spec follow-up also renames the argument-binding table's parameter to format, retaining the distinct internal variable. Missing/positional-only keyword diagnostics now use the public name; the generated-code regression checks both against CPython.
+
+## Heap class dictionaries
+
+`stu-dev/compiler/class-dictionaries` gives heap types a real Python dictionary, following type_new's copied namespace. Type/instance MRO lookup and the read-only __dict__ mapping proxy consult this shared dictionary; normal type attribute updates and __doc__/__module__ setters update it. The copy preserves supplied string-key identity and nonstring keys, removes consumed qualname/classcell entries, and incorporates generated descriptors and implied static/class methods. This is the storage needed for the following __classdictcell__ annotation scope layer.
+
+An unchanged upstream metaclass dictionary-proxy method and three CPython-checked regressions cover live views, inherited class/instance attribute updates, replacement/deletion, copied input/key identity, nonstring keys and metadata/implied method descriptors. Existing class metadata such as __firstlineno__/__static_attributes__/weakref support remains separate compiler/runtime work.
+
+Full validation found the heap namespace field collided with Sk.builtin.str.$dict, the existing __dict__ name constant. The follow-up uses a distinct $classDict field; a CPython-checked regression covers native str dictionaries/dir/module and string-subclass lookup/metadata.
+
+The Spec review corrections also use the native hash-preserving dictionary copy and call descriptor __set_name__ with each original key from a namespace snapshot. A CPython-checked regression covers a key that rejects rehashing, a string-subclass descriptor name and a nonstring descriptor name.
