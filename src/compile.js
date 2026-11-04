@@ -595,7 +595,7 @@ Compiler.prototype.closureArgs = function (hasFree) {
     }
     const scope = this.u.inlineScope;
     const closure = [];
-    if (this.u.ste.needsClassClosure) {
+    if (this.u.ste.needsClassClosure || this.u.ste.needsClassdict) {
         closure.push("$classClosure");
     } else if (this.u.ste.cellvars.length > 0) {
         closure.push(scope ? scope.cell : "$cell");
@@ -1477,6 +1477,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         }
     }
     if (unit.ste.needsClassClosure) cellvars.add("__class__");
+    if (unit.ste.needsClassdict) cellvars.add("__classdict__");
     let flags = (optimized ? 3 : 0) | (this.flags & 0x1fe0000); // CO_OPTIMIZED | CO_NEWLOCALS
     if (optimized) {
         if (unit.ste.isNested) flags |= 0x10;
@@ -2694,9 +2695,9 @@ Compiler.prototype.cclass = function (s) {
 
     this.u.prefixCode = "var " + scopename + "=(function $" + s.name + "$class_outer($posargs,$kwargs){this.$resolveArgs($posargs,$kwargs);var $gbl=this.func_globals,$loc=this.$classLocals||this.func_globals,$cell=this.func_closure,$free=$cell,$builtins=this.func_builtins;";
     const needsClassClosure = this.u.ste.needsClassClosure;
-    if (needsClassClosure) {
-        // Methods share this storage; the Python cell exposed to metaclasses wraps it.
-        this.u.prefixCode += "var $classClosure={__class__:undefined};";
+    const needsClassdict = this.u.ste.needsClassdict;
+    if (needsClassClosure || needsClassdict) {
+        this.u.prefixCode += "var $classClosure={__class__:undefined,__classdict__:undefined};";
     }
     this.u.switchCode += "return (function $" + s.name + "$_closure($cell){";
     this.u.switchCode += "var $blk=" + entryBlock + ",$exc=[],$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
@@ -2720,7 +2721,13 @@ Compiler.prototype.cclass = function (s) {
     if (Sk.__future__.python3) {
         this.nameop("__qualname__", "Store", "new Sk.builtin.str(" + JSON.stringify(this.u.qualname) + ")");
     }
+    if (needsClassdict) {
+        out("$classClosure.__classdict__=Sk.misceval.namespaceDict($loc);");
+    }
     this.cbody(s.body);
+    if (needsClassdict) {
+        out("$loc.__classdictcell__=new Sk.builtin.cell($classClosure,'__classdict__');");
+    }
     if (needsClassClosure) {
         out("$ret=new Sk.builtin.cell($classClosure);$loc.__classcell__=$ret;return $ret;");
     } else {
@@ -2905,8 +2912,9 @@ Compiler.prototype.isCell = function (name) {
  * @param {Sk.builtin.str} name
  * @param {Object} ctx
  * @param {string=} dataToStore
+ * @param {boolean=} skipClassLookup
  */
-Compiler.prototype.nameop = function (name, ctx, dataToStore) {
+Compiler.prototype.nameop = function (name, ctx, dataToStore, skipClassLookup) {
     if (typeof name === "string") name = new Sk.builtin.str(name);
     var v;
     var mangledNoPre;
@@ -2929,6 +2937,23 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     op = 0;
     optype = OP_NAME;
     scope = this.u.ste.getScope(mangled);
+    // codegen_nameop: LOAD_FROM_DICT_OR_DEREF / LOAD_FROM_DICT_OR_GLOBALS.
+    // Evaluate the fallback only when the actual class dictionary has no value.
+    if (!skipClassLookup && ctx === "Load" && this.u.ste.classScope &&
+            (scope === Sk.SYMTAB_CONSTS.FREE || scope === Sk.SYMTAB_CONSTS.GLOBAL_IMPLICIT)) {
+        const classdict = this.nameop("__classdict__", "Load", undefined, true);
+        const value = this._gr("classannotation", "Sk.misceval.namespaceToJs(", classdict, ")[",
+            JSON.stringify(mangled), "]");
+        const fallback = this.newBlock("class annotation fallback");
+        const end = this.newBlock("class annotation lookup end");
+        this._jumpundef(value, fallback);
+        this._jump(end);
+        this.setBlock(fallback);
+        out(value, "=", this.nameop(name, ctx, dataToStore, true), ";");
+        this._jump(end);
+        this.setBlock(end);
+        return value;
+    }
     dict = null;
     switch (scope) {
         case Sk.SYMTAB_CONSTS.FREE:
