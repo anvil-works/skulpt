@@ -284,14 +284,15 @@ Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
     },
 
     exec: {
-        $meth: function (source, globals, locals) {
+        $meth: function (args, kwargs) {
+            Sk.abstr.checkArgsLen("exec", args, 1, 3);
+            const [source, globals, locals, closure] = Sk.abstr.copyKeywordsToNamedArgs(
+                "exec", [null, "globals", "locals", "closure"], args, kwargs, [pyNone, pyNone, pyNone]);
             const [tmp_globals, tmp_locals] = executionNamespaces(globals, locals);
-            return Sk.misceval.chain(Sk.builtin.exec(source, tmp_globals, tmp_locals), (new_locals) => {
-                return Sk.builtin.none.none$;
-            });
+            return Sk.misceval.chain(Sk.builtin.exec(source, tmp_globals, tmp_locals, closure), () => pyNone);
         },
-        $flags: { NamedArgs: [null, "globals", "locals"], Defaults: [Sk.builtin.none.none$, Sk.builtin.none.none$] },
-        $textsig: "($module, source, /, globals=None, locals=None)",
+        $flags: { FastCall: true },
+        $textsig: "($module, source, /, globals=None, locals=None, *, closure=None)",
         $doc:
             "Execute the given source in the context of globals and locals.\n\nThe source may be a string representing one or more Python statements\nor a code object as returned by compile().\nThe globals must be a dictionary and locals can be any mapping,\ndefaulting to the current globals and locals.\nIf only globals is given, locals defaults to it.",
     },
