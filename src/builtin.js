@@ -732,26 +732,47 @@ Sk.builtin.jsmillis = function jsmillis() {
     return now.valueOf();
 };
 
-const pyCode = Sk.abstr.buildNativeClass("code", {
-    constructor: function code(filename, compiled) {
+const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
+    constructor: function code(filename, compiled, executable) {
         this.compiled = compiled;
-        this.code = compiled.code;
+        this.code = compiled && compiled.code;
+        this.$jsCode = executable || Sk.global["eval"](compiled.code);
+        if (compiled) {
+            for (const unit of this.$jsCode.$codeUnits) {unit.$metadata.filename = filename;}
+        }
+        const metadata = this.$jsCode.$metadata;
+        this.$metadata = {};
+        for (const field of ["name", "qualname"]) {this.$metadata["co_" + field] = new Sk.builtin.str(metadata[field]);}
+        for (const field of ["argcount", "posonlyargcount", "kwonlyargcount", "firstlineno", "flags"]) {this.$metadata["co_" + field] = new Sk.builtin.int_(metadata[field]);}
+        for (const field of ["varnames", "cellvars", "freevars"]) {this.$metadata["co_" + field] = new Sk.builtin.tuple(metadata[field].map(name => new Sk.builtin.str(name)));}
+        this.$metadata.co_nlocals = new Sk.builtin.int_(metadata.varnames.length);
         this.filename = filename.$jsstr();
         this.co_filename = filename;
-        this.mode = compiled.mode;
+        this.mode = compiled ? compiled.mode : "function";
     },
     slots: {
         tp$new(args, kwargs) {
             throw new Sk.builtin.NotImplementedError("cannot construct a code object in skulpt");
         },
         $r() {
-            return new Sk.builtin.str("<code object <module>, file " + this.filename + ">");
+            return new Sk.builtin.str("<code object " + this.$metadata.co_name.$jsstr() + ", file " + this.filename + ">");
         },
     },
     getsets: {
         co_filename: {
             $get() { return this.co_filename; },
         },
+        co_name: { $get() { return this.$metadata.co_name; } },
+        co_qualname: { $get() { return this.$metadata.co_qualname; } },
+        co_argcount: { $get() { return this.$metadata.co_argcount; } },
+        co_posonlyargcount: { $get() { return this.$metadata.co_posonlyargcount; } },
+        co_kwonlyargcount: { $get() { return this.$metadata.co_kwonlyargcount; } },
+        co_firstlineno: { $get() { return this.$metadata.co_firstlineno; } },
+        co_flags: { $get() { return this.$metadata.co_flags; } },
+        co_varnames: { $get() { return this.$metadata.co_varnames; } },
+        co_cellvars: { $get() { return this.$metadata.co_cellvars; } },
+        co_freevars: { $get() { return this.$metadata.co_freevars; } },
+        co_nlocals: { $get() { return this.$metadata.co_nlocals; } },
     },
 });
 
@@ -782,7 +803,7 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     source = compilerSource(source, filename.$jsstr(), "compile");
     mode = mode.$jsstr();
-    return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0)));
+    return new pyCode(filename, Sk.compile(source, filename.$jsstr(), mode, true, Math.max(optimize, 0), flags));
 };
 
 // Objects/unicodeobject.c: PyUnicode_FSDecoder, via PyOS_FSPath.
@@ -944,7 +965,18 @@ Sk.builtin.exec = function (code, globals, locals) {
     globals = globals || tmp;
     return Sk.misceval.chain(
         code,
-        (co) => Sk.global["eval"](co.code)(globals, locals),
+        (co) => {
+            if (!(co instanceof pyCode)) {return Sk.global["eval"](co.code)(globals, locals);}
+            if (co.mode !== "function") {return co.$jsCode(globals, locals);}
+            if (co.$jsCode.$metadata.freevars.length) {
+                throw new Sk.builtin.TypeError("code object passed to exec() may not contain free variables");
+            }
+            const func = new Sk.builtin.func(co.$jsCode, globals);
+            func.$defaults = null;
+            func.$kwdefs = [];
+            func.$classLocals = locals;
+            return Sk.misceval.callsimOrSuspendArray(func, []);
+        },
         (new_locals) => {
             Sk.globals = tmp;
             // we return new_locals internally for eval
@@ -969,7 +1001,7 @@ Sk.builtin.eval = function (source, globals, locals) {
         if (!bytesSource) {text = text.replace(/^[ \t]+/, "");}
         source = new pyCode(new Sk.builtin.str("<string>"), Sk.compile(text, "<string>", "eval", true));
     }
-    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" ? result : Sk.builtin.none.none$);
+    return Sk.misceval.chain(Sk.builtin.exec(source, globals, locals), result => source.mode === "eval" || source.mode === "function" ? result : Sk.builtin.none.none$);
 };
 
 Sk.builtin.map = function map(fun, seq) {
