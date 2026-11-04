@@ -1,7 +1,7 @@
 # Direct AST compiler
 
 This branch is stacked above the old-AST compatibility checkpoint, PR #9.
-Published parser `0.0.1-dev.7` and its scanner are bundled into Skulpt. Existing hosts keep their normal
+Published parser `0.0.1-dev.8` and its scanner are bundled into Skulpt. Existing hosts keep their normal
 `Sk.configure`, compilation and execution calls; no parser configuration or
 separate script is needed. The compiler consumes the parser's plain AST directly.
 No old-AST adapter or `Sk.parse` / `Sk.astFromParse` API is included in the build.
@@ -19,6 +19,11 @@ Existing execution suites run through the new parser. CI compares execution with
 the parent compatibility checkpoint and CPython 3.14.3. The Python 2 annotation
 fixture accepts annotations in compatibility mode instead of requiring rejection.
 Unsupported compiler features continue to raise Python syntax errors.
+
+The compiler retains `master`'s class closure cells, normal generator argument
+binding and suspended frames, explicit exception causes, and nested cleanup
+handling. This change adapts those implementations to modern AST nodes rather
+than replaying their older ports from later stack layers.
 
 The Anvil rollout and IDE PRs are unchanged. This branch does not authorize
 merging or deployment.
