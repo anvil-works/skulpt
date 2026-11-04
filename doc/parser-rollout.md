@@ -6,7 +6,7 @@ Skulpt PRs go to `anvil-works/skulpt`.
 | Stage | Repository | Deliverable | Depends on |
 | --- | --- | --- | --- |
 | 1 | Anvil | Existing IDE-only migration, PR #7444 | Published lean parser |
-| 2 | Skulpt | New parser with the old AST adapter and compatibility CI | Published parser 0.0.1-dev.7 |
+| 2 | Skulpt | New parser with the old AST adapter and compatibility CI | Published parser 0.0.1-dev.8 |
 | 3 | Skulpt | Compiler and symbol table consume modern AST directly; remove adapter | Stage 2 |
 | 4 | Anvil | Runner/designer phased rollout of stage 2 | Stage 2 compatibility evidence |
 | 5 | Anvil | Separate phased rollout of stage 3 | Stages 3 and 4 |
@@ -19,6 +19,8 @@ implementation is not part of this branch.
 
 This branch retains the old compiler AST. The host selects the new parser through
 `sourceParser` and `sourceTokenizer`; the existing frontend remains the default.
+It is based directly on `master`, which now includes the nonlocal, class-cell,
+generator and cleanup prerequisites previously carried separately.
 The published runtime candidate can omit old frontend implementation files using
 `support/run/prepare-replacement-build.mjs`. That removes the old parser, not the
 AST adapter. Direct modern-AST compilation is a separate change.
@@ -61,7 +63,7 @@ execution tests explicitly load the optional Unicode-name resolver because an
 existing integer fixture needs it. That is not evidence of lean-only Unicode-name
 support, and the runtime candidate still uses lean core.
 
-The workflow installs `@anvil-works/skulpt-parser@0.0.1-dev.7` through `npm ci`,
+The workflow installs `@anvil-works/skulpt-parser@0.0.1-dev.8` through `npm ci`,
 using the committed package lock and registry integrity hash. This release includes
 the Python 2 literal and exception-target fixes and the explicit language-version option. Stage 4 must use this release or a subsequently validated one.
 
