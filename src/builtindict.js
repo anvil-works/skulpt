@@ -138,12 +138,21 @@ const emptyTuple = new Sk.builtin.tuple();
 const pyZero = new Sk.builtin.int_(0);
 
 Sk.abstr.setUpModuleMethods("builtins", Sk.builtins, {
-    // __build_class__: {
-    //     $meth: Sk.builtin.__build_class__,
-    //     $flags: {},
-    //     $textsig: null,
-    //     $doc: "__build_class__(func, name, *bases, metaclass=None, **kwds) -> class\n\nInternal helper function used by the class statement."
-    // },
+    __build_class__: {
+        $meth(args, kwargs) {
+            // Python/bltinmodule.c: builtin___build_class__.
+            if (args.length < 2) {throw new Sk.builtin.TypeError("__build_class__: not enough arguments");}
+            const [body, name, ...bases] = args;
+            if (!(body instanceof Sk.builtin.func) || !body.func_code.co_fastcall) {
+                throw new Sk.builtin.TypeError("__build_class__: func must be a function");
+            }
+            if (!Sk.builtin.checkString(name)) {throw new Sk.builtin.TypeError("__build_class__: name is not a string");}
+            return Sk.misceval.buildClass(body.func_globals, body, name.$jsstr(), bases, body.func_closure, kwargs);
+        },
+        $flags: { FastCall: true },
+        $textsig: null,
+        $doc: "__build_class__(func, name, *bases, metaclass=None, **kwds) -> class",
+    },
 
     __import__: {
         $meth(name, globals, _locals, formlist, level) {
@@ -631,6 +640,7 @@ Sk.setupObjects = function (py3) {
         removeBuiltin("bytes");
         removeBuiltin("ascii");
     }
+    Sk.builtins.__name__ = new Sk.builtin.str(py3 ? "builtins" : "__builtin__");
     Sk.builtins = Sk.misceval.namespaceToJs(Sk.builtins);
 };
 
