@@ -802,9 +802,9 @@ Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, opti
     }
     if (!dont_inherit) {flags |= inheritedCompilerFlags();}
     // Historical mandatory future features have no effect in Python 3.
-    // AST return/typing, top-level await, incomplete input, Barry syntax and
-    // stringized annotations need their own implementations, not ignored flags.
-    const mandatoryMask = Sk.__future__.python3 ? 0xbe0010 : 0;
+    // AST return/typing, top-level await, incomplete input and Barry syntax need their own
+    // implementations, not ignored flags.
+    const mandatoryMask = Sk.__future__.python3 ? 0x1be0010 : 0;
     if (flags & ~mandatoryMask) {
         throw new Sk.builtin.NotImplementedError("requested compiler flags are not yet supported");
     }
