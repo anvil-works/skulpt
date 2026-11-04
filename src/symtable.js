@@ -26,6 +26,8 @@ var DEF_NONLOCAL = 2 << 10;
 /* nonlocal stmt */
 var DEF_ANNOT = 2 << 11;
 /* this name is annotated */
+var DEF_COMP_ITER = 1 << 16;
+/* comprehension iteration target; above the encoded scope bits */
 
 var DEF_BOUND = (DEF_LOCAL | DEF_PARAM | DEF_IMPORT);
 
@@ -366,6 +368,7 @@ SymbolTable.prototype.enterBlock = function (name, blockType, ast, lineno) {
         this.stack.push(this.cur);
     }
     this.cur = new SymbolTableScope(this, name, blockType, ast, lineno);
+    this.cur.compIterExpr = prev ? prev.compIterExpr : 0;
     if (name === "top") {
         this.global = this.cur.symFlags;
     }
@@ -451,12 +454,13 @@ SymbolTable.prototype.newTmpname = function (lineno) {
     this.addDef(new Sk.builtin.str("_[" + (++this.tmpname) + "]"), DEF_LOCAL, lineno);
 };
 
-SymbolTable.prototype.addDef = function (name, flag, lineno) {
+SymbolTable.prototype.addDef = function (name, flag, lineno, scope) {
+    scope = scope || this.cur;
     var fromGlobal;
     var val;
     var mangled = Sk.mangleName(this.curClass, name).v;
     mangled = Sk.fixReserved(mangled);
-    val = this.cur.symFlags[mangled];
+    val = scope.symFlags[mangled];
     if (val !== undefined) {
         if ((flag & DEF_PARAM) && (val & DEF_PARAM)) {
             throw new Sk.builtin.SyntaxError("duplicate argument '" + name + "' in function definition", this.filename, lineno);
@@ -466,9 +470,15 @@ SymbolTable.prototype.addDef = function (name, flag, lineno) {
     else {
         val = flag;
     }
-    this.cur.symFlags[mangled] = val;
+    if (scope.compIterTarget && (flag & DEF_LOCAL)) {
+        if (val & (DEF_GLOBAL | DEF_NONLOCAL)) {
+            throw new Sk.builtin.SyntaxError("comprehension inner loop cannot rebind assignment expression target '" + name + "'", this.filename, lineno);
+        }
+        val |= DEF_COMP_ITER;
+    }
+    scope.symFlags[mangled] = val;
     if (flag & DEF_PARAM) {
-        this.cur.varnames.push(mangled);
+        scope.varnames.push(mangled);
     }
     else if (flag & DEF_GLOBAL) {
         val = flag;
@@ -740,6 +750,9 @@ SymbolTable.prototype.visitExpr = function (e) {
     Sk.asserts.assert(e !== undefined, "visitExpr called with undefined");
     // console.log("  e: ", e._type);
     switch (e._type) {
+        case "NamedExpr":
+            this.visitNamedExpr(e);
+            break;
         case "BoolOp":
             this.SEQExpr(e.values);
             break;
@@ -868,8 +881,12 @@ SymbolTable.prototype.visitComprehension = function (lcs, startAt) {
     var len = lcs.length;
     for (i = startAt; i < len; ++i) {
         lc = lcs[i];
+        this.cur.compIterTarget = true;
         this.visitExpr(lc.target);
+        this.cur.compIterTarget = false;
+        this.cur.compIterExpr++;
         this.visitExpr(lc.iter);
+        this.cur.compIterExpr--;
         this.SEQExpr(lc.ifs);
     }
 };
@@ -907,17 +924,58 @@ SymbolTable.prototype.visitGenexp = function (e) {
     this.visitComprehensionScope(e, "genexpr", e.elt);
 };
 
+// CPython symtable_handle_namedexpr / symtable_extend_namedexpr_scope.
+// A comprehension assignment binds in the nearest enclosing function/module,
+// while iteration variables and iterable expressions have stricter rules.
+SymbolTable.prototype.visitNamedExpr = function (e) {
+    if (this.cur.compIterExpr) {
+        throw new Sk.builtin.SyntaxError("assignment expression cannot be used in a comprehension iterable expression", this.filename, e.lineno);
+    }
+    if (this.cur.comprehension) {
+        const name = e.target.id;
+        const mangled = Sk.fixReserved(Sk.mangleName(this.curClass, name).v);
+        for (const scope of [this.cur].concat(this.stack.slice().reverse())) {
+            const flags = scope.symFlags[mangled] || 0;
+            if (scope.comprehension) {
+                if ((flags & DEF_COMP_ITER) && (flags & DEF_LOCAL)) {
+                    throw new Sk.builtin.SyntaxError("assignment expression cannot rebind comprehension iteration variable '" + name + "'", this.filename, e.lineno);
+                }
+                continue;
+            }
+            if (scope.blockType === FunctionBlock) {
+                this.addDef(name, flags & DEF_GLOBAL ? DEF_GLOBAL : DEF_NONLOCAL, e.lineno);
+                this.addDef(name, DEF_LOCAL, e.lineno, scope);
+                break;
+            }
+            if (scope.blockType === ModuleBlock) {
+                this.addDef(name, DEF_GLOBAL, e.lineno);
+                this.addDef(name, DEF_GLOBAL, e.lineno, scope);
+                break;
+            }
+            if (scope.blockType === ClassBlock) {
+                throw new Sk.builtin.SyntaxError("assignment expression within a comprehension cannot be used in a class body", this.filename, e.lineno);
+            }
+        }
+    }
+    this.visitExpr(e.value);
+    this.visitExpr(e.target);
+};
+
 // CPython symtable_handle_comprehension evaluates only the outer iterable in
 // the enclosing scope. The rest belongs to a separate logical function block,
 // even when the compiler later inlines a list/set/dict comprehension.
 SymbolTable.prototype.visitComprehensionScope = function (e, name, value, key) {
     var outermost = e.generators[0];
+    this.cur.compIterExpr++;
     this.visitExpr(outermost.iter);
+    this.cur.compIterExpr--;
     this.enterBlock(name, FunctionBlock, e, e.lineno);
     this.cur.comprehension = name;
     this.cur.generator = name === "genexpr";
     this.addDef(new Sk.builtin.str(".0"), DEF_PARAM, e.lineno);
+    this.cur.compIterTarget = true;
     this.visitExpr(outermost.target);
+    this.cur.compIterTarget = false;
     this.SEQExpr(outermost.ifs);
     this.visitComprehension(e.generators, 1);
     if (key) {
