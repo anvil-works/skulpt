@@ -1,5 +1,4 @@
 # CPython 3.14 annotationlib.py at 18ef0f0cb52.
-# Only match dispatch is temporarily lowered until the final pattern increment.
 """Helpers for introspecting and wrapping annotations."""
 
 import ast
@@ -115,15 +114,15 @@ class ForwardRef:
 
         If the forward reference cannot be evaluated, raise an exception.
         """
-        # Restore upstream match dispatch with compiler pattern support.
-        if format == Format.STRING:
-            return self.__resolved_str__
-        elif format == Format.VALUE:
-            is_forwardref_format = False
-        elif format == Format.FORWARDREF:
-            is_forwardref_format = True
-        else:
-            raise NotImplementedError(format)
+        match format:
+            case Format.STRING:
+                return self.__resolved_str__
+            case Format.VALUE:
+                is_forwardref_format = False
+            case Format.FORWARDREF:
+                is_forwardref_format = True
+            case _:
+                raise NotImplementedError(format)
         if isinstance(self.__cell__, types.CellType):
             try:
                 return self.__cell__.cell_contents
@@ -611,20 +610,20 @@ def _template_to_ast_constructor(template):
     """Convert a `template` instance to a non-literal AST."""
     args = []
     for part in template:
-        # Restore upstream match dispatch with compiler pattern support.
-        if isinstance(part, str):
-            args.append(ast.Constant(value=part))
-        else:
-            interp = ast.Call(
-                func=ast.Name(id="Interpolation"),
-                args=[
-                    ast.Constant(value=part.value),
-                    ast.Constant(value=part.expression),
-                    ast.Constant(value=part.conversion),
-                    ast.Constant(value=part.format_spec),
-                ]
-            )
-            args.append(interp)
+        match part:
+            case str():
+                args.append(ast.Constant(value=part))
+            case _:
+                interp = ast.Call(
+                    func=ast.Name(id="Interpolation"),
+                    args=[
+                        ast.Constant(value=part.value),
+                        ast.Constant(value=part.expression),
+                        ast.Constant(value=part.conversion),
+                        ast.Constant(value=part.format_spec),
+                    ]
+                )
+                args.append(interp)
     return ast.Call(func=ast.Name(id="Template"), args=args, keywords=[])
 
 
@@ -633,20 +632,20 @@ def _template_to_ast_literal(template, parsed):
     values = []
     interp_count = 0
     for part in template:
-        # Restore upstream match dispatch with compiler pattern support.
-        if isinstance(part, str):
-            values.append(ast.Constant(value=part))
-        else:
-            interp = ast.Interpolation(
-                str=part.expression,
-                value=parsed[interp_count],
-                conversion=ord(part.conversion) if part.conversion else -1,
-                format_spec=ast.Constant(value=part.format_spec)
-                if part.format_spec
-                else None,
-            )
-            values.append(interp)
-            interp_count += 1
+        match part:
+            case str():
+                values.append(ast.Constant(value=part))
+            case _:
+                interp = ast.Interpolation(
+                    str=part.expression,
+                    value=parsed[interp_count],
+                    conversion=ord(part.conversion) if part.conversion else -1,
+                    format_spec=ast.Constant(value=part.format_spec)
+                    if part.format_spec
+                    else None,
+                )
+                values.append(interp)
+                interp_count += 1
     return ast.TemplateStr(values=values)
 
 
@@ -983,44 +982,44 @@ def get_annotations(
     if eval_str and format != Format.VALUE:
         raise ValueError("eval_str=True is only supported with format=Format.VALUE")
 
-    # Restore upstream match dispatch with compiler pattern support.
-    if format == Format.VALUE:
-        # For VALUE, we first look at __annotations__
-        ann = _get_dunder_annotations(obj)
-
-        # If it's not there, try __annotate__ instead
-        if ann is None:
-            ann = _get_and_call_annotate(obj, format)
-    elif format == Format.FORWARDREF:
-        # For FORWARDREF, we use __annotations__ if it exists
-        try:
+    match format:
+        case Format.VALUE:
+            # For VALUE, we first look at __annotations__
             ann = _get_dunder_annotations(obj)
-        except Exception:
-            pass
-        else:
+
+            # If it's not there, try __annotate__ instead
+            if ann is None:
+                ann = _get_and_call_annotate(obj, format)
+        case Format.FORWARDREF:
+            # For FORWARDREF, we use __annotations__ if it exists
+            try:
+                ann = _get_dunder_annotations(obj)
+            except Exception:
+                pass
+            else:
+                if ann is not None:
+                    return dict(ann)
+
+            # But if __annotations__ threw a NameError, we try calling __annotate__
+            ann = _get_and_call_annotate(obj, format)
+            if ann is None:
+                # If that didn't work either, we have a very weird object: evaluating
+                # __annotations__ threw NameError and there is no __annotate__. In that case,
+                # we fall back to trying __annotations__ again.
+                ann = _get_dunder_annotations(obj)
+        case Format.STRING:
+            # For STRING, we try to call __annotate__
+            ann = _get_and_call_annotate(obj, format)
             if ann is not None:
                 return dict(ann)
-
-        # But if __annotations__ threw a NameError, we try calling __annotate__
-        ann = _get_and_call_annotate(obj, format)
-        if ann is None:
-            # If that didn't work either, we have a very weird object: evaluating
-            # __annotations__ threw NameError and there is no __annotate__. In that case,
-            # we fall back to trying __annotations__ again.
+            # But if we didn't get it, we use __annotations__ instead.
             ann = _get_dunder_annotations(obj)
-    elif format == Format.STRING:
-        # For STRING, we try to call __annotate__
-        ann = _get_and_call_annotate(obj, format)
-        if ann is not None:
-            return dict(ann)
-        # But if we didn't get it, we use __annotations__ instead.
-        ann = _get_dunder_annotations(obj)
-        if ann is not None:
-            return annotations_to_string(ann)
-    elif format == Format.VALUE_WITH_FAKE_GLOBALS:
-        raise ValueError("The VALUE_WITH_FAKE_GLOBALS format is for internal use only")
-    else:
-        raise ValueError(f"Unsupported format {format!r}")
+            if ann is not None:
+                return annotations_to_string(ann)
+        case Format.VALUE_WITH_FAKE_GLOBALS:
+            raise ValueError("The VALUE_WITH_FAKE_GLOBALS format is for internal use only")
+        case _:
+            raise ValueError(f"Unsupported format {format!r}")
 
     if ann is None:
         if isinstance(obj, type) or callable(obj):

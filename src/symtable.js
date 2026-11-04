@@ -896,6 +896,15 @@ SymbolTable.prototype.visitStmt = function (s) {
         case "Debugger":
             // nothing
             break;
+        case "Match":
+            if (!Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
+            this.visitExpr(s.subject);
+            s.cases.forEach((matchCase, i) => {
+                this.visitPattern(matchCase.pattern, !!matchCase.guard || i === s.cases.length - 1);
+                if (matchCase.guard) this.visitExpr(matchCase.guard);
+                this.SEQStmt(matchCase.body);
+            });
+            break;
         case "With":
             VISIT_SEQ(this.visit_withitem.bind(this), s.items);
             VISIT_SEQ(this.visitStmt.bind(this), s.body);
@@ -914,6 +923,80 @@ SymbolTable.prototype.visitStmt = function (s) {
             throw new Sk.builtin.SyntaxError(s._type + " is not supported by the Skulpt compiler", this.filename, s.lineno);
     }
     parent.inConditionalBlock = inConditional;
+};
+
+// CPython's symtable_visit_pattern records captures as local definitions.
+// Binding/irrefutability checks also run here so optimization cannot hide an
+// invalid pattern in an unreachable suite (CPython validates during codegen).
+SymbolTable.prototype.visitPattern = function (p, allowIrrefutable, captures = new Set()) {
+    const error = message => {throw new Sk.builtin.SyntaxError(message, this.filename, p.lineno);};
+    const capture = name => {
+        if (!name) {return;}
+        if (captures.has(name)) {error("multiple assignments to name '" + name + "' in pattern");}
+        captures.add(name);
+        this.addDef(name, DEF_LOCAL, p.lineno);
+    };
+    const children = patterns => patterns.forEach(child => this.visitPattern(child, true, captures));
+    switch (p._type) {
+        case "MatchValue":
+            if (p.value._type !== "Attribute" && Sk.abstr.patternLiteral(p.value) === undefined) {
+                error("patterns may only match literals and attribute lookups");
+            }
+            this.visitExpr(p.value);
+            break;
+        case "MatchSingleton": break;
+        case "MatchSequence":
+            if (p.patterns.filter(child => child._type === "MatchStar").length > 1) {error("multiple starred names in sequence pattern");}
+            children(p.patterns);
+            break;
+        case "MatchMapping": {
+            const seen = new Sk.builtin.dict([]);
+            for (const key of p.keys) {
+                const literal = Sk.abstr.patternLiteral(key);
+                if (literal !== undefined) {
+                    if (seen.mp$lookup(literal) !== undefined) {error("mapping pattern checks duplicate key (" + Sk.misceval.objectRepr(literal) + ")");}
+                    seen.mp$ass_subscript(literal, Sk.builtin.none.none$);
+                } else if (key._type !== "Attribute") {error("patterns may only match literals and attribute lookups");}
+                this.visitExpr(key);
+            }
+            children(p.patterns);
+            capture(p.rest);
+            break;
+        }
+        case "MatchClass": {
+            this.visitExpr(p.cls);
+            const seen = new Set();
+            for (const name of p.kwd_attrs) {
+                if (seen.has(name)) {error("attribute name repeated in class pattern: " + name);}
+                seen.add(name);
+            }
+            children(p.patterns);
+            children(p.kwd_patterns);
+            break;
+        }
+        case "MatchStar": capture(p.name); break;
+        case "MatchAs":
+            if (p.pattern) {this.visitPattern(p.pattern, allowIrrefutable, captures);}
+            else if (!allowIrrefutable) {
+                error(p.name ? "name capture '" + p.name + "' makes remaining patterns unreachable" : "wildcard makes remaining patterns unreachable");
+            }
+            capture(p.name);
+            break;
+        case "MatchOr": {
+            let names;
+            p.patterns.forEach((child, i) => {
+                const alternative = new Set();
+                this.visitPattern(child, allowIrrefutable && i === p.patterns.length - 1, alternative);
+                if (names && (names.size !== alternative.size || [...names].some(name => !alternative.has(name)))) {
+                    error("alternative patterns bind different names");
+                }
+                names = alternative;
+            });
+            for (const name of names) {capture(name);}
+            break;
+        }
+        default: Sk.asserts.fail("unknown pattern " + p._type);
+    }
 };
 
 SymbolTable.prototype.visit_withitem = function(item) {

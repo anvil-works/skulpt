@@ -2,9 +2,26 @@
 
 This audit concerns the existing JavaScript compiler above `stu-dev/parser/direct-ast`, with the generator fix stack integrated above it. The bytecode experiment is parked. The target is Python 3.14 language behavior, not CPython bytecode, native extensions, or complete standard-library compatibility.
 
-## Current scope
+## Current scope (2026-10-07)
 
-The active stack uses published `@anvil-works/skulpt-parser@0.0.1-dev.8` and the existing JavaScript compiler. Python async execution is parked on a separate sibling stack; Anvil host suspensions remain supported. Generator metadata, delegation temporaries and symbol-table flags are shared synchronous prerequisites rather than a reason to depend on the coroutine stack. Modern Python reserves `async` and `await` even when execution of their AST nodes is unsupported.
+The main compiler stack uses published skulpt-parser dev.8. Template expression
+metadata, function-type parsing and feature-version grammar checks are included
+in that release; no dev.9 release is needed.
+
+Python async execution is a separate, parked stack rooted at
+`stu-dev/compiler/function-code-replacement`. Its coroutine, async control-flow,
+async generator/comprehension/builtin and top-level-await branches are preserved.
+The main stack's future/annotation/exception/typing/AST work bypasses those
+branches. Synchronous generator inspection, compiler flags and saved yield-from
+expression temporaries remain because the non-async compiler uses them.
+Async-only contextlib/protocol implementations and execution tests are excluded;
+the AST schema and unparser can still describe async syntax. The synchronous
+annotation fixtures omit async definitions without changing their assertions.
+
+`match` execution and edited pattern AST validation are implemented in the final
+pattern increment described below.
+The inventory below records the original audit; the later increment sections
+record what has since been implemented, rather than a current list of gaps.
 
 Reference checkout: `/Users/scork/Desktop/Projects/cpython` (the project sibling `../cpython`), branch `3.14`, commit `18ef0f0cb5278fa6583b753ffaaef7f46e416ab9` (2026-10-06). All CPython links below pin that commit. The version history is a discovery checklist; the current grammar, compiler, symbol table and tests define the target behavior. This is a **source audit**, not a completed conformance run. “Implemented path” does not mean every edge case passes; suspected discrepancies need a failing CPython-derived test before a fix.
 
@@ -40,7 +57,7 @@ The production path is modern parser AST → `Sk.symboltable` → generated Java
 
 Implemented paths include ordinary functions/lambdas, defaults and keyword-only parameters, classes/decorators, `global`/`nonlocal`, closures, ordinary exception handling and context managers, comprehensions, generators/`yield from`, f-strings, starred containers/calls/assignment, and annotated assignments/functions. Existing execution tests remain the regression baseline; these paths need targeted modern CPython cases rather than a blanket “supported through version X” label. See `visitStmt`/`visitExpr` in the [symbol table](../src/symtable.js) and `vstmt`/`vexpr` in the [compiler](../src/compile.js).
 
-Unsupported AST statements/expressions fail explicitly in symbol-table traversal. The parser can accept syntax whose AST the compiler rejects. Its configuration reserves `async`/`await` in Python 3 and selects Python 2 versus 3, rather than individual Python 3 minor versions; any version-gating contract needs a separate decision and tests. [Parser options](../src/structural_ast.js).
+Unsupported AST statements/expressions fail explicitly in symbol-table traversal. The parser can accept syntax whose AST the compiler rejects. Its configuration currently also permits `async`/`await` as identifiers and selects only Python 2 versus 3, rather than individual Python 3 minor versions; modern reserved-keyword behavior and any version-gating contract need separate decisions and tests. [Parser options](../src/structural_ast.js).
 
 ## Inventory and order
 
@@ -50,7 +67,7 @@ Unsupported AST statements/expressions fail explicitly in symbol-table traversal
 | Dictionary-comprehension evaluation order, Python 3.8 / PEP 572 | Fixed in `stu-dev/compiler/dict-comprehension-order`: `ccompgen` emits and saves the key before evaluating the value; the unchanged CPython test passes. [compiler](../src/compile.js), [CPython `test_evaluation_order`](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_dictcomps.py#L87). | Selected synchronous side-effect test covered; scope isolation remains separate. Saving the key also preserves it across value evaluation and suspension. |
 | Comprehension isolation and closures; Python 3.12 / PEP 709 visible semantics | List/set/dict comprehension visitors do not enter a symbol-table block. `ccompgen` writes targets through ordinary `vexpr`; generator expressions use their own block. These are strong indications of isolation/closure gaps, not proof that every test fails. [symtable](../src/symtable.js), [compiler](../src/compile.js). | Baseline no-leakage, iterable evaluation scope, class scope, nested comprehensions and captured iteration variables. Keep inlining if practical; CPython 3.12 inlines while preserving isolation. Avoid fixing only the final variable value: closures can escape, and failures must restore surrounding bindings. [3.12 changes](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Doc/whatsnew/3.12.rst#L398), [CPython tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_listcomps.py). |
 | Assignment expressions, Python 3.8 / PEP 572 (`NamedExpr`) | No expression visitor/emitter; symbol table rejects the node. [symtable](../src/symtable.js), [compiler](../src/compile.js). | Ordinary expression assignment is small; complete support includes nonlocal/global binding from comprehensions and special syntax restrictions. Build on the comprehension scope work instead of accepting walrus syntax with incorrect scope. [CPython named-expression scope implementation](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Python/symtable.c#L2309), [tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_named_expressions.py). |
-| Async functions, `await`, async `for`/`with`, async comprehensions and async generators (Python 3.5–3.11) | `AsyncFunctionDef`, `AsyncFor`, `AsyncWith`, `Await` have no active symtable/compiler cases; async comprehensions have an explicit guard. The `AsyncFunctionDef` mention in code-object construction is not execution support. [symtable](../src/symtable.js), [compiler](../src/compile.js). | Substantial runtime project after generator stability: Python coroutine/awaitable and async-iterator protocols, cancellation/close/throw and finalization. A Skulpt host suspension is not by itself a Python coroutine. Start with protocol tests that do not require `asyncio`. [coroutine tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_coroutines.py), [async-generator tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_asyncgen.py). |
+| Async functions, `await`, async `for`/`with`, async comprehensions and async generators (Python 3.5–3.11; separate project) | `AsyncFunctionDef`, `AsyncFor`, `AsyncWith`, `Await` have no active symtable/compiler cases; async comprehensions have an explicit guard. The `AsyncFunctionDef` mention in code-object construction is not execution support. [symtable](../src/symtable.js), [compiler](../src/compile.js). | Substantial runtime project after generator stability: Python coroutine/awaitable and async-iterator protocols, cancellation/close/throw and finalization. A Skulpt host suspension is not by itself a Python coroutine. Start with protocol tests that do not require `asyncio`. [coroutine tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_coroutines.py), [async-generator tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_asyncgen.py). |
 | Structural pattern matching, Python 3.10 / PEP 634 (`Match`) | No statement visitor/emitter; rejected. [symtable](../src/symtable.js), [compiler](../src/compile.js). | Add pattern binding validation and ordered pattern/guard execution. Sequence/mapping/class protocols and binding visibility are part of the feature; do not lower patterns to equality tests alone. [CPython lowering](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Python/codegen.c#L6394), [tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_patma.py). |
 | Exception groups and `except*`, Python 3.11 / PEP 654 (`TryStar`) | No statement visitor/emitter. No exception-group class definitions in [errors](../src/errors.js). | Requires runtime grouping, splitting, subgroup identity/metadata, and combining reraised/new exceptions; ordinary `except` machinery is insufficient. Follow generator exception-context integration. [CPython lowering](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Python/codegen.c#L2613), [tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_except_star.py). |
 | Type parameters and `type` statements, Python 3.12 / PEP 695; defaults, Python 3.13 / PEP 696 | Nonempty function/class `type_params` explicitly rejected; no `TypeAlias` case. [symtable](../src/symtable.js). | Annotation scopes and lazy bounds/alias values plus runtime type-parameter/alias objects. Include name collisions, class visibility and nonlocal restrictions; erasing the syntax would lose runtime behavior. [3.12 changes](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Doc/whatsnew/3.12.rst#L180), [type-parameter tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_type_params.py), [type-alias tests](https://github.com/python/cpython/blob/18ef0f0cb5278fa6583b753ffaaef7f46e416ab9/Lib/test/test_type_aliases.py). |
@@ -745,8 +762,8 @@ Twenty-eight selected CPython template/interpolation/conversion/unparse cases
 and compiler regressions pass locally in both runtimes. Pattern-based template
 cases follow match. GC/weakref/pickle integration remains separate. The parser
 metadata fixes at skulpt-parser 0d45c749 are reviewed and tested locally, but
-the dev.8 npm release and dependency pin await approval; this branch must not
-be submitted as release-ready before that pin is available.
+these changes are now published together in dev.8 and the compiler dependency
+is pinned to that release.
 
 Template review fixes save interpolation values before nested specifications
 (including the existing f-string path), keep compiler-built string tuples separate
@@ -835,4 +852,29 @@ Future-diagnostic review preserves CPython's message-only exception arguments wh
 
 ## Function-type AST input
 
-`stu-dev/compiler/function-type-input` integrates the parser's generated `func_type`/`type_expressions` entry point with `compile` and `ast.parse`. FunctionType requires AST-only flags, validates edited argument/return expressions, and stays unoptimized as in CPython. Two complete upstream methods from `test_type_comments` and `test_ast`, plus one CPython-checked flag/snapshot regression, pass in both runtimes. The parser change is reviewed on local `stu-dev/parser/function-type-input` at 8ed0edb2, with nine upstream source cases, complete parser tests, generation/type checks, build and packaged API checks passing. The local dev.9 tarball is installed only for validation; tracked dependency pins and unpublished status remain unchanged pending parser release authorization.
+`stu-dev/compiler/function-type-input` integrates the parser's generated `func_type`/`type_expressions` entry point with `compile` and `ast.parse`. FunctionType requires AST-only flags, validates edited argument/return expressions, and stays unoptimized as in CPython. Two complete upstream methods from `test_type_comments` and `test_ast`, plus one CPython-checked flag/snapshot regression, pass in both runtimes. The parser change is reviewed on local `stu-dev/parser/function-type-input` at 8ed0edb2, with nine upstream source cases, complete parser tests, generation/type checks, build and packaged API checks passing. The earlier local dev.9 test package was consolidated into published dev.8; the compiler now uses that release.
+
+
+## Structural pattern matching (Python 3.10 / PEP 634)
+
+`stu-dev/compiler/pattern-matching` adds the eight pattern forms, ordered cases
+and guards, deferred capture stores, sequence/mapping ABC flags and inheritance,
+`__match_args__` class extraction, and validation of edited pattern ASTs. The
+compiler methods follow CPython 3.14 `codegen_pattern_*`; the runtime helpers
+follow `_PyEval_MatchKeys` and `_PyEval_MatchClass`. Python async execution stays
+on the parked sibling stack. Pattern protocol calls can use Anvil suspensions.
+
+The selected CPython `test_patma` methods preserve their assertions. Fixtures
+adapt the Point dataclass, cleandoc and subTest infrastructure. The omitted
+methods and unavailable dependencies are listed in the test header: UserDict,
+UserList, bytearray, memoryview, array, typing.Protocol, tracing/disassembly,
+and enormous ranges (Skulpt currently allocates ranges eagerly). The complete
+upstream invalid-pattern AST fixture also runs. These are selected compatibility
+checks, not a claim of complete Python 3.14 conformance.
+
+The pattern cases exposed empty complex-format support and an existing percent
+formatting bug that treated a short negative number as an exponent. Both are
+fixed, with the original pattern assertions retained. Suspended comparisons now
+resume before testing NotImplemented and trying the reflected comparison.
+Annotationlib's four temporary dispatch chains and the template test helper
+are restored to their upstream `match` implementations.
