@@ -209,7 +209,7 @@ function slotFuncGetAttribute(pyName, canSuspend) {
         () => native ? getattributeFn.d$wrapped.call(this, pyName, canSuspend)
         : Sk.misceval.callsimOrSuspendArray(getattributeFn, [pyName]),
         (e) => {
-            if (e instanceof Sk.builtin.AttributeError) {
+            if (e instanceof Sk.builtin.AttributeError && this.ob$type.$typeLookup(Sk.builtin.str.$getattr) !== undefined) {
                 return undefined;
             } else {
                 throw e;
@@ -473,26 +473,15 @@ slots.__getattribute__ = {
             if (getattrFn === undefined) {
                 return slotFuncGetAttribute.call(this, pyName, canSuspend);
             }
-            const ret = Sk.misceval.chain(slotFuncGetAttribute.call(this, pyName, canSuspend), (val) =>
-                Sk.misceval.tryCatch(
-                    () => {
-                        if (val !== undefined) {
-                            return val;
-                        }
-                        if (getattrFn.tp$descr_get) {
-                            getattrFn = getattrFn.tp$descr_get(this, this.ob$type);
-                        }
-                        return Sk.misceval.callsimOrSuspendArray(getattrFn, [pyName]);
-                    },
-                    function (e) {
-                        if (e instanceof Sk.builtin.AttributeError) {
-                            return undefined;
-                        } else {
-                            throw e;
-                        }
-                    }
-                )
-            );
+            const ret = Sk.misceval.chain(slotFuncGetAttribute.call(this, pyName, canSuspend), (val) => {
+                if (val !== undefined) {
+                    return val;
+                }
+                if (getattrFn.tp$descr_get) {
+                    getattrFn = getattrFn.tp$descr_get(this, this.ob$type);
+                }
+                return Sk.misceval.callsimOrSuspendArray(getattrFn, [pyName]);
+            });
             return canSuspend ? ret : Sk.misceval.retryOptionalSuspensionOrThrow(ret);
         };
     },
@@ -503,10 +492,10 @@ slots.__getattribute__ = {
         if (!Sk.builtin.checkString(pyName)) {
             throw new Sk.builtin.TypeError("attribute name must be string, not '" + Sk.abstr.typeName(pyName) + "'");
         }
-        const res = this.call(self, pyName, true);
-        return Sk.misceval.chain(res, (res) => {
+        return Sk.misceval.chain(this.call(self, pyName, true), (res) => {
             if (res === undefined) {
-                throw new Sk.builtin.AttributeError(Sk.abstr.typeName(self) + " has no attribute " + pyName.$jsstr());
+                const error = new Sk.builtin.AttributeError(Sk.abstr.typeName(self) + " has no attribute " + pyName.$jsstr());
+                return Sk.builtin.raiseAttributeErrorWithContext(error, self, pyName);
             }
             return res;
         });
