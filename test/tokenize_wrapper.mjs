@@ -1,5 +1,6 @@
 // Exercise Python's real token/tokenize modules against CPython 3.14.3.
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {createRequire} from "node:module";
 import {resolve, dirname, join} from "node:path";
 import {pathToFileURL} from "node:url";
@@ -8,6 +9,11 @@ const require = createRequire(import.meta.url);
 const bundle = resolve(process.argv[3] || "dist/skulpt.min.js");
 require(bundle);
 require(join(dirname(bundle), "skulpt-stdlib.js"));
+// Production stdlib entries name the JSON group containing the module source.
+for (const group of new Set(Object.values(Sk.builtinFiles.files).filter(Number.isInteger))) {
+    Object.assign(Sk.builtinFiles.files, JSON.parse(fs.readFileSync(
+        join(dirname(bundle), `skulpt-stdlib-${group}.json`), "utf8")));
+}
 assert.ok(process.argv[2], "Usage: node test/tokenize_wrapper.mjs <core-bundle> [skulpt-bundle]");
 const {parseModule, scan} = await import(pathToFileURL(resolve(process.argv[2])).href);
 const python = process.env.PYTHON314 || "python3.14";
