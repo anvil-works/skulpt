@@ -525,30 +525,76 @@ Compiler.prototype.cdict = function (e) {
 
 Compiler.prototype.clistcomp = function(e) {
     Sk.asserts.assert(e._type === "ListComp");
+    if (Sk.__future__.python3) {
+        return this.ccomprehension(e, "list", e.elt);
+    }
     var tmp = this._gr("_compr", "new Sk.builtins['list']([])"); // note: _ is impt. for hack in name mangling (same as cpy)
     return this.ccompgen("list", tmp, e.generators, 0, e.elt, null, e);
 };
 
 Compiler.prototype.cdictcomp = function(e) {
     Sk.asserts.assert(e._type === "DictComp");
-    var tmp = this._gr("_dcompr", "new Sk.builtins.dict([])");
-    return this.ccompgen("dict", tmp, e.generators, 0, e.value, e.key, e);
+    return this.ccomprehension(e, "dict", e.value, e.key);
 };
 
 Compiler.prototype.csetcomp = function(e) {
     Sk.asserts.assert(e._type === "SetComp");
-    var tmp = this._gr("_setcompr", "new Sk.builtins.set([])");
-    return this.ccompgen("set", tmp, e.generators, 0, e.elt, null, e);
+    return this.ccomprehension(e, "set", e.elt);
 };
 
-Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, value, key, e) {
+// CPython codegen_comprehension inlines list/set/dict comprehensions while
+// preserving their logical scope. Distinct JS locals/cell dictionaries avoid
+// overwriting outer bindings, including when iteration raises or suspends.
+Compiler.prototype.ccomprehension = function (e, type, value, key) {
+    const iter = this._gr("iter", "Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ")");
+    const outerSte = this.u.ste;
+    const outerInline = this.u.inlineScope;
+    const ste = this.st.getStsForAst(e);
+    const closure = this.closureArgs(ste.hasFree);
+    const free = closure.length === 2 ? this._gr("compfree", "Sk.misceval.makeClosure(", closure.join(","), ")") : closure[0];
+    const names = Object.create(null);
+    const cells = Object.keys(ste.symFlags).filter(name => ste.getScope(name) === Sk.SYMTAB_CONSTS.CELL);
+    const cell = cells.length ? this._gr("compcell", "{", cells.map(name => name + ":undefined").join(","), "}") : null;
+    for (const name of Object.keys(ste.symFlags)) {
+        if (ste.getScope(name) === Sk.SYMTAB_CONSTS.LOCAL && name !== ".0") {
+            names[name] = this.gensym("compvar");
+            this.u.localnames.push(names[name]);
+            out(names[name], "=undefined;");
+        }
+    }
+    this.u.ste = ste;
+    this.u.inlineScope = { names, cell, free };
+    const result = this._gr("compr", "new Sk.builtins['", type, "']([])");
+    this.ccompgen(type, result, e.generators, 0, value, key, e, iter);
+    this.u.ste = outerSte;
+    this.u.inlineScope = outerInline;
+    return result;
+};
+
+Compiler.prototype.closureArgs = function (hasFree) {
+    if (!hasFree) {
+        return [];
+    }
+    const scope = this.u.inlineScope;
+    const closure = [];
+    if (this.u.ste.needsClassClosure) {
+        closure.push("$classClosure");
+    } else if (this.u.ste.cellvars.length > 0) {
+        closure.push(scope ? scope.cell : "$cell");
+    }
+    if (this.u.ste.hasFree || this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock) {
+        closure.push(scope ? scope.free : "$free");
+    }
+    return closure;
+};
+
+Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, value, key, e, outerIter) {
     var start = this.newBlock(type + " comp start");
     var skip = this.newBlock(type + " comp skip");
     var anchor = this.newBlock(type + " comp anchor");
 
     var l = generators[genIndex];
-    var toiter = this.vexpr(l.iter);
-    var iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
+    var iter = genIndex === 0 && outerIter ? outerIter : this._gr("iter", "Sk.abstr.iter(", this.vexpr(l.iter), ")");
     var lvalue;
     var lkey;
     var ifres;
@@ -1940,7 +1986,6 @@ Compiler.prototype.cfromimport = function (s) {
  */
 Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, callback) {
     if (typeof coname === "string") coname = new Sk.builtin.str(coname);
-    var containingHasFree;
     var frees;
     var argnamesarr = [];
     var id;
@@ -2219,19 +2264,8 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // Create the function object used for argument binding. A generator's
     // compiled entry saves the initial frame and returns a fresh generator.
     //
-    // hasFree belongs to the new function; this.u is back in its defining scope.
-    frees = "";
-    if (hasFree) {
-        if (this.u.ste.needsClassClosure) {
-            frees = ",$classClosure";
-        } else if (this.u.ste.cellvars.length > 0) {
-            frees = ",$cell";
-        }
-        containingHasFree = this.u.ste.hasFree || this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock;
-        if (containingHasFree) {
-            frees += ",$free";
-        }
-    }
+    const closure = this.closureArgs(hasFree);
+    frees = closure.length ? "," + closure.join(",") : "";
 
     let funcobj;
     if (decos.length > 0) {
@@ -2714,11 +2748,11 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     dict = null;
     switch (scope) {
         case Sk.SYMTAB_CONSTS.FREE:
-            dict = "$free";
+            dict = this.u.inlineScope ? this.u.inlineScope.free : "$free";
             optype = OP_DEREF;
             break;
         case Sk.SYMTAB_CONSTS.CELL:
-            dict = "$cell";
+            dict = this.u.inlineScope ? this.u.inlineScope.cell : "$cell";
             optype = OP_DEREF;
             break;
         case Sk.SYMTAB_CONSTS.LOCAL:
@@ -2745,6 +2779,9 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
 
     // Module and class locals live in $loc; function locals use JS variables.
     mangledNoPre = mangled;
+    if (this.u.inlineScope && optype === OP_FAST) {
+        mangled = this.u.inlineScope.names[mangled];
+    }
     if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
         mangled = "$loc." + mangled;
     } else if (optype === OP_FAST || optype === OP_NAME) {
@@ -2758,7 +2795,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
                 case "Param":
                 case "Del":
                     // Need to check that it is bound!
-                    out("if (", mangled, " === undefined) { throw new Sk.builtin.UnboundLocalError('local variable \\\'", mangled, "\\\' referenced before assignment'); }\n");
+                    out("if (", mangled, " === undefined) { throw new Sk.builtin.UnboundLocalError('local variable \\\'", unfixReserved(mangledNoPre), "\\\' referenced before assignment'); }\n");
                     if (ctx === "Del") {
                         out(mangled, "=undefined;");
                         break;
