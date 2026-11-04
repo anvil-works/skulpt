@@ -806,7 +806,9 @@ SymbolTable.prototype.visitStmt = function (s) {
             VISIT_SEQ(this.visitStmt.bind(this), s.body);
             break;
 
+        case "TryStar":
         case "Try":
+            if (s._type === "TryStar" && !Sk.__future__.python3) throw new Sk.builtin.SyntaxError("invalid syntax", this.filename, s.lineno);
             this.SEQStmt(s.body);
             this.visitExcepthandlers(s.handlers)
             this.SEQStmt(s.orelse);
