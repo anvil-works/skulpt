@@ -1,6 +1,6 @@
 /* Parse source into the modern AST using the configured Python compatibility mode. */
 
-const { parseModule, scan } = require("@anvil-works/skulpt-parser/dist-core/index.js");
+const { parseExpression, parseModule, scan } = require("@anvil-works/skulpt-parser/dist-core/index.js");
 Sk["$scanSource"] = scan;
 
 /**
@@ -9,9 +9,9 @@ Sk["$scanSource"] = scan;
  * @param {string} source
  * @param {string} filename
  */
-Sk.parseModule = function (source, filename) {
+function parseSource(source, filename, expression) {
     try {
-        return parseModule(source, {
+        return (expression ? parseExpression : parseModule)(source, {
             filename,
             pythonVersion: Sk.__future__.python3 ? 3 : 2,
             asyncAwaitAsIdentifiers: true,
@@ -30,6 +30,13 @@ Sk.parseModule = function (source, filename) {
         converted.$text = error.text == null ? Sk.builtin.none.none$ : new Sk.builtin.str(error.text);
         throw converted;
     }
-};
+}
 
+Sk.parseModule = function (source, filename) {
+    return parseSource(source, filename, false);
+};
+Sk.parseExpression = function (source, filename) {
+    return parseSource(source, filename, true);
+};
 Sk.exportSymbol("Sk.parseModule", Sk.parseModule);
+Sk.exportSymbol("Sk.parseExpression", Sk.parseExpression);

@@ -241,23 +241,25 @@ class ScopeTests(unittest.TestCase):
     #     self.assertEqual(Foo.count, 0)
 
 
-    # def testLocalsFunction(self):
-    #
-    #     def f(x):
-    #         def g(y):
-    #             def h(z):
-    #                 return y + z
-    #             w = x + y
-    #             y += 3
-    #             # return locals()
-    #         return g
-    #
-    #     d = f(2)(4)
-    #     # self.assertIn('h', d)
-    #     del d['h']
-    #     # self.assertEqual(d, {'x': 2, 'y': 7, 'w': 6})
+    # CPython 3.14 Lib/test/test_scope.py, commit 18ef0f0cb52; unchanged methods.
+    def testLocalsFunction(self):
 
-    # def testLocalsClass(self):
+        def f(x):
+            def g(y):
+                def h(z):
+                    return y + z
+                w = x + y
+                y += 3
+                return locals()
+            return g
+
+        d = f(2)(4)
+        self.assertIn('h', d)
+        del d['h']
+        self.assertEqual(d, {'x': 2, 'y': 7, 'w': 6})
+
+
+    def testLocalsClass(self):
         # This test verifies that calling locals() does not pollute
         # the local namespace of the class with free variables.  Old
         # versions of Python had a bug, where a free variable being
@@ -268,27 +270,39 @@ class ScopeTests(unittest.TestCase):
         # between fast locals and the locals dict, e.g. when executing
         # a trace function.
 
-        # def f(x):
-        #     class C:
-        #         x = 12
-        #         def m(self):
-        #             return x
-        #         locals()
-        #     return C
-        #
-        # self.assertEqual(f(1).x, 12)
-        #
-        # def f(x):
-        #     class C:
-        #         y = x
-        #         def m(self):
-        #             return x
-        #         z = list(locals())
-        #     return C
-        #
-        # varnames = f(1).z
-        # self.assertNotIn("x", varnames)
-        # self.assertIn("y", varnames)
+        def f(x):
+            class C:
+                x = 12
+                def m(self):
+                    return x
+                locals()
+            return C
+
+        self.assertEqual(f(1).x, 12)
+
+        def f(x):
+            class C:
+                y = x
+                def m(self):
+                    return x
+                z = list(locals())
+            return C
+
+        varnames = f(1).z
+        self.assertNotIn("x", varnames)
+        self.assertIn("y", varnames)
+
+
+    def testEvalFreeVars(self):
+
+        def f(x):
+            def g():
+                x
+                eval("x + 1")
+            return g
+
+        f(4)()
+
 
     # def testLocalsClass_WithTrace(self):
     #     # Issue23728: after the trace function returns, the locals()
