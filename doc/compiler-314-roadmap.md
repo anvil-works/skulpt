@@ -182,3 +182,11 @@ The class-construction helpers `types.new_class`, `resolve_bases`, `prepare_clas
 `stu-dev/compiler/global-mapping-lookup` separates `LOAD_GLOBAL` from `LOAD_NAME` following `_PyEval_LoadGlobalStackRef`. Exact dictionaries retain direct lookup; function/global loads through dictionary subclasses honor item/missing hooks, propagate non-KeyError exceptions and fall back to captured builtins only for missing names. `LOAD_NAME` keeps CPython's direct globals fallback after locals lookup. Globals stores/deletions retain base-dictionary operations.
 
 CPython's unchanged `TestSpecifics.test_globals_dict_subclass` is added, together with a CPython-checked regression distinguishing module lookup, function lookup, builtin fallback and hook exceptions. All 37 compile methods pass in both runtimes; scope, comprehension and generator/suspension regressions pass.
+
+## Compile filenames
+
+`stu-dev/compiler/compile-filenames` follows `PyUnicode_FSDecoder`/`PyOS_FSPath`: filenames accept strings, bytes and type-level `__fspath__`, reject invalid results and embedded NULs, and decode filesystem bytes as UTF-8 with surrogateescape. Code objects expose read-only `co_filename`. Generated JavaScript encodes filenames as string literals in traceback, breakpoint and suspension paths; quotes/newlines no longer break executable code.
+
+CPython's filename, filename error-path and path-like methods are ported; assertions are unchanged, except the bytearray/memoryview fixture block remains deferred until those buffer types exist. The upstream FakePath fixture is retained unchanged. A CPython-checked regression exercises malformed UTF-8, BOM preservation, special-method lookup, invalid path results and functions/generators/classes/comprehensions under quoted filenames. All 41 compile methods pass in both runtimes; compiler and generator/suspension regressions pass.
+
+The filename review found an identity mismatch: CPython retains string filename objects and subclasses. The follow-up preserves that Python object separately from generated JavaScript text, with direct/path-like identity assertions passing in both runtimes (42 compile methods).
