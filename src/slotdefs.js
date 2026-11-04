@@ -1417,7 +1417,7 @@ slots.__and__ = {
  */
 slots.__rand__ = {
     $name: "__rand__",
-    $slot_name: "nb$refelcted_and",
+    $slot_name: "nb$reflected_and",
     $slot_func: slotFuncOneArg,
     $wrapper: wrapperCallOneArg,
     $textsig: "($self, value, /)",
