@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -11,6 +11,11 @@ const require = createRequire(import.meta.url);
 require(resolve(process.argv[3] || "dist/skulpt.js"));
 require("../dist/skulpt-stdlib.js");
 const { Sk } = globalThis;
+// Production stdlib entries name the JSON group containing the module source.
+for (const group of new Set(Object.values(Sk.builtinFiles.files).filter(Number.isInteger))) {
+    Object.assign(Sk.builtinFiles.files, JSON.parse(fs.readFileSync(
+        join(dirname(resolve(process.argv[3] || "dist/skulpt.js")), `skulpt-stdlib-${group}.json`), "utf8")));
+}
 const parserPath = process.argv[2];
 if (!parserPath) throw new Error("Usage: node test/structural_parser.mjs <parser-core-bundle> [skulpt-bundle]");
 const { parseModule } = await import(pathToFileURL(resolve(parserPath)).href);

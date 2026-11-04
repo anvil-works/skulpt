@@ -1,5 +1,6 @@
 // Check the isolated replacement build, including actual standard-library loading.
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import { resolve, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,6 +12,11 @@ const require = createRequire(import.meta.url);
 require(resolve(bundle));
 require(join(dirname(resolve(bundle)), "skulpt-stdlib.js"));
 const { Sk } = globalThis;
+// Production stdlib entries name the JSON group containing the module source.
+for (const group of new Set(Object.values(Sk.builtinFiles.files).filter(Number.isInteger))) {
+    Object.assign(Sk.builtinFiles.files, JSON.parse(fs.readFileSync(
+        join(dirname(resolve(bundle)), `skulpt-stdlib-${group}.json`), "utf8")));
+}
 for (const name of ["Parser", "astDump", "parseTreeDump", "ParseTables", "OpMap", "setupOperators"]) {
     assert.equal(typeof Sk[name], "undefined", `${name} still present`);
 }
