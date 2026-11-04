@@ -480,6 +480,9 @@ def _to_parser(node):
         if value is None and not mods and type_name not in ('constant', 'int', 'identifier', 'string'):
             raise ValueError(f"field '{field}' is required for {name}")
         result[field] = convert(value, type_name, mods, field)
+        # Parser interpolation text uses a scalar wrapper; public ASDL uses str?.
+        if name == 'Interpolation' and field == 'str' and value is not None:
+            result[field] = {'type': 'str', 'value': value, 'py_value': value}
     for attribute in attributes:
         try: value = getattr(node, attribute)
         except AttributeError:
