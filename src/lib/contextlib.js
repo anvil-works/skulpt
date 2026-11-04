@@ -144,7 +144,7 @@ function contextlib_mod(dependencies) {
                     // raise a new exception that must propagate without suppression.
                     // A successful throw() yielded again; null sends it to cleanup below.
                     return chain(tryCatch(
-                        () => chain(pyCallOrSuspend(this.$gen.tp$getattr(throwStr), [type, exception, traceback]), () => null),
+                        () => chain(pyCallOrSuspend(this.$gen.tp$getattr(throwStr), [exception]), () => null),
                         (error) => error
                     ), (e) => {
                         if (e === null) {
@@ -155,16 +155,15 @@ function contextlib_mod(dependencies) {
                         if (e instanceof StopIteration) {
                             // A new StopIteration consumes the throw; the original must propagate.
                             return new pyBool(e !== exception);
-                        } else if (
+                        }
+                        if (e === exception || (
                             e instanceof RuntimeError &&
                             exception instanceof StopIteration &&
                             e.$cause === exception
-                        ) {
-                            // PEP 479 wraps escaped StopIteration; preserve the body exception.
-                            return pyFalse;
-                        }
-                        if (e === exception) {
-                            return pyFalse;
+                        )) {
+                            // Preserve the body's traceback when throw() propagates
+                            // the same error or its PEP 479 wrapper, as in CPython.
+                            return chain(Sk.abstr.sattr(exception, new pyStr("__traceback__"), traceback, true), () => pyFalse);
                         }
                         throw e;
                     });
