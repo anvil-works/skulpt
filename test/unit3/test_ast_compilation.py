@@ -6,6 +6,7 @@ import unittest
 from test_type_parameters import SubTest
 
 class ASTValidation(unittest.TestCase):
+    # Skulpt regression: edited ASTs must keep locations without source comments.
     def test_edited_assertion_preserves_traceback_location(self):
         tree = ast.parse('def example():\n    value = 1\n    assert value == 2\n')
         tree.body[0].body[1].msg = ast.Constant(value='rewritten assertion')
