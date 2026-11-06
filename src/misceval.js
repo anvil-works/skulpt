@@ -641,7 +641,7 @@ Sk.misceval.print_ = function (x) {
 
     if (Sk.misceval.softspace_) {
         if (x !== "\n") {
-            Sk.output(" ");
+            (Sk["stdout"] || Sk.output)(" ");
         }
         Sk.misceval.softspace_ = false;
     }

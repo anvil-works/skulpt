@@ -239,6 +239,7 @@ Sk.builtin.file.prototype["truncate"] = new Sk.builtin.func(function truncate(se
 
 Sk.builtin.file.prototype["write"] = new Sk.builtin.func(function write(self, str) {
     var mode = Sk.ffi.remapToJs(self.mode);
+    var output = (self.fileno === 1 ? Sk["stdout"] : Sk["stderr"]) || Sk.output;
     if (mode === "w" || mode === "wb" || mode === "a" || mode === "ab") {
         if (Sk.filewrite) {
             if (self.closed) {
@@ -246,13 +247,13 @@ Sk.builtin.file.prototype["write"] = new Sk.builtin.func(function write(self, st
             }
 
             if (self.fileno === 1 || self.fileno === 2) {
-                Sk.output(Sk.ffi.remapToJs(str));
+                output(Sk.ffi.remapToJs(str));
             } else {
                 Sk.filewrite(self, str);
             }
         } else {
             if (self.fileno === 1 || self.fileno === 2) {
-                Sk.output(Sk.ffi.remapToJs(str));
+                output(Sk.ffi.remapToJs(str));
             } else {
                 Sk.asserts.fail();
             }
