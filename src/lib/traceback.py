@@ -461,8 +461,6 @@ class TracebackException:
 
     def __init__(self, exc_type, exc_value, exc_traceback, *, limit=None,
             lookup_lines=True, capture_locals=False, _seen=None):
-        if isinstance(exc_value, BaseExceptionGroup):
-            raise NotImplementedError('exception-group formatting is not supported')
         # NB: we need to accept exc_traceback, exc_value, exc_traceback to
         # permit backwards compat with the existing API, otherwise we
         # need stub thunk objects just to glue it together.
@@ -553,6 +551,8 @@ class TracebackException:
         The message indicating which exception occurred is always the last
         string in the output.
         """
+        if self.exc_type is not None and issubclass(self.exc_type, BaseExceptionGroup):
+            raise NotImplementedError('exception-group formatting is not supported')
         if self.exc_type is None:
             yield _format_final_exc_line(None, self._str)
             return
