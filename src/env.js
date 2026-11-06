@@ -9,6 +9,7 @@
  * Set various customizable parts of Skulpt.
  *
  * output: Replacable output redirection (called from print, etc.).
+ * stdout, stderr: Optional per-stream output callbacks; null uses output.
  * read: Replacable function to load modules with (called via import, etc.)
  * sysargv: Setable to emulate arguments to the script. Should be an array of JS
  * strings.
@@ -77,6 +78,13 @@ Sk.configure = function (options) {
     "use strict";
     Sk.output = options["output"] || Sk.output;
     Sk.asserts.assert(typeof Sk.output === "function");
+
+    for (const stream of ["stdout", "stderr"]) {
+        if (Object.prototype.hasOwnProperty.call(options, stream)) {
+            Sk[stream] = options[stream];
+            Sk.asserts.assert(Sk[stream] == null || typeof Sk[stream] === "function");
+        }
+    }
 
     Sk.debugout = options["debugout"] || Sk.debugout;
     Sk.asserts.assert(typeof Sk.debugout === "function");
@@ -258,6 +266,10 @@ Sk.yieldLimit = Number.POSITIVE_INFINITY;
  * Replacable output redirection (called from print, etc).
  */
 Sk.output = function (x) {};
+
+// Null means use the current shared output callback, including after reconfigure.
+Sk["stdout"] = null;
+Sk["stderr"] = null;
 
 /*
  * Replaceable function to load modules with (called via import, etc.)
