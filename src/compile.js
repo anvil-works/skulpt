@@ -132,18 +132,19 @@ Compiler.prototype.annotateSource = function (ast) {
     var i;
     var col_offset;
     var lineno;
+    lineno = ast.lineno;
+    col_offset = this.getSourceColumn(ast);
     if (this.source) {
-        lineno = ast.lineno;
-        col_offset = this.getSourceColumn(ast);
         out("\n//\n// line ", lineno, ":\n// ", this.getSourceLine(lineno).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"), "\n// ");
         for (i = 0; i < col_offset; ++i) {
             out(" ");
         }
         out("^\n//\n");
 
-        Sk.asserts.assert(ast.lineno !== undefined && ast.col_offset !== undefined);
-        out("$currLineNo = ", lineno, ";\n$currColNo = ", col_offset, ";\n\n");
     }
+    // Edited ASTs retain locations even when no original source was supplied.
+    Sk.asserts.assert(ast.lineno !== undefined && ast.col_offset !== undefined);
+    out("$currLineNo = ", lineno, ";\n$currColNo = ", col_offset, ";\n\n");
 };
 
 Compiler.prototype.gensym = function (hint) {

@@ -6,6 +6,24 @@ import unittest
 from test_type_parameters import SubTest
 
 class ASTValidation(unittest.TestCase):
+    # Skulpt regression: edited ASTs must keep locations without source comments.
+    def test_edited_assertion_preserves_traceback_location(self):
+        tree = ast.parse('def example():\n    value = 1\n    assert value == 2\n')
+        tree.body[0].body[1].msg = ast.Constant(value='rewritten assertion')
+        namespace = {}
+        exec(compile(ast.fix_missing_locations(tree), 'rewritten-test.py', 'exec'), namespace)
+        try:
+            namespace['example']()
+        except AssertionError as error:
+            tb = error.__traceback__
+            while tb.tb_next is not None:
+                tb = tb.tb_next
+            self.assertEqual(tb.tb_frame.f_code.co_filename, 'rewritten-test.py')
+            self.assertEqual(tb.tb_lineno, 3)
+            self.assertEqual(str(error), 'rewritten assertion')
+        else:
+            self.fail('rewritten assertion did not fail')
+
     def subTest(self, *args, **kwargs): return SubTest()
     def mod(self, mod, msg=None, mode="exec", *, exc=ValueError):
         mod.lineno = mod.col_offset = 0
