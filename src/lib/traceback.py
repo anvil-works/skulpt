@@ -461,6 +461,8 @@ class TracebackException:
 
     def __init__(self, exc_type, exc_value, exc_traceback, *, limit=None,
             lookup_lines=True, capture_locals=False, _seen=None):
+        if isinstance(exc_value, BaseExceptionGroup):
+            raise NotImplementedError('exception-group formatting is not supported')
         # NB: we need to accept exc_traceback, exc_value, exc_traceback to
         # permit backwards compat with the existing API, otherwise we
         # need stub thunk objects just to glue it together.
@@ -494,7 +496,8 @@ class TracebackException:
                 _seen=_seen)
         else:
             context = None
-        self.exc_traceback = exc_traceback
+        # Retained reports must not keep native frames and fixture locals alive.
+        self._has_traceback = exc_traceback is not None
         self.__cause__ = cause
         self.__context__ = context
         self.__suppress_context__ = \
@@ -602,7 +605,7 @@ class TracebackException:
                 not self.__suppress_context__):
                 yield from self.__context__.format(chain=chain)
                 yield _context_message
-        if self.exc_traceback is not None:
+        if self._has_traceback:
             yield 'Traceback (most recent call last):\n'
         yield from self.stack.format()
         yield from self.format_exception_only()
