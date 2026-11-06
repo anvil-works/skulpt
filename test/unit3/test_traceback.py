@@ -1,5 +1,4 @@
 # Skulpt integration cases for the CPython 3.7 traceback formatter.
-import linecache
 import sys
 import traceback
 import unittest
@@ -107,6 +106,12 @@ class TracebackFormattingTests(unittest.TestCase):
             with self.assertRaises(NotImplementedError):
                 traceback.clear_frames(error.__traceback__)
         self.assertEqual(traceback.clear_frames(None), None)
+
+    def test_exception_groups_are_explicitly_unsupported(self):
+        if sys.implementation.name == 'skulpt':
+            error = ExceptionGroup('fixture failures', [ValueError('leaf failure')])
+            with self.assertRaises(NotImplementedError):
+                traceback.TracebackException.from_exception(error)
 
 
 if __name__ == '__main__':
