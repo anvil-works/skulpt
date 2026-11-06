@@ -111,7 +111,20 @@ class TracebackFormattingTests(unittest.TestCase):
         if sys.implementation.name == 'skulpt':
             error = ExceptionGroup('fixture failures', [ValueError('leaf failure')])
             with self.assertRaises(NotImplementedError):
-                traceback.TracebackException.from_exception(error)
+                list(traceback.TracebackException.from_exception(error).format())
+
+    def test_hidden_exception_group_context(self):
+        try:
+            try:
+                raise ExceptionGroup('hidden group', [ValueError('leaf failure')])
+            except ExceptionGroup:
+                raise RuntimeError('visible failure') from None
+        except RuntimeError as error:
+            formatted = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
+            unchained = ''.join(traceback.format_exception(type(error), error, error.__traceback__, chain=False))
+        self.assertEqual(formatted, unchained)
+        self.assertNotIn('ExceptionGroup: hidden group', formatted)
+        self.assertTrue(formatted.endswith('RuntimeError: visible failure\n'))
 
 
 if __name__ == '__main__':
