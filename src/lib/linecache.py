@@ -9,6 +9,8 @@ from _linecache import read_source
 from functools import partial
 
 __all__ = ['getline', 'clearcache', 'checkcache', 'lazycache']
+# Each entry is either a one-tuple containing a loader callback, or
+# (size, mtime, lines, filename) for cached source.
 cache = {}
 
 
