@@ -514,6 +514,12 @@ class MathTests(unittest.TestCase):
         self.assertRaises(ValueError, math.factorial, math.pi)
 
 
+    def testFactorialNonIntegers(self):
+        # From CPython test_math; Skulpt still accepts integral floats separately.
+        from decimal import Decimal
+        self.assertRaises(TypeError, math.factorial, Decimal('5'))
+        self.assertRaises(TypeError, math.factorial, Decimal('5.2'))
+
     def testFloor(self):
         self.assertRaises(TypeError, math.floor)
         self.assertEqual(math.floor(-0.1), -1)
@@ -1998,6 +2004,32 @@ class IsCloseTests(unittest.TestCase):
         self.assertIn("ceil", repr(math.ceil))
         self.assertIn("isclose", repr(math.isclose))
         self.assertIn("fabs", repr(math.fabs))
+
+
+class TestSkulptRegressions(unittest.TestCase):
+    def test_fabs_uses_float_protocol(self):
+        from decimal import Decimal
+        from fractions import Fraction
+
+        class Floatable:
+            def __float__(self):
+                return -2.0
+
+        for value in (Decimal('-2'), Fraction(-2), Floatable()):
+            self.assertEqual(math.fabs(value), 2.0)
+
+    def test_remainder_returns_float_for_nan_conversions(self):
+        from decimal import Decimal
+
+        class FloatableNaN:
+            def __float__(self):
+                return NAN
+
+        for x, y in ((FloatableNaN(), 1), (1, FloatableNaN()),
+                     (Decimal('NaN'), 1), (1, Decimal('NaN'))):
+            result = math.remainder(x, y)
+            self.assertIsInstance(result, float)
+            self.assertTrue(math.isnan(result))
 
 
 if __name__ == '__main__':

@@ -73,9 +73,8 @@ function CompilerUnit () {
     this.breakBlocks = [];
     // stack of where to go on a continue
     this.continueBlocks = [];
-    this.exceptBlocks = [];
-    // state of where to go on a return
-    this.finallyBlocks = [];
+    // stack of exception handlers to resolve when returning/breaking/continuing
+    this.exceptionHandlerBlocks = [];
 }
 
 CompilerUnit.prototype.activateScope = function () {
@@ -576,7 +575,7 @@ Compiler.prototype.ccompgen = function (type, tmpname, generators, genIndex, val
     return tmpname;
 };
 
-Compiler.prototype.cyield = function(e) {
+Compiler.prototype.cyield = function (e) {
     if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
         throw new Sk.builtin.SyntaxError("'yield' outside function", this.filename, e.lineno);
     }
@@ -586,61 +585,43 @@ Compiler.prototype.cyield = function(e) {
         val = this.vexpr(e.value);
     }
     nextBlock = this.newBlock("after yield");
-    // return a pair: resume target block and yielded value
-    out("return [/*resume*/", nextBlock, ",/*ret*/", val, "];");
+    for (var i = 0; i < this.u.localtemps.length; i++) {
+        this.u.tempsToSave.push(this.u.localtemps[i]);
+    }
+    out(`$blk=${nextBlock};`);
+    out(`return [$saveSuspension($gen.gi$input, '${this.filename}', $currLineNo, $currColNo), ${val}];`);
+
     this.setBlock(nextBlock);
-    return "$gen.gi$sentvalue"; // will either be none if none sent, or the value from gen.send(value)
+    return this._gr("yield", "$ret");
 };
 
 Compiler.prototype.cyieldfrom = function (e) {
     if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
         throw new Sk.builtin.SyntaxError("'yield' outside function", this.filename, e.lineno);
     }
-    var iterable = this.vexpr(e.value);
-    // get the iterator we are yielding from and store it
-    iterable = this._gr("iter", "Sk.abstr.iter(", iterable, ")");
-    out("$gen." + iterable + "=", iterable, ";");
     var afterIter = this.newBlock("after iter");
     var afterBlock = this.newBlock("after yield from");
+    // get the iterator we are yielding from and store it
+    var iterable = this.vexpr(e.value);
+    out("$gen.gi$startYieldFrom(", iterable, ");");
     this._jump(afterIter);
     this.setBlock(afterIter);
-    var retval = this.gensym("retval");
-    // We may have entered this block resuming from a yield
-    // So get the iterable stored on $gen.
-    out(iterable, "=$gen.", iterable, ";");
-    out("var ", retval, ";");
-    // fast path -> we're sending None (not sending a value) 
-    // or we use gen.tp$iternext(true, val) (see generator.js) which is the equivalent of gen.send(val)
-    out("if ($gen.gi$sentvalue === Sk.builtin.none.none$ || " + iterable + ".constructor === Sk.builtin.generator) {");
-    out(    "$ret=", iterable, ".tp$iternext(true, $gen.gi$sentvalue);");
-    out("} else {");
-    var send = this.makeConstant("new Sk.builtin.str('send');");
-    // slow path -> get the send method of the non-generator iterator and call it
-    // throw anything other than a StopIteration
-    out(    "$ret=Sk.misceval.tryCatch(");
-    out(        "function(){");
-    out(            "return Sk.misceval.callsimOrSuspendArray(Sk.abstr.gattr(", iterable, ",", send, "), [$gen.gi$sentvalue]);},");
-    out(        "function (e) { ");
-    out(            "if (e instanceof Sk.builtin.StopIteration) { ");
-    out(                    iterable ,".gi$ret = e.$value;");
-                            // store the return value on the iterator
-                            // otherwise we lose it beause iterator code in skulpt relies on returning undefined;
-                            // one day maybe we can use the js .next protocol {value: ret, done: true} ;-)
-    out(                    "return undefined;"); 
-    out(            "} else { throw e; }");
-    out(        "}");
-    out(    ");");
-    out("}");
+    out("$ret = $gen.gi$stepYieldFrom();");
     this._checkSuspension(e);
-    out(retval, "=$ret;");
-    // if the iterator is done (undefined) and we still have an unused sent value, it will be in `[iterable].gi$ret`, so we grab it from there and move on from the `yield from` ("afterBlock")
-    out("if(", retval, "===undefined) {");
-    out(    "$gen.gi$sentvalue=$gen." + iterable + ".gi$ret;");
+    // Python yield-from saves temporaries even when host suspension is disabled.
+    if (!this.u.canSuspend) {
+        for (var i = 0; i < this.u.localtemps.length; i++) {
+            this.u.tempsToSave.push(this.u.localtemps[i]);
+        }
+    }
+    out("if($ret===undefined) {");
+    out(    "$ret = $gen.gi$finishYieldFrom();");
     out(    "$blk=", afterBlock, ";continue;");
     out("}");
-    out("return [/*resume*/", afterIter, ",/*ret*/", retval, "];");
+    out(`$blk = ${afterIter};`);
+    out(`return [$saveSuspension($gen.gi$input, '${this.filename}', $currLineNo, $currColNo), $ret];`);
     this.setBlock(afterBlock);
-    return "$gen.gi$sentvalue"; // will either be none if none sent, or the value retuned from gen.send(value)
+    return this._gr("yieldfrom", "$ret");
 };
 
 
@@ -697,7 +678,8 @@ Compiler.prototype.ccall = function (e) {
         // TODO: feel free to ignore the above
         this.u.tempsToSave.push("$sup");
         out("if (typeof $sup === \"undefined\") { throw new Sk.builtin.RuntimeError(\"super(): no arguments\") };");
-        positionalArgs = "[$gbl.__class__,$sup]";
+        out("if (typeof $free === 'undefined' || $free.__class__ === undefined) { throw new Sk.builtin.RuntimeError('super(): __class__ cell not found') };");
+        positionalArgs = "[$free.__class__,$sup]";
     }
     out ("$ret = (",func,".tp$call)?",func,".tp$call(",positionalArgs,",",keywordArgs,") : Sk.misceval.applyOrSuspend(",func,",undefined,undefined,",keywordArgs,",",positionalArgs,");");
 
@@ -1176,6 +1158,7 @@ Compiler.prototype.newBlock = function (name) {
     this.u.blocks[ret]._next = null;
     return ret;
 };
+
 Compiler.prototype.setBlock = function (n) {
     Sk.asserts.assert(n >= 0 && n < this.u.blocknum);
     this.u.curblock = n;
@@ -1197,33 +1180,75 @@ Compiler.prototype.popContinueBlock = function () {
     this.u.continueBlocks.pop();
 };
 
-Compiler.prototype.pushExceptBlock = function (n) {
-    Sk.asserts.assert(n >= 0 && n < this.u.blocknum);
-    this.u.exceptBlocks.push(n);
-};
-Compiler.prototype.popExceptBlock = function () {
-    this.u.exceptBlocks.pop();
+// This compiler-time stack describes lexical nesting. Generated $exc entries are
+// runtime exception targets; return/break/continue can pop them without changing
+// the compiler stack needed to compile the remaining statements in the scope.
+Compiler.prototype.pushExceptionHandlerBlock = function (blk, isFinally) {
+    Sk.asserts.assert(blk >= 0 && blk < this.u.blocknum);
+    Sk.asserts.assert(this.u.breakBlocks.length === this.u.continueBlocks.length);
+    const excBlock = { blk, isFinally, breakDepth: this.u.breakBlocks.length };
+    this.u.exceptionHandlerBlocks.push(excBlock);
 };
 
-Compiler.prototype.pushFinallyBlock = function (n) {
-    Sk.asserts.assert(n >= 0 && n < this.u.blocknum);
-    Sk.asserts.assert(this.u.breakBlocks.length === this.u.continueBlocks.length);
-    this.u.finallyBlocks.push({blk: n, breakDepth: this.u.breakBlocks.length});
+Compiler.prototype.popExceptionHandlerBlock = function () {
+    this.u.exceptionHandlerBlocks.pop();
 };
-Compiler.prototype.popFinallyBlock = function () {
-    this.u.finallyBlocks.pop();
+
+Compiler.prototype.closeOutExceptionHandlersAndMaybeJumpToFinally = function (continuingOrBreaking, valueOfPostFinally) {
+    // Emit runtime unwinding without changing the compiler's lexical stack.
+    // Return leaves every handler; break/continue leave only handlers inside
+    // their loop. Pop each handler before running cleanup so cleanup exceptions
+    // reach an enclosing handler instead of re-entering the same cleanup.
+
+    const myBreakDepth = continuingOrBreaking ? this.u.breakBlocks.length : 0;
+    const excBlocks = this.u.exceptionHandlerBlocks;
+
+    for (
+        let excBlkIdx = excBlocks.length - 1;
+        excBlkIdx >= 0 && excBlocks[excBlkIdx].breakDepth >= myBreakDepth;
+        excBlkIdx--
+    ) {
+        const excBlock = excBlocks[excBlkIdx];
+        out("$exc.pop();");
+        if (excBlock.isFinally) {
+            if (valueOfPostFinally !== undefined) {
+                out("$postfinally=", valueOfPostFinally, ";");
+            }
+            // jump to the body of the finally block
+            out("$blk=", excBlock.blk, ";continue;");
+            // outputFinallyCascade resumes unwinding after this cleanup body.
+            // Its handler has left the compiler stack by then.
+            return false;
+        }
+    }
+    // True means execution falls through: the caller must emit the final
+    // jump/return. False means we emitted a jump to cleanup instead.
+    // Direct break/continue callers still use _jump to record the block successor;
+    // a cleanup jump makes that generated jump unreachable at runtime.
+    return true;
 };
-Compiler.prototype.peekFinallyBlock = function() {
-    return (this.u.finallyBlocks.length > 0) ? this.u.finallyBlocks[this.u.finallyBlocks.length-1] : undefined;
-};
+
 
 Compiler.prototype.setupExcept = function (eb) {
     out("$exc.push(", eb, ");");
-    //this.pushExceptBlock(eb);
+    this.pushExceptionHandlerBlock(eb, false);
 };
 
 Compiler.prototype.endExcept = function () {
     out("$exc.pop();");
+    this.popExceptionHandlerBlock();
+};
+
+Compiler.prototype.setupFinally = function (finallyBody, excHandler) {
+    // try/finally uses a separate exception entry to save the error for re-raising.
+    // Return/break/continue enter finallyBody directly with $postfinally set.
+    out("$exc.push(", excHandler, ");");
+    this.pushExceptionHandlerBlock(finallyBody, true);
+};
+
+Compiler.prototype.endFinally = function () {
+    out("$exc.pop();");
+    this.popExceptionHandlerBlock();
 };
 
 Compiler.prototype.outputLocals = function (unit) {
@@ -1270,7 +1295,7 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
                     "var susp = "+unit.scopename+".$wakingSuspension; "+unit.scopename+".$wakingSuspension = undefined;" +
                     "$blk=susp.$blk; $loc=susp.$loc; $gbl=susp.$gbl; $exc=susp.$exc; $err=susp.$err; $postfinally=susp.$postfinally;" +
                     "$currLineNo=susp.$lineno; $currColNo=susp.$colno; Sk.lastYield=Date.now();" +
-                    (hasCell?"$cell=susp.$cell;":"");
+                    (hasCell ? "$cell=susp.$cell;" : "");
 
     for (i = 0; i < localsToSave.length; i++) {
         t = localsToSave[i];
@@ -1279,10 +1304,14 @@ Compiler.prototype.outputSuspensionHelpers = function (unit) {
 
     output +=  "try { $ret=susp.child.resume(); } catch(err) { if (!(err instanceof Sk.builtin.BaseException)) { err = new Sk.builtin.ExternalError(err); } err.traceback.push({lineno: $currLineNo, colno: $currColNo, filename: '"+this.filename+"'}); if($exc.length>0) { $err=err; $blk=$exc.pop(); } else { throw err; } }" +
                 "};";
+    // Initial entry uses the function object; generator frames resume with the generator.
+    output += "var $self = this;";
+    output += unit.ste.generator ? "var $gen = $self;" : "";
 
     output += "var $saveSuspension = function($child, $filename, $lineno, $colno) {" +
                 "var susp = new Sk.misceval.Suspension(); susp.child=$child;" +
-                "susp.resume=function(){"+unit.scopename+".$wakingSuspension=susp; return "+unit.scopename+"("+(unit.ste.generator?"$gen":"")+"); };" +
+                "susp.resume=function(){" + unit.scopename + ".$wakingSuspension=susp; return " +
+                unit.scopename + ".call(" + (unit.ste.generator ? "$gen" : "$self") + "); };" +
                 "susp.data=susp.child.data;susp.$blk=$blk;susp.$loc=$loc;susp.$gbl=$gbl;susp.$exc=$exc;susp.$err=$err;susp.$postfinally=$postfinally;" +
                 "susp.$filename=$filename;susp.$lineno=$lineno;susp.$colno=$colno;" +
                 "susp.optional=susp.child.optional;" +
@@ -1311,7 +1340,7 @@ Compiler.prototype.outputAllUnits = function () {
         unit = this.allUnits[j];
         ret += unit.prefixCode;
         ret += this.outputLocals(unit);
-        if (unit.doesSuspend) {
+        if (unit.doesSuspend || unit.ste.generator) {
             ret += this.outputSuspensionHelpers(unit);
         }
         ret += unit.varDeclsCode;
@@ -1457,15 +1486,8 @@ Compiler.prototype.cfor = function (s) {
 
     // get the iterator
     toiter = this.vexpr(s.iter);
-    if (this.u.ste.generator) {
-        // if we're in a generator, we have to store the iterator to a local
-        // so it's preserved (as we cross blocks here and assume it survives)
-        iter = "$loc." + this.gensym("iter");
-        out(iter, "=Sk.abstr.iter(", toiter, ");");
-    } else {
-        iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
-        this.u.tempsToSave.push(iter); // Save it across suspensions
-    }
+    iter = this._gr("iter", "Sk.abstr.iter(", toiter, ")");
+    this.u.tempsToSave.push(iter); // Save it across suspensions
 
     this._jump(start);
 
@@ -1513,14 +1535,20 @@ Compiler.prototype.cfor = function (s) {
 Compiler.prototype.craise = function (s) {
     if (s.exc) {
         var exc = this._gr("exc", this.vexpr(s.exc));
+        var cause;
         // This is tricky - we're supporting both the weird-ass semantics
         // of the Python 2 "raise (exc), (inst), (tback)" version,
         // plus the sensible Python "raise (exc) from (cause)".
         // ast.js takes care of ensuring that you can only use the right one
         // for the Python version you're using.
 
+        // Evaluate both operands before turning exception classes into instances.
+        if (s.cause) {
+            cause = this._gr("cause", this.vexpr(s.cause));
+        }
+
         var instantiatedException = this.newBlock("exception now instantiated");
-        var isClass = this._gr("isclass", exc + ".prototype instanceof Sk.builtin.BaseException");
+        var isClass = this._gr("isclass", "Sk.builtin.checkExceptionClass(", exc, ")");
         this._jumpfalse(isClass, instantiatedException);
         //this._jumpfalse(instantiatedException, isClass);
 
@@ -1541,60 +1569,58 @@ Compiler.prototype.craise = function (s) {
 
         this.setBlock(instantiatedException);
 
-        // TODO TODO TODO set cause appropriately
-        // (and perhaps traceback for py2 if we care before it gets fully deprecated)
+        out("if (!(", exc, " instanceof Sk.builtin.BaseException)) {throw new Sk.builtin.TypeError('exceptions must derive from BaseException');}");
 
-        out("if (", exc, " instanceof Sk.builtin.BaseException) {throw ",exc,";} else {throw new Sk.builtin.TypeError('exceptions must derive from BaseException');};");
+        if (s.cause) {
+            out("if (Sk.builtin.checkExceptionClass(", cause, ")) {");
+            out(    "$ret = Sk.misceval.callsimOrSuspend(", cause, ");");
+            out("} else {");
+            out(    "$ret = ", cause, ";");
+            out("}");
+            this._checkSuspension(s);
+            // An explicit None cause is valid; a constructor returning None is not.
+            out("if (", cause, " !== Sk.builtin.none.none$ && !($ret instanceof Sk.builtin.BaseException)) {");
+            out(    "throw new Sk.builtin.TypeError('exception causes must derive from BaseException');");
+            out("}");
+            out(exc, ".$cause = $ret;");
+            out(exc, ".$suppressContext = true;");
+        }
+
+        out("throw ", exc, ";");
     } else {
         // re-raise
         out("throw $err;");
     }
 };
 
-Compiler.prototype.outputFinallyCascade = function (thisFinally) {
-    var nextFinally;
+Compiler.prototype.outputFinallyCascade = function () {
 
     // What do we do when we're done executing a 'finally' block?
     // Normally you just fall off the end. If we're 'return'ing,
     // 'continue'ing or 'break'ing, $postfinally tells us what to do.
     //
-    // But we might be in a nested pair of 'finally' blocks. If so, we need
-    // to work out whether to jump to the outer finally block.
+    // But we might still be inside one or more nested try: blocks, so we
+    // need to clear the exception stack and/or jump to an outer finally block.
+    // We use the same logic as continue/break/return here, although we have
+    // to generate both cases because we don't know until runtime whether this
+    // is a break/continue or a return.
     //
     // (NB we do NOT deal with re-raising exceptions here. That's handled
     // elsewhere, because 'with' does special things with exceptions.)
 
-    if (this.u.finallyBlocks.length == 0) {
-        // No nested 'finally' block. Easy.
-        out("if($postfinally!==undefined) { if ($postfinally.returning) { return $postfinally.returning; } else { $blk=$postfinally.gotoBlock; $postfinally=undefined; continue; } }");
-    } else {
+    out("if($postfinally!==undefined) {",
+          "if($postfinally.returning) {");
 
-        // OK, we're nested. Do we jump straight to the outer 'finally' block?
-        // Depends on how we got here here.
-
-        // Normal execution ($postfinally===undefined)? No, we're done here.
-
-        // Returning ($postfinally.returning)? Yes, we want to execute all the
-        // 'finally' blocks on the way out.
-
-        // Breaking ($postfinally.isBreak)? It depends. Is the outer 'finally'
-        // block inside or outside the loop we're breaking out of? We compare
-        // its breakDepth to ours to find out. If we're at the same breakDepth,
-        // we're both inside the innermost loop, so we both need to execute.
-        // ('continue' is the same thing as 'break' for us)
-
-        nextFinally = this.peekFinallyBlock();
-
-        out("if($postfinally!==undefined) {",
-            "if ($postfinally.returning",
-            (nextFinally.breakDepth == thisFinally.breakDepth) ? "|| $postfinally.isBreak" : "", ") {",
-
-            "$blk=",nextFinally.blk,";continue;",
-            "} else {",
-            "$blk=$postfinally.gotoBlock;$postfinally=undefined;continue;",
-            "}",
-            "}");
+    if (this.closeOutExceptionHandlersAndMaybeJumpToFinally(false)) {
+        out("return $postfinally.returning;");
     }
+
+    out(  "} else {");
+    if (this.closeOutExceptionHandlersAndMaybeJumpToFinally(true)) {
+        out("$blk=$postfinally.gotoBlock;$postfinally=undefined;continue;");
+    }
+    out(  "}",
+        "}");
 };
 
 Compiler.prototype.ctry = function (s) {
@@ -1609,7 +1635,6 @@ Compiler.prototype.ctry = function (s) {
     var n = s.handlers.length;
 
     var finalBody, finalExceptionHandler, finalExceptionToReRaise;
-    var thisFinally;
 
     if (s.finalbody) {
         finalBody = this.newBlock("finalbody");
@@ -1617,9 +1642,7 @@ Compiler.prototype.ctry = function (s) {
         finalExceptionToReRaise = this._gr("finally_reraise", "undefined");
 
         this.u.tempsToSave.push(finalExceptionToReRaise);
-        this.pushFinallyBlock(finalBody);
-        thisFinally = this.peekFinallyBlock();
-        this.setupExcept(finalExceptionHandler);
+        this.setupFinally(finalBody, finalExceptionHandler);
     }
 
     // Create a block for each except clause
@@ -1680,7 +1703,7 @@ Compiler.prototype.ctry = function (s) {
     this.setBlock(end);
     // End of the try/catch/else segment
     if (s.finalbody) {
-        this.endExcept();
+        this.endFinally();
 
         this._jump(finalBody);
 
@@ -1691,13 +1714,18 @@ Compiler.prototype.ctry = function (s) {
         this._jump(finalBody);
 
         this.setBlock(finalBody);
-        this.popFinallyBlock();
+        // Nested cleanup must not consume this cleanup's pending transfer.
+        // Abrupt completion skips restoration and therefore replaces it.
+        const pendingAction = this._gr("pending_before_cleanup", "$postfinally");
+        this.u.tempsToSave.push(pendingAction);
+        out("$postfinally=undefined;");
         this.vseqstmt(s.finalbody);
         // If finalbody executes normally, AND we have an exception
         // to re-raise, we raise it.
         out("if(",finalExceptionToReRaise,"!==undefined) { throw ",finalExceptionToReRaise,";}");
 
-        this.outputFinallyCascade(thisFinally);
+        out("$postfinally=", pendingAction, ";");
+        this.outputFinallyCascade();
         // Else, we continue from here.
     }
 };
@@ -1706,31 +1734,31 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     var mgr, exit, value, exception;
     var exceptionHandler = this.newBlock("withexh"), tidyUp = this.newBlock("withtidyup");
     var carryOn = this.newBlock("withcarryon");
-    var thisFinallyBlock;
-
-    // NB this does not *quite* match the semantics in PEP 343, which
-    // specifies "exit = type(mgr).__exit__" rather than getattr()ing,
-    // presumably for performance reasons.
+    var protocolError = Sk.__future__.python3 ? "TypeError" : "AttributeError";
 
     mgr = this._gr("mgr", this.vexpr(s.items[itemIdx].context_expr));
 
     // exit = mgr.__exit__
-    out("$ret = Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$exit);");
-    this._checkSuspension(s);
-    exit = this._gr("exit", "$ret");
+    exit = this._gr("exit", "Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$exit);");
+    // Check __exit__ first, as in current CPython, before looking up __enter__.
+    out("if (", exit, " === undefined) {throw new Sk.builtin.", protocolError, "(\"'\" + Sk.abstr.typeName(",
+        mgr, ") + \"' object does not support the context manager protocol (missed __exit__ method)\");}");
     this.u.tempsToSave.push(exit);
 
     // value = mgr.__enter__()
     out("$ret = Sk.abstr.lookupSpecial(",mgr,",Sk.builtin.str.$enter);");
-    this._checkSuspension(s);
+
+    out("if ($ret === undefined) {throw new Sk.builtin.", protocolError, "(\"'\" + Sk.abstr.typeName(",
+        mgr, ") + \"' object does not support the context manager protocol (missed __enter__ method)\");}");
+
+    // Special-method lookup is synchronous; calling __enter__ may suspend.
     out("$ret = Sk.misceval.callsimOrSuspendArray($ret);");
     this._checkSuspension(s);
     value = this._gr("value", "$ret");
 
     // try:
-    this.pushFinallyBlock(tidyUp);
-    thisFinallyBlock = this.u.finallyBlocks[this.u.finallyBlocks.length-1];
-    this.setupExcept(exceptionHandler);
+    // One handler has separate entries for exceptional and nonexceptional exit.
+    this.setupFinally(tidyUp, exceptionHandler);
 
     //    VAR = value
     if (s.items[itemIdx].optional_vars) {
@@ -1747,11 +1775,13 @@ Compiler.prototype.cwith = function (s, itemIdx) {
         this.vseqstmt(s.body);
     }
 
-    this.endExcept();
+    // Cleanup runs after this manager's handler has been removed.
+    this.endFinally();
     this._jump(tidyUp);
 
     // except:
     this.setBlock(exceptionHandler);
+    // Exception dispatch already removed this manager's runtime handler.
 
     //   if not exit(*sys.exc_info()):
     //     raise
@@ -1763,14 +1793,18 @@ Compiler.prototype.cwith = function (s, itemIdx) {
     // finally: (kinda. NB that this is a "finally" that doesn't run in the
     //           exception case!)
     this.setBlock(tidyUp);
-    this.popFinallyBlock();
 
+    // An exit failure cancels the pending transfer; a successful exit restores it.
+    const pendingAction = this._gr("pending_before_cleanup", "$postfinally");
+    this.u.tempsToSave.push(pendingAction);
+    out("$postfinally=undefined;");
     //   exit(None, None, None)
     out("$ret = Sk.misceval.callsimOrSuspendArray(",exit,",[Sk.builtin.none.none$,Sk.builtin.none.none$,Sk.builtin.none.none$]);");
     this._checkSuspension(s);
     // Ignore $ret.
 
-    this.outputFinallyCascade(thisFinallyBlock);
+    out("$postfinally=", pendingAction, ";");
+    this.outputFinallyCascade();
 
     this._jump(carryOn);
 
@@ -1903,24 +1937,15 @@ Compiler.prototype.cfromimport = function (s) {
  * @param {Array} decorator_list ast of decorators if any
  * @param {Sk.astnodes.arguments_} args arguments to function, if any
  * @param {Function} callback called after setup to do actual work of function
- * @param {Sk.builtin.str=} class_for_super
  *
  * @returns the name of the newly created function or generator object.
  *
  */
-Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, callback, class_for_super) {
+Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, callback) {
     var containingHasFree;
     var frees;
     var argnamesarr = [];
-    var start;
-    var kw;
-    var maxargs;
-    var minargs;
     var id;
-    var argname;
-    var offset;
-    var cells;
-    var locals;
     var i;
     var funcArgs;
     var entryBlock;
@@ -1948,7 +1973,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     const func_annotations = this.cannotations(args, n.returns);
 
     if (args && args.kw_defaults) {
-        kw_defaults = args.kw_defaults.map(e => e ? this.vexpr(e) : "undefined");
+        kw_defaults = args.kw_defaults.map((e) => (e ? this.vexpr(e) : "undefined"));
     }
     if (args && args.vararg) {
         vararg = args.vararg;
@@ -1968,6 +1993,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     isGenerator = this.u.ste.generator;
     hasFree = this.u.ste.hasFree;
     hasCell = this.u.ste.childHasFree;
+    const cellNames = this.u.ste.cellvars;
 
     entryBlock = this.newBlock("codeobj entry");
 
@@ -1977,50 +2003,26 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     this.u.prefixCode = "var " + scopename + "=(function " + this.niceName(coname.v) + "$(";
 
     funcArgs = [];
-    if (isGenerator) {
-        // TODO make generators deal with arguments properly
-        if (kwarg) {
-            throw new Sk.builtin.SyntaxError(coname.v + "(): keyword arguments in generators not supported",
-                                             this.filename, n.lineno);
-        }
-        if (vararg) {
-            throw new Sk.builtin.SyntaxError(coname.v + "(): variable number of arguments in generators not supported",
-                                             this.filename, n.lineno);
-        }
-        funcArgs.push("$gen");
-    } else {
-        if (kwarg) {
-            funcArgs.push("$kwa");
-            this.u.tempsToSave.push("$kwa");
-        }
-        for (i = 0; args && i < args.args.length; ++i) {
-            funcArgs.push(this.nameop(args.args[i].arg, Sk.astnodes.Param));
-        }
-        for (i = 0; args && args.kwonlyargs && i < args.kwonlyargs.length; ++i) {
-            funcArgs.push(this.nameop(args.kwonlyargs[i].arg, Sk.astnodes.Param));
-        }
-        if (vararg) {
-            funcArgs.push(this.nameop(args.vararg.arg, Sk.astnodes.Param));
-        }
+    if (kwarg) {
+        funcArgs.push("$kwa");
+        this.u.tempsToSave.push("$kwa");
     }
-    // Are we using the new fast-call mechanism, where the
-    // function we define implements the tp$call interface?
-    // (Right now we haven't migrated generators because they're
-    // a mess, but if this works we can move everything over)
-    let fastCall = !isGenerator;
+    for (i = 0; args && i < args.args.length; ++i) {
+        funcArgs.push(this.nameop(args.args[i].arg, Sk.astnodes.Param));
+    }
+    for (i = 0; args && args.kwonlyargs && i < args.kwonlyargs.length; ++i) {
+        funcArgs.push(this.nameop(args.kwonlyargs[i].arg, Sk.astnodes.Param));
+    }
+    if (vararg) {
+        funcArgs.push(this.nameop(args.vararg.arg, Sk.astnodes.Param));
+    }
+    // Generators share normal function argument binding.
 
     if (hasFree) {
-        if (!fastCall) {
-            funcArgs.push("$free");
-        }
         this.u.tempsToSave.push("$free");
     }
 
-    if (fastCall) {
-        this.u.prefixCode += "$posargs,$kwargs";
-    } else {
-        this.u.prefixCode += funcArgs.join(",");
-    }
+    this.u.prefixCode += "$posargs,$kwargs";
 
     this.u.prefixCode += "){";
 
@@ -2034,29 +2036,20 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
         this.u.prefixCode += "\n// has cell\n";
     }
 
-    if (fastCall) {
-        this.u.prefixCode += "\n// fast call\n";
-    }
+    this.u.prefixCode += "\n// fast call\n";
 
     //
     // set up standard dicts/variables
     //
-    locals = "{}";
-    if (isGenerator) {
-        entryBlock = "$gen.gi$resumeat";
-        locals = "$gen.gi$locals";
-    }
-    cells = ",$cell={}";
-    if (hasCell) {
-        if (isGenerator) {
-            cells = ",$cell=$gen.gi$cells";
-        }
-    }
-
     // note special usage of 'this' to avoid having to slice globals into
     // all function invocations in call
     // (fastcall doesn't need to do this, as 'this' is the func object)
-    this.u.varDeclsCode += "var $blk=" + entryBlock + ",$exc=[],$loc=" + locals + cells + ",$gbl=" +(fastCall?"this && this.func_globals":"this") + ((fastCall&&hasFree)?",$free=this && this.func_closure":"") + ",$err=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
+    // Reserve every local cell so empty cells keep shadowing outer bindings.
+    this.u.varDeclsCode += "var $blk=" + entryBlock + ",$exc=[],$loc={},$cell={" +
+        cellNames.map((name) => name + ":undefined").join(",") +
+        "},$gbl=this && this.func_globals" +
+        (hasFree ? ",$free=this && this.func_closure" : "") +
+        ",$err=undefined,$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
     if (Sk.execLimit !== null) {
         this.u.varDeclsCode += "if (typeof Sk.execStart === 'undefined') {Sk.execStart = Date.now()}";
     }
@@ -2070,43 +2063,23 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     //
     this.u.varDeclsCode += "var $waking=false; if ("+scopename+".$wakingSuspension!==undefined) { $wakeFromSuspension(); $waking=true; } else {";
 
-    if (fastCall) {
-        // Resolve our arguments from $posargs+$kwargs.
-        // If we're posargs-only, we can handle the fast path
-        // without even calling out
-        if (!kwarg && !vararg && (!args || !args.kwonlyargs || args.kwonlyargs.length === 0)) {
-            this.u.varDeclsCode += "var $args = ((!$kwargs || $kwargs.length===0) && $posargs.length===" + funcArgs.length + ") ? $posargs : this.$resolveArgs($posargs,$kwargs)";
-        } else {
-            this.u.varDeclsCode += "\nvar $args = this.$resolveArgs($posargs,$kwargs)\n";
-        }
-        for (let i = 0; i < funcArgs.length; i++) {
-            this.u.varDeclsCode += "," + funcArgs[i] + "=$args[" + i + "]";
-        }
-        const instanceForSuper = funcArgs[kwarg ? 1 : 0];
-        if (instanceForSuper) {
-            this.u.varDeclsCode += `,$sup=${instanceForSuper}`;
-        }
-        this.u.varDeclsCode += ";\n";
+    // Resolve our arguments from $posargs+$kwargs.
+    // If we're posargs-only, we can handle the fast path
+    // without even calling out
+    if (!kwarg && !vararg && (!args || !args.kwonlyargs || args.kwonlyargs.length === 0)) {
+        this.u.varDeclsCode += "var $args = ((!$kwargs || $kwargs.length===0) && $posargs.length===" +
+            funcArgs.length + ") ? $posargs : this.$resolveArgs($posargs,$kwargs)";
+    } else {
+        this.u.varDeclsCode += "\nvar $args = this.$resolveArgs($posargs,$kwargs)\n";
     }
-
-
-    // TODO update generators to do their arg checks in outside generated code,
-    // like functions do
-    //
-    // this could potentially get removed if generators would learn to deal with args, kw, kwargs, varargs
-    // initialize default arguments. we store the values of the defaults to
-    // this code object as .$defaults just below after we exit this scope.
-    //
-    if (isGenerator && defaults.length > 0) {
-        // defaults have to be "right justified" so if there's less defaults
-        // than args we offset to make them match up (we don't need another
-        // correlation in the ast)
-        offset = args.args.length - defaults.length;
-        for (i = 0; i < defaults.length; ++i) {
-            argname = this.nameop(args.args[i + offset].arg, Sk.astnodes.Param);
-            this.u.varDeclsCode += "if(" + argname + "===undefined)" + argname + "=" + scopename + ".$defaults[" + i + "];";
-        }
+    for (let i = 0; i < funcArgs.length; i++) {
+        this.u.varDeclsCode += "," + funcArgs[i] + "=$args[" + i + "]";
     }
+    const instanceForSuper = funcArgs[kwarg ? 1 : 0];
+    if (instanceForSuper) {
+        this.u.varDeclsCode += `,$sup=${instanceForSuper}`;
+    }
+    this.u.varDeclsCode += ";\n";
 
     //
     // copy all parameters that are also cells into the cells dict. this is so
@@ -2143,15 +2116,19 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
         }
     }
 
+    // we've resolved the arguments now so we return a generator
+    // call new generator and then save the suspension
+    if (isGenerator) {
+        this.u.varDeclsCode += `$gen = new Sk.builtin.generator(this.$name, this.$qualname);
+        $gen.gi$frame = $saveSuspension($gen.gi$input, '${this.filename}', $currLineNo, $currColNo);
+        return $gen;`;
+    }
+
     //
     // close the else{} block from the wakingSuspension check
     //
     this.u.varDeclsCode += "}";
 
-    // inject __class__ cell when running python3
-    if (Sk.__future__.super_args && class_for_super) {
-        this.u.varDeclsCode += "$gbl.__class__=$gbl." + class_for_super.v + ";";
-    }
 
     // finally, set up the block switch that the jump code expects
     //
@@ -2232,63 +2209,41 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     if (vararg) {
         out(scopename, ".co_varargs=1;");
     }
-    if (!isGenerator) {
-        out(scopename, ".co_fastcall=1;");
-    }
+    out(scopename, ".co_fastcall=1;");
 
     //
-    // build either a 'function' or 'generator'. the function is just a simple
-    // constructor call. the generator is more complicated. it needs to make a
-    // new generator every time it's called, so the thing that's returned is
-    // actually a function that makes the generator (and passes arguments to
-    // the function onwards to the generator). this should probably actually
-    // be a function object, rather than a js function like it is now. we also
-    // have to build the argument names to pass to the generator because it
-    // needs to store all locals into itself so that they're maintained across
-    // yields.
+    // Create the function object used for argument binding. A generator's
+    // compiled entry saves the initial frame and returns a fresh generator.
     //
-    // todo; possibly this should be outside?
-    //
+    // hasFree belongs to the new function; this.u is back in its defining scope.
     frees = "";
     if (hasFree) {
-        frees = ",$cell";
-        // if the scope we're in where we're defining this one has free
-        // vars, they may also be cell vars, so we pass those to the
-        // closure too.
-        containingHasFree = this.u.ste.hasFree;
+        if (this.u.ste.needsClassClosure) {
+            frees = ",$classClosure";
+        } else if (this.u.ste.cellvars.length > 0) {
+            frees = ",$cell";
+        }
+        containingHasFree = this.u.ste.hasFree || this.u.ste.blockType === Sk.SYMTAB_CONSTS.ClassBlock;
         if (containingHasFree) {
             frees += ",$free";
         }
     }
-    if (isGenerator) {
-    // Keyword and variable arguments are not currently supported in generators.
-    // The call to pyCheckArgs assumes they can't be true.
-        if (args && args.args.length > 0) {
-            return this._gr("gener", "new Sk.builtins['function']((function(){var $origargs=Array.prototype.slice.call(arguments);Sk.builtin.pyCheckArgsLen(\"",
-                            coname.v, "\",arguments.length,", args.args.length - defaults.length, ",", args.args.length,
-                            ");return new Sk.builtins['generator'](", scopename, ",$gbl,$origargs", frees, ");}))");
-        } else {
-            return this._gr("gener", "new Sk.builtins['function']((function(){Sk.builtin.pyCheckArgsLen(\"", coname.v,
-                            "\",arguments.length,0,0);return new Sk.builtins['generator'](", scopename, ",$gbl,[]", frees, ");}))");
-        }
-    } else {
-        let funcobj;
-        if (decos.length > 0) {
-            out("$ret = new Sk.builtins['function'](", scopename, ",$gbl", frees, ");");
-            for (let decorator of decos.reverse()) {
-                out("$ret = Sk.misceval.callsimOrSuspendArray(", decorator, ",[$ret]);");
-                this._checkSuspension();
-            }
-            funcobj = this._gr("funcobj", "$ret");
-        } else {
-            funcobj = this._gr("funcobj", "new Sk.builtins['function'](", scopename, ",$gbl", frees, ")");
-        }
-        if (func_annotations) {
-            out(funcobj, ".func_annotations=", func_annotations, ";");
-        }
 
-        return funcobj;
+    let funcobj;
+    if (decos.length > 0) {
+        out("$ret = new Sk.builtins['function'](", scopename, ",$gbl", frees, ");");
+        for (let decorator of decos.reverse()) {
+            out("$ret = Sk.misceval.callsimOrSuspendArray(", decorator, ",[$ret]);");
+            this._checkSuspension();
+        }
+        funcobj = this._gr("funcobj", "$ret");
+    } else {
+        funcobj = this._gr("funcobj", "new Sk.builtins['function'](", scopename, ",$gbl", frees, ")");
     }
+    if (func_annotations) {
+        out(funcobj, ".func_annotations=", func_annotations, ";");
+    }
+    return funcobj;
 };
 
 
@@ -2379,13 +2334,13 @@ Compiler.prototype.cDocstringOfCode = function(node) {
     }
 }
 
-Compiler.prototype.cfunction = function (s, class_for_super) {
+Compiler.prototype.cfunction = function (s) {
     var funcorgen;
     Sk.asserts.assert(s instanceof Sk.astnodes.FunctionDef);
     funcorgen = this.buildcodeobj(s, s.name, s.decorator_list, s.args, function (scopename) {
         this.vseqstmt(s.body);
         out("return Sk.builtin.none.none$;"); // if we fall off the bottom, we want the ret to be None
-    }, class_for_super);
+    });
     this.nameop(s.name, Sk.astnodes.Store, funcorgen);
 };
 
@@ -2438,12 +2393,13 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
         // the outer most iterator is evaluated in the scope outside so we
         // have to evaluate it outside and store it into the generator as a
         // local, which we retrieve here.
-        iter = "$loc.$iter0";
+        iter = "$iter0";
     } else {
         toiter = this.vexpr(ge.iter);
-        iter = "$loc." + this.gensym("iter");
+        iter = this.gensym("iter");
         out(iter, "=", "Sk.abstr.iter(", toiter, ");");
     }
+    this.u.tempsToSave.push(iter);
     this._jump(start);
     this.setBlock(start);
 
@@ -2474,7 +2430,8 @@ Compiler.prototype.cgenexpgen = function (generators, genIndex, elt) {
         this.annotateSource(elt);
 
         velt = this.vexpr(elt);
-        out("return [", skip, "/*resume*/,", velt, "/*ret*/];");
+        out(`$blk=${skip};`);
+        out(`return [$saveSuspension($gen.gi$input, '${this.filename}', $currLineNo, $currColNo), ${velt}];`);
         this.setBlock(skip);
     }
 
@@ -2499,7 +2456,7 @@ Compiler.prototype.cgenexp = function (e) {
     var gener = this._gr("gener", "Sk.misceval.callsimArray(", gen, ");");
     // stuff the outermost iterator into the generator after evaluating it
     // outside of the function. it's retrieved by the fixed name above.
-    out(gener, ".gi$locals.$iter0=Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ");");
+    out(gener, ".gi$frame.$tmps.$iter0=Sk.abstr.iter(", this.vexpr(e.generators[0].iter), ");");
     return gener;
 };
 
@@ -2521,7 +2478,12 @@ Compiler.prototype.cclass = function (s) {
     entryBlock = this.newBlock("class entry");
 
     this.u.prefixCode = "var " + scopename + "=(function $" + s.name.v + "$class_outer($globals,$locals,$cell){var $gbl=$globals,$loc=$locals,$free=$cell;";
-    this.u.switchCode += "(function $" + s.name.v + "$_closure($cell){";
+    const needsClassClosure = this.u.ste.needsClassClosure;
+    if (needsClassClosure) {
+        // Methods share this storage; the Python cell exposed to metaclasses wraps it.
+        this.u.prefixCode += "var $classClosure={__class__:undefined};";
+    }
+    this.u.switchCode += "return (function $" + s.name.v + "$_closure($cell){";
     this.u.switchCode += "var $blk=" + entryBlock + ",$exc=[],$ret=undefined,$postfinally=undefined,$currLineNo=undefined,$currColNo=undefined;";
 
     if (Sk.execLimit !== null) {
@@ -2539,8 +2501,12 @@ Compiler.prototype.cclass = function (s) {
 
     this.u.private_ = s.name;
 
-    this.cbody(s.body, s.name);
-    out("return;");
+    this.cbody(s.body);
+    if (needsClassClosure) {
+        out("$ret=new Sk.builtin.cell($classClosure);$loc.__classcell__=$ret;return $ret;");
+    } else {
+        out("return;");
+    }
 
     // build class
 
@@ -2565,40 +2531,29 @@ Compiler.prototype.cclass = function (s) {
 };
 
 Compiler.prototype.ccontinue = function (s) {
-    var nextFinally = this.peekFinallyBlock(), gotoBlock;
     if (this.u.continueBlocks.length == 0) {
         throw new Sk.builtin.SyntaxError("'continue' outside loop", this.filename, s.lineno);
     }
-    // todo; continue out of exception blocks
-    gotoBlock = this.u.continueBlocks[this.u.continueBlocks.length - 1];
+    const gotoBlock = this.u.continueBlocks[this.u.continueBlocks.length - 1];
     Sk.asserts.assert(this.u.breakBlocks.length === this.u.continueBlocks.length);
-    if (nextFinally && nextFinally.breakDepth == this.u.continueBlocks.length) {
-        out("$postfinally={isBreak:true,gotoBlock:",gotoBlock,"};");
-    } else {
-        this._jump(gotoBlock);
-    }
+    this.closeOutExceptionHandlersAndMaybeJumpToFinally(true, "{gotoBlock:" + gotoBlock + "}");
+    this._jump(gotoBlock);
 };
 
 Compiler.prototype.cbreak = function (s) {
-    var nextFinally = this.peekFinallyBlock(), gotoBlock;
-
     if (this.u.breakBlocks.length === 0) {
         throw new Sk.builtin.SyntaxError("'break' outside loop", this.filename, s.lineno);
     }
-    gotoBlock = this.u.breakBlocks[this.u.breakBlocks.length - 1];
-    if (nextFinally && nextFinally.breakDepth == this.u.breakBlocks.length) {
-        out("$postfinally={isBreak:true,gotoBlock:",gotoBlock,"};");
-    } else {
-        this._jump(gotoBlock);
-    }
+    const gotoBlock = this.u.breakBlocks[this.u.breakBlocks.length - 1];
+    this.closeOutExceptionHandlersAndMaybeJumpToFinally(true, "{gotoBlock:" + gotoBlock + "}");
+    this._jump(gotoBlock);
 };
 
 /**
  * compiles a statement
  * @param {Object} s
- * @param {Sk.builtin.str=} class_for_super
  */
-Compiler.prototype.vstmt = function (s, class_for_super) {
+Compiler.prototype.vstmt = function (s) {
     var i;
     var val;
     var n;
@@ -2624,7 +2579,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
 
     switch (s.constructor) {
         case Sk.astnodes.FunctionDef:
-            this.cfunction(s, class_for_super);
+            this.cfunction(s);
             break;
         case Sk.astnodes.ClassDef:
             this.cclass(s);
@@ -2634,12 +2589,8 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
                 throw new Sk.builtin.SyntaxError("'return' outside function", this.filename, s.lineno);
             }
             val = s.value ? this.vexpr(s.value) : "Sk.builtin.none.none$";
-            if (this.u.finallyBlocks.length == 0) {
-                out("return ", val, ";");
-            } else {
-                out("$postfinally={returning:",val,"};");
-                this._jump(this.peekFinallyBlock().blk);
-            }
+            this.closeOutExceptionHandlersAndMaybeJumpToFinally(false, "{returning:" + val + "}");
+            out("return ", val, ";");
             break;
         case Sk.astnodes.Delete:
             this.vseqexpr(s.targets);
@@ -2677,6 +2628,7 @@ Compiler.prototype.vstmt = function (s, class_for_super) {
         case Sk.astnodes.ImportFrom:
             return this.cfromimport(s);
         case Sk.astnodes.Global:
+        case Sk.astnodes.Nonlocal:
             break;
         case Sk.astnodes.Expr:
             this.vexpr(s.value);
@@ -2759,8 +2711,8 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
             optype = OP_DEREF;
             break;
         case Sk.SYMTAB_CONSTS.LOCAL:
-            // can't do FAST in generators or at module/class scope
-            if (this.u.ste.blockType === Sk.SYMTAB_CONSTS.FunctionBlock && !this.u.ste.generator) {
+            // Function locals use fast variables, including generators.
+            if (this.u.ste.blockType === Sk.SYMTAB_CONSTS.FunctionBlock) {
                 optype = OP_FAST;
             }
             break;
@@ -2780,10 +2732,9 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
     // TODO TODO TODO todo; import * at global scope failing here
     Sk.asserts.assert(scope || name.v.charAt(1) === "_");
 
-    // in generator or at module scope, we need to store to $loc, rather that
-    // to actual JS stack variables.
+    // Module and class locals live in $loc; function locals use JS variables.
     mangledNoPre = mangled;
-    if (this.u.ste.generator || this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
+    if (this.u.ste.blockType !== Sk.SYMTAB_CONSTS.FunctionBlock) {
         mangled = "$loc." + mangled;
     } else if (optype === OP_FAST || optype === OP_NAME) {
         this.u.localnames.push(mangled);
@@ -2794,14 +2745,16 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
             switch (ctx) {
                 case Sk.astnodes.Load:
                 case Sk.astnodes.Param:
+                case Sk.astnodes.Del:
                     // Need to check that it is bound!
                     out("if (", mangled, " === undefined) { throw new Sk.builtin.UnboundLocalError('local variable \\\'", mangled, "\\\' referenced before assignment'); }\n");
+                    if (ctx === Sk.astnodes.Del) {
+                        out(mangled, "=undefined;");
+                        break;
+                    }
                     return mangled;
                 case Sk.astnodes.Store:
                     out(mangled, "=", dataToStore, ";");
-                    break;
-                case Sk.astnodes.Del:
-                    out("delete ", mangled, ";");
                     break;
                 default:
                     Sk.asserts.fail("unhandled");
@@ -2841,6 +2794,7 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
         case OP_DEREF:
             switch (ctx) {
                 case Sk.astnodes.Load:
+                case Sk.astnodes.Del:
                     // The cell may exist but hold no value yet (e.g. a free variable
                     // read before the enclosing binding has executed). A bound Python
                     // value is never JS undefined (None is Sk.builtin.none.none$), so
@@ -2857,8 +2811,19 @@ Compiler.prototype.nameop = function (name, ctx, dataToStore) {
                             "' where it is not associated with a value\");");
                     }
                     out("}\n");
+                    if (ctx === Sk.astnodes.Del) {
+                        const owner =
+                            scope === Sk.SYMTAB_CONSTS.FREE
+                                ? "Sk.misceval.cellOwner(" + dict + ",'" + mangledNoPre + "')"
+                                : dict;
+                        out(owner, ".", mangledNoPre, "=undefined;");
+                        break;
+                    }
                     return dict + "." + mangledNoPre;
                 case Sk.astnodes.Store:
+                    if (scope === Sk.SYMTAB_CONSTS.FREE) {
+                        dict = "Sk.misceval.cellOwner(" + dict + ",'" + mangledNoPre + "')";
+                    }
                     out(dict, ".", mangledNoPre, "=", dataToStore, ";");
                     break;
                 case Sk.astnodes.Param:
@@ -2934,9 +2899,8 @@ Compiler.prototype.exitScope = function () {
 
 /**
  * @param {Array} stmts
- * @param {Sk.builtin.str=} class_for_super
  */
-Compiler.prototype.cbody = function (stmts, class_for_super) {
+Compiler.prototype.cbody = function (stmts) {
     var i = 0;
 
     // If we have a docstring, then assign it to __doc__, and skip over
@@ -2950,7 +2914,7 @@ Compiler.prototype.cbody = function (stmts, class_for_super) {
     }
 
     for (; i < stmts.length; ++i) {
-        this.vstmt(stmts[i], class_for_super);
+        this.vstmt(stmts[i]);
     }
     /* Every annotated class and module should have __annotations__. */
     if (this.u.hasAnnotations) {

@@ -21,10 +21,27 @@ let handleWidth = function (m, r, prefix, isNumber) {
     // print(prefix);
     Sk.asserts.assert(typeof(r) === "string");
 
-    if (m[FMT.FIELD_WIDTH]) {
-        let fieldWidth = parseInt(m[FMT.FIELD_WIDTH], 10);
-        let fillChar = m[FMT.FILL_CHAR] || (m[FMT.ZERO_PAD] ? "0" : " ");
-        let fillAlign = m[FMT.FILL_ALIGN] || (m[FMT.ZERO_PAD] ? "=" : isNumber ? ">" : "<");
+    const fieldWidth = parseInt(m[FMT.FIELD_WIDTH] || "0", 10);
+    const fillChar = m[FMT.FILL_CHAR] || (m[FMT.ZERO_PAD] ? "0" : " ");
+    const fillAlign = m[FMT.FILL_ALIGN] || (m[FMT.ZERO_PAD] ? "=" : isNumber ? ">" : "<");
+    if (isNumber && m[FMT.COMMA]) {
+        const groupSize = "boxX".indexOf(m[FMT.CONVERSION_TYPE]) === -1 ? 3 : 4;
+        const parts = r.match(groupSize === 3 ? /^(\d+)(.*)$/ : /^([\da-fA-F]+)(.*)$/);
+        if (parts) {
+            let digits = parts[1];
+            if (fillChar === "0" && fillAlign === "=") {
+                // Group the padding as digits, keeping signs, prefixes and the
+                // fractional/exponent suffix outside the grouped width.
+                // Width is a minimum: adding a group separator may overshoot it.
+                const minGroupedWidth = fieldWidth - prefix.length - parts[2].length;
+                const minDigits = minGroupedWidth - Math.floor((minGroupedWidth - 1) / (groupSize + 1));
+                digits = "0".repeat(Math.max(0, minDigits - digits.length)) + digits;
+            }
+            r = digits.replace(groupSize === 3 ? thousandSep : otherBaseSep, m[FMT.COMMA]) + parts[2];
+        }
+    }
+
+    if (fieldWidth) {
         let nFill = fieldWidth - (r.length + (prefix ? prefix.length : 0));
 
         if (nFill <= 0) {
@@ -88,18 +105,16 @@ let handleInteger = function(m, n, base){
     const conversionType = m[FMT.CONVERSION_TYPE];
     if (conversionType === "X") {
         r = r.toUpperCase(); // floats convert nan to NAN
+        prefix = prefix.toUpperCase();
     }
 
     if (m[FMT.CONVERSION_TYPE] === "n"){
-        r = (+r).toLocaleString();
-    } else if (m[FMT.COMMA]){
-        const parts = r.split(".");
-        const sep = m[FMT.COMMA];
-        if (sep === "," && base !== 10) {
-            throw new Sk.builtin.ValueError(`Cannot specify ',' with '${conversionType}'`);
+        if (m[FMT.COMMA]) {
+            throw new Sk.builtin.ValueError(`Cannot specify '${m[FMT.COMMA]}' with 'n'`);
         }
-        parts[0] = parts[0].replace(base === 10 ? thousandSep : otherBaseSep , sep);
-        r = parts.join(".");
+        r = (+r).toLocaleString();
+    } else if (m[FMT.COMMA] === "," && base !== 10) {
+        throw new Sk.builtin.ValueError(`Cannot specify ',' with '${conversionType}'`);
     }
 
     return handleWidth(m, r, prefix, true);
@@ -161,18 +176,23 @@ let formatNumber = function(num, formatSpec, isFractional) {
             if (m[FMT.ALT_FORM]){
                 throw new Sk.builtin.ValueError("Alternate form (#) not allowed in float format specifier");
             }
+            if (isFractional && !m[FMT.CONVERSION_TYPE] && !m[FMT.PRECISION]) {
+                const result = num.str$(10, true);
+                const neg = result[0] === "-";
+                return handleWidth(m, neg ? result.slice(1) : result, signForNeg(m, neg), true);
+            }
             let convValue = Sk.builtin.asnum$(num);
             if (typeof convValue === "string") {
                 convValue = Number(convValue);
             }
             if (convValue === Infinity) {
-                return handleWidth(m, "inf", "", true);
+                return handleWidth(m, "EFG".indexOf(conversionType) === -1 ? "inf" : "INF", signForNeg(m, false), true);
             }
             if (convValue === -Infinity) {
-                return handleWidth(m, "inf", "-", true);
+                return handleWidth(m, "EFG".indexOf(conversionType) === -1 ? "inf" : "INF", "-", true);
             }
             if (isNaN(convValue)) {
-                return handleWidth(m, "nan", "", true);
+                return handleWidth(m, "EFG".indexOf(conversionType) === -1 ? "nan" : "NAN", signForNeg(m, false), true);
             }
             let neg = false;
             if (convValue < 0) {
@@ -200,12 +220,6 @@ let formatNumber = function(num, formatSpec, isFractional) {
             if (conversionType.toLowerCase()==="e") {
                 result = result.replace(/^([-+]?[0-9]*\.?[0-9]+[eE][-+]?)([0-9])?$/, "$10$2");
             }
-            if (m[FMT.COMMA]){
-                var parts = result.toString().split(".");
-                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-                result = parts.join(".");
-            }
-
             return handleWidth(m, result, signForNeg(m, neg), true);
         };
 
@@ -218,13 +232,13 @@ let formatNumber = function(num, formatSpec, isFractional) {
                 convValue = Number(convValue);
             }
             if (convValue === Infinity) {
-                return handleWidth(m, "inf%", "", true);
+                return handleWidth(m, "inf%", signForNeg(m, false), true);
             }
             if (convValue === -Infinity) {
                 return handleWidth(m, "inf%", "-", true);
             }
             if (isNaN(convValue)) {
-                return handleWidth(m, "nan%", "", true);
+                return handleWidth(m, "nan%", signForNeg(m, false), true);
             }
             let neg = false;
             if (convValue < 0) {
@@ -253,6 +267,9 @@ function formatString(format_spec) {
         throw new Sk.builtin.TypeError("format() argument 2 must be str, not " + Sk.abstr.typeName(format_spec));
     }
     let m = format_spec.$jsstr().match(FORMAT_SPEC_REGEX);
+    if (!m) {
+        throw new Sk.builtin.ValueError("Invalid format specifier");
+    }
     if (m[FMT.CONVERSION_TYPE] && m[FMT.CONVERSION_TYPE] !== "s") {
         throw new Sk.builtin.ValueError("Unknown format code '" + m[FMT.CONVERSION_TYPE] + "' for object of type 'str'");
     }
@@ -279,31 +296,24 @@ function formatString(format_spec) {
 };
 
 // str.format() implementation
+// Parser reference: CPython Objects/stringlib/unicode_format.h.
 const isDigit = /^\d+$/;
 
-const regex = /{(((?:\d+)|(?:\w+))?((?:\.(\w+))|(?:\[((?:\d+)|(?:\w+))\])?))?(?:\!(.))?(?:\:([^}]*))?}/g;
-
 function format(args, kwargs) {
-    // following PEP 3101
+    // PEP 3101: a replacement field contains a name, optional !conversion,
+    // and optional :format_spec. For {o.name!r:>{width}}, these are
+    // "o.name", "r", and ">{width}". Resolve and convert the value, expand
+    // the nested spec, then delegate to the value's __format__ method.
     kwargs = kwargs || [];
     const arg_dict = {};
-    // ex: {o.name!r:*^+#030,.9b}
-    // Field 1, Field_name, o.name
-    // Field 2, arg_name, o
-    // Field 3, attribute_name/Element_index , .name
-    // Field 4, Attribute name, name
-    // Field 5, element_index, [0]
-    // Field 6, conversion, r
-    // Field 7, format_spec,*^+#030,.9b
-
-    // Detect empty/int/complex name
-    // retrive field value
-    // hand off format spec
-    // return resulting spec to function
     for (let i = 0; i < kwargs.length; i += 2) {
         arg_dict[kwargs[i]] = kwargs[i + 1];
     }
+    // Like CPython's AutoNumber, outer fields and nested specs share numbering
+    // state for this format call.
+    // Named arguments do not advance the automatic index or select a mode.
     let currentMode;
+    let index = 0;
     const manual = "manual field specification";
     const auto = "automatic field numbering";
     const checkMode = (newMode) => {
@@ -315,12 +325,13 @@ function format(args, kwargs) {
     };
     const getArg = (key) => {
         let rv;
-        if (typeof key === "number") {
-            checkMode(manual);
+        if (key === "") {
+            checkMode(auto);
+            key = index++;
             rv = args[key];
         } else if (isDigit.test(key)) {
-            checkMode(auto);
-            rv = args[key];
+            checkMode(manual);
+            rv = args[parseInt(key, 10)];
         } else {
             rv = arg_dict[key];
             if (rv === undefined) {
@@ -333,48 +344,143 @@ function format(args, kwargs) {
         return rv;
     };
 
-    let index = 0;
-    function replFunc (substring, field_name, arg_name, attr_name, attribute_name, element_index, conversion, format_spec, offset, str_whole) {
-        let value;
-
-        if (element_index !== undefined && element_index !== "") {
-            let container = getArg(arg_name);
-            if (container.constructor === Array) {
-                value = container[element_index];
-            } else if (isDigit.test(element_index)) {
-                value = Sk.abstr.objectGetItem(container, new Sk.builtin.int_(parseInt(element_index, 10)), false);
+    function getField(fieldName) {
+        // Corresponds to CPython's get_field_object / FieldNameIterator_next.
+        // Resolve the argument first, then follow its .attribute and [item] parts.
+        let pos = fieldName.search(/[.\[]/);
+        if (pos === -1) {
+            return getArg(fieldName);
+        }
+        let value = getArg(fieldName.slice(0, pos));
+        while (pos < fieldName.length) {
+            const isAttribute = fieldName[pos++] === ".";
+            const start = pos;
+            if (isAttribute) {
+                while (pos < fieldName.length && fieldName[pos] !== "." && fieldName[pos] !== "[") {
+                    pos++;
+                }
             } else {
-                value = Sk.abstr.objectGetItem(container, new Sk.builtin.str(element_index), false);
+                pos = fieldName.indexOf("]", pos);
             }
-            index++;
-        } else if (attribute_name !== undefined && attribute_name !== "") {
-            const arg = getArg(arg_name || index++);
-            value = Sk.abstr.gattr(arg, new Sk.builtin.str(attribute_name));
-        } else if (arg_name !== undefined && arg_name !== "") {
-            value = getArg(arg_name);
-        } else if (field_name === undefined || field_name === "") {
-            value = getArg(index);
-            index++;
-        } else if (isDigit.test(field_name)) {
-            value = getArg(field_name);
-            index++;
+            if (pos === -1 || pos === start) {
+                throw new Sk.builtin.ValueError("Empty attribute or missing ']' in format string");
+            }
+            const key = fieldName.slice(start, pos);
+            if (isAttribute) {
+                value = Sk.abstr.gattr(value, new Sk.builtin.str(key));
+            } else {
+                const item = isDigit.test(key) ? new Sk.builtin.int_(parseInt(key, 10)) : new Sk.builtin.str(key);
+                value = Sk.abstr.objectGetItem(value, item, false);
+                pos++;
+                if (pos < fieldName.length && fieldName[pos] !== "." && fieldName[pos] !== "[") {
+                    throw new Sk.builtin.ValueError("Only '.' or '[' may follow ']' in format field specifier");
+                }
+            }
         }
+        return value;
+    }
 
-        if (conversion === "s") {
-            value = new Sk.builtin.str(value);
-        } else if (conversion === "r") {
-            value = Sk.builtin.repr(value);
-        } else if (conversion === "a") {
-            value = Sk.builtin.ascii(value);
-        } else if (conversion !== "" && conversion !== undefined) {
-            throw new Sk.builtin.ValueError("Unknown conversion specifier " + conversion);
+    function buildString(template, depth) {
+        // Follows CPython's build_string / do_markup: MarkupIterator_next scans
+        // literals and escaped braces; parse_field finds the field boundaries.
+        if (depth === 0) {
+            throw new Sk.builtin.ValueError("Max string recursion exceeded");
         }
+        const output = [];
+        let literalStart = 0;
+        let pos = 0;
+        while (pos < template.length) {
+            let c = template[pos++];
+            if (c !== "{" && c !== "}") {
+                // Skip the rest of this literal span using the native scanner.
+                const braceOffset = template.slice(pos).search(/[{}]/);
+                if (braceOffset === -1) {
+                    break;
+                }
+                pos += braceOffset;
+                c = template[pos++];
+            }
+            output.push(template.slice(literalStart, pos - 1));
+            // Escaped braces are literal text and must not consume arguments.
+            if (template[pos] === c) {
+                output.push(c);
+                literalStart = ++pos;
+                continue;
+            }
+            if (c === "}") {
+                throw new Sk.builtin.ValueError("Single '}' encountered in format string");
+            }
+            // parse_field: read the name, optional conversion and balanced spec.
+            const fieldStart = pos;
+            while (pos < template.length && "!:}".indexOf(template[pos]) === -1) {
+                if (template[pos] === "{") {
+                    throw new Sk.builtin.ValueError("unexpected '{' in field name");
+                }
+                if (template[pos] === "[") {
+                    // Braces, ':' and '!' inside an item key are not delimiters.
+                    pos = template.indexOf("]", pos + 1);
+                    if (pos === -1) {
+                        throw new Sk.builtin.ValueError("Missing ']' in format string");
+                    }
+                }
+                pos++;
+            }
+            const fieldName = template.slice(fieldStart, pos);
+            let conversion;
+            if (template[pos] === "!") {
+                conversion = template[++pos];
+                pos++;
+                if (template[pos] !== ":" && template[pos] !== "}") {
+                    throw new Sk.builtin.ValueError("expected ':' after conversion specifier");
+                }
+            }
+            let formatSpec = "";
+            let needsExpanding = false;
+            if (template[pos] === ":") {
+                const specStart = ++pos;
+                // Count all braces here, including escaped pairs. The recursive
+                // scan interprets escapes after we have found the complete spec.
+                let braces = 1;
+                for (; pos < template.length; pos++) {
+                    if (template[pos] === "{") {
+                        needsExpanding = true;
+                        braces++;
+                    } else if (template[pos] === "}" && --braces === 0) {
+                        break;
+                    }
+                }
+                formatSpec = template.slice(specStart, pos);
+            }
+            if (template[pos] !== "}") {
+                throw new Sk.builtin.ValueError("expected '}' before end of string");
+            }
+            pos++;
+            // output_markup resolves and converts before expanding the spec,
+            // then delegates to the value's __format__ method.
+            let value = getField(fieldName);
+            if (conversion === "s") {
+                value = new Sk.builtin.str(value);
+            } else if (conversion === "r") {
+                value = Sk.builtin.repr(value);
+            } else if (conversion === "a") {
+                value = Sk.builtin.ascii(value);
+            } else if (conversion !== undefined) {
+                throw new Sk.builtin.ValueError("Unknown conversion specifier " + conversion);
+            }
+            // Nested specs share argument numbering, but only one level is allowed.
+            if (needsExpanding) {
+                formatSpec = buildString(formatSpec, depth - 1);
+            }
+            output.push(Sk.abstr.objectFormat(value, new Sk.builtin.str(formatSpec)).$jsstr());
+            literalStart = pos;
+        }
+        output.push(template.slice(literalStart));
+        return output.join("");
+    }
 
-        return Sk.abstr.objectFormat(value, new Sk.builtin.str(format_spec)).$jsstr();
-    };
-
-    const ret = this.v.replace(regex, replFunc);
-    return new Sk.builtin.str(ret);
+    // CPython's do_string_format starts at depth 2: outer fields plus one
+    // nested spec. build_string rejects further recursion.
+    return new Sk.builtin.str(buildString(this.v, 2));
 };
 
 Sk.formatting.format = format;

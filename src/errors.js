@@ -23,8 +23,9 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
         // if we have tb args then it's an internal call indicating the pre instantiated traceback
         // we should probably change this at some point because this only happens with SyntaxErrors
         this.traceback = tb.length >= 2 ? [{ filename: tb[0] || "<unknown>", lineno: tb[1] }] : [];
-        this.cause = null;
-        this.context = null;
+        this.$cause = null;
+        this.$context = null;
+        this.$suppressContext = false;
         this.$d = new Sk.builtin.dict();
     },
     slots: /**@lends {BaseException}*/ {
@@ -49,24 +50,58 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
                 this.args = new Sk.builtin.tuple(v);
             },
         },
-        __cause__ : {
+        __cause__: {
             $get() {
                 return this.$cause || Sk.builtin.none.none$;
             },
             $set(v) {
+                checkDeleting(v, "__cause__");
                 if (!Sk.builtin.checkNone(v) && !(v instanceof Sk.builtin.BaseException)) {
-                    throw new TypeError("exception cause must be None or derive from BaseException");
+                    throw new Sk.builtin.TypeError("exception cause must be None or derive from BaseException");
                 }
                 this.$cause = v;
-            }
+                this.$suppressContext = true;
+            },
+        },
+        __context__: {
+            $get() {
+                return this.$context || Sk.builtin.none.none$;
+            },
+            $set(v) {
+                checkDeleting(v, "__context__");
+                if (!Sk.builtin.checkNone(v) && !(v instanceof Sk.builtin.BaseException)) {
+                    throw new Sk.builtin.TypeError("exception context must be None or derive from BaseException");
+                }
+                this.$context = v;
+            },
+        },
+        __suppress_context__: {
+            $get() {
+                return this.$suppressContext ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
+            },
+            $set(v) {
+                checkDeleting(v, "__suppress_context__", "can't delete numeric/char attribute");
+                if (!(v instanceof Sk.builtin.bool)) {
+                    throw new Sk.builtin.TypeError("attribute value type must be bool");
+                }
+                this.$suppressContext = v === Sk.builtin.bool.true$;
+            },
         },
         __dict__: Sk.generic.getSetDict,
         /**@todo */
         // __traceback__: {},
-        // __context__: {},
-        // __cause__: {}
+    },
+    methods: {
+        add_note: {
+            $meth: BaseExc_add_note,
+            $flags: { OneArg: true },
+            $textsig: "($self, note, /)",
+            $doc: "Add a note to the exception.",
+        },
     },
     proto: /**@lends {BaseException}*/ {
+        // Internal callers use the native implementation, as CPython does.
+        $addNote: BaseExc_add_note,
         toString() {
             let ret = this.tp$name;
             ret += ": " + this.tp$str().v;
@@ -80,10 +115,9 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
     },
 });
 
-// will be used when we implement other getsets
-function checkDeleting(v, name) {
+function checkDeleting(v, name, message) {
     if (v === undefined) {
-        throw new Sk.builtin.TypeError(`${name} may not be deleted`);
+        throw new Sk.builtin.TypeError(message === undefined ? `${name} may not be deleted` : message);
     }
 }
 
@@ -107,6 +141,22 @@ function BaseExc_str() {
         return new Sk.builtin.str(this.args.v[0]);
     }
     return this.args.$r();
+}
+
+function BaseExc_add_note(note) {
+    if (!Sk.builtin.checkString(note)) {
+        throw new Sk.builtin.TypeError("add_note() argument must be str, not " + Sk.abstr.typeName(note));
+    }
+    const name = new Sk.builtin.str("__notes__");
+    let notes = Sk.abstr.lookupAttr(this, name);
+    if (notes === undefined) {
+        notes = new Sk.builtin.list([]);
+        Sk.abstr.sattr(this, name, notes);
+    } else if (!(notes instanceof Sk.builtin.list)) {
+        throw new Sk.builtin.TypeError("Cannot add note: __notes__ is not a list");
+    }
+    notes.v.push(note);
+    return Sk.builtin.none.none$;
 }
 
 function complexExtends(base, name, doc, init, descriptors, str) {

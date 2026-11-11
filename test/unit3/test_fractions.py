@@ -1,6 +1,6 @@
 """Tests for Lib/fractions.py."""
 
-# from decimal import Decimal
+from decimal import Decimal
 # from test.support import requires_IEEE_754
 import math
 # import numbers
@@ -164,7 +164,6 @@ class FractionTest(unittest.TestCase):
         self.assertRaises(OverflowError, F, float('inf'))
         self.assertRaises(OverflowError, F, float('-inf'))
 
-    @skip_skulpt
     def testInitFromDecimal(self):
         self.assertEqual((11, 10),
                          _components(F(Decimal('1.1'))))
@@ -275,8 +274,16 @@ class FractionTest(unittest.TestCase):
             ValueError, "cannot convert NaN to integer ratio",
             F.from_float, nan)
 
-    @skip_skulpt
     def testFromDecimal(self):
+        # Skulpt regression: conversions must use the numeric type protocol.
+        self.assertRaises(TypeError, F.from_decimal, 0.5)
+        class RatioOnly:
+            def as_integer_ratio(self):
+                return (1, 2)
+        self.assertRaises(TypeError, F.from_decimal, RatioOnly())
+        class DecimalSubclass(Decimal):
+            pass
+        self.assertEqual(F.from_decimal(DecimalSubclass('0.5')), F(1, 2))
         self.assertRaises(TypeError, F.from_decimal, 3+4j)
         self.assertEqual(F(10, 1), F.from_decimal(10))
         self.assertEqual(F(0), F.from_decimal(Decimal("-0")))
@@ -523,7 +530,6 @@ class FractionTest(unittest.TestCase):
         self.assertRaises(ZeroDivisionError, operator.pow,
                           F(0, 1), -2)
 
-    @skip_skulpt
     def testMixingWithDecimal(self):
         # Decimal refuses mixed arithmetic (but not mixed comparisons)
         self.assertRaises(TypeError, operator.add,
@@ -747,6 +753,25 @@ class FractionTest(unittest.TestCase):
         self.assertEqual(f.denominator, 2)
         self.assertEqual(type(f.numerator), myint)
         self.assertEqual(type(f.denominator), myint)
+
+    def test_three_argument_pow(self):
+        message = "unsupported operand type(s) for ** or pow(): '%s', '%s', '%s'"
+        self.assertRaisesMessage(TypeError,
+                                 message % ("Fraction", "int", "int"),
+                                 pow, F(3), 4, 5)
+        self.assertRaisesMessage(TypeError,
+                                 message % ("int", "Fraction", "int"),
+                                 pow, 3, F(4), 5)
+        self.assertRaisesMessage(TypeError,
+                                 message % ("int", "int", "Fraction"),
+                                 pow, 3, 4, F(5))
+
+
+class TestSkulptRegressions(unittest.TestCase):
+    def test_hash_with_composite_modulus(self):
+        modulus = sys.hash_info.modulus
+        for denominator in (3, 5, 7, 10):
+            self.assertEqual(hash(F(1, denominator)) * denominator % modulus, 1)
 
 
 if __name__ == '__main__':

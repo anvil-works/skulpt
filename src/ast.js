@@ -2287,6 +2287,9 @@ function parsestr (c, n, s) {
                 else if (ch === "v") {
                     ret += "\v";
                 }
+                else if (ch === "a") {
+                    ret += "\x07";  // bell character
+                }
                 else if (ch === "0") {
                     ret += "\0";
                 }
@@ -3122,7 +3125,14 @@ function ast_for_expr (c, n) {
 }
 
 function astForNonLocalStmt(c, n) {
-    ast_error(c, n, "Not implemented: nonlocal");
+    /* nonlocal_stmt: 'nonlocal' NAME (',' NAME)* */
+    var i;
+    var s = [];
+    REQ(n, SYM.nonlocal_stmt);
+    for (i = 1; i < NCH(n); i += 2) {
+        s[(i - 1) / 2] = strobj(CHILD(n, i).value);
+    }
+    return new Sk.astnodes.Nonlocal(s, n.lineno, n.col_offset);
 }
 
 function astForAsyncStmt(c, n) {

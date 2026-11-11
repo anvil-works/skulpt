@@ -27,6 +27,13 @@ Sk.builtin.asnum$ = function (a) {
     if (a instanceof Sk.builtin.float_) {
         return a.v;
     }
+    // Try nb$float for other numeric types (Decimal, Fraction, etc.)
+    if (a.nb$float !== undefined) {
+        const f = a.nb$float();
+        if (f instanceof Sk.builtin.float_) {
+            return f.v;
+        }
+    }
     if (a === Sk.builtin.none.none$) {
         return null;
     }
@@ -628,15 +635,24 @@ Sk.builtin.open = function open (filename, mode, bufsize) {
 
 
 Sk.builtin.isinstance = function isinstance(obj, type) {
-    if (!Sk.builtin.checkClass(type) && !(type instanceof Sk.builtin.tuple)) {
-        throw new Sk.builtin.TypeError("isinstance() arg 2 must be a class, type, or tuple of classes and types");
-    }
-
-    // Fast path
     const act_type = obj.ob$type;
     if (act_type === type) {
         return Sk.builtin.bool.true$;
     }
+    if (type instanceof Sk.builtin.UnionType) {
+        type = type.$args;
+    }
+    if (!(type instanceof Sk.builtin.tuple) && type.ob$type !== Sk.builtin.type) {
+        const check = Sk.abstr.lookupSpecial(type, Sk.builtin.str.$instancecheck);
+        if (check !== undefined) {
+            const result = Sk.misceval.callsimArray(check, [obj]);
+            return Sk.misceval.isTrue(result) ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
+        }
+    }
+    if (!Sk.builtin.checkClass(type) && !(type instanceof Sk.builtin.tuple)) {
+        throw new Sk.builtin.TypeError("isinstance() arg 2 must be a class, type, or tuple of classes and types");
+    }
+
     if (!(type instanceof Sk.builtin.tuple)) {
         // attempt 1
         if (act_type.$isSubType(type)) {
@@ -1023,16 +1039,15 @@ Sk.builtin.pow = function pow(v, w, z) {
     if (z === undefined || Sk.builtin.checkNone(z)) {
         return Sk.abstr.numberBinOp(v, w, "Pow");
     }
-    // only support a third argument if they're all the integers.
-    if (!(Sk.builtin.checkInt(v) && Sk.builtin.checkInt(w) && Sk.builtin.checkInt(z))) {
-        if (Sk.builtin.checkFloat(v) || Sk.builtin.checkComplex(v)) {
-            return v.nb$power(w, z); // these slots for float and complex throw the correct errors
+    if (v.nb$power !== undefined) {
+        const result = v.nb$power(w, z);
+        if (result !== Sk.builtin.NotImplemented.NotImplemented$) {
+            return result;
         }
-        throw new Sk.builtin.TypeError(
-            "unsupported operand type(s) for ** or pow(): '" + Sk.abstr.typeName(v) + "', '" + Sk.abstr.typeName(w) + "', '" + Sk.abstr.typeName(z) + "'"
-        );
     }
-    return v.nb$power(w, z);
+    throw new Sk.builtin.TypeError(
+        "unsupported operand type(s) for ** or pow(): '" + Sk.abstr.typeName(v) + "', '" + Sk.abstr.typeName(w) + "', '" + Sk.abstr.typeName(z) + "'"
+    );
 };
 
 Sk.builtin.quit = function quit(msg) {
@@ -1041,14 +1056,26 @@ Sk.builtin.quit = function quit(msg) {
 };
 
 Sk.builtin.issubclass = function issubclass(c1, c2) {
-    if (!Sk.builtin.checkClass(c1)) {
-        throw new Sk.builtin.TypeError("issubclass() arg 1 must be a class");
+    if (c2 instanceof Sk.builtin.UnionType) {
+        c2 = c2.$args;
+    }
+    // Consult member hooks before fallback validation, just as tuple recursion
+    // does. A matching earlier member must not inspect a later failing member.
+    if (!(c2 instanceof Sk.builtin.tuple) && c2.ob$type !== Sk.builtin.type) {
+        const check = Sk.abstr.lookupSpecial(c2, Sk.builtin.str.$subclasscheck);
+        if (check !== undefined) {
+            const result = Sk.misceval.callsimArray(check, [c1]);
+            return Sk.misceval.isTrue(result) ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
+        }
     }
     let c2_isClass = Sk.builtin.checkClass(c2);
     if (!c2_isClass && !(c2 instanceof Sk.builtin.tuple)) {
         throw new Sk.builtin.TypeError("issubclass() arg 2 must be a class or tuple of classes");
     }
     if (c2_isClass) {
+        if (!Sk.builtin.checkClass(c1)) {
+            throw new Sk.builtin.TypeError("issubclass() arg 1 must be a class");
+        }
         return c1.$isSubType(c2) ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
     }
     // Handle tuple type argument

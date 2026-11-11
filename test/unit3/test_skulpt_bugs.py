@@ -39,6 +39,98 @@ class TestSuper(unittest.TestCase):
 
 
 class TestRegressions(unittest.TestCase):
+    def test_generator_local_deletion(self):
+        def gen():
+            value = 1
+            yield value
+            del value
+            with self.assertRaises(UnboundLocalError):
+                value
+            with self.assertRaises(UnboundLocalError):
+                del value
+            value = 2
+            yield value
+        self.assertEqual(list(gen()), [1, 2])
+
+    def test_nonlocal_write_through_intermediate_cells(self):
+        def outer():
+            x = 1
+            def middle():
+                y = 2
+                def inner():
+                    nonlocal x
+                    x += y
+                inner()
+            middle()
+            return x
+        self.assertEqual(outer(), 3)
+
+    def test_nonlocal_generator_write_through_intermediate_cells(self):
+        def outer():
+            x = 1
+            def middle():
+                y = 2
+                def inner():
+                    nonlocal x
+                    x += y
+                    yield x
+                    x += y
+                return inner()
+            gen = middle()
+            self.assertEqual(next(gen), 3)
+            self.assertEqual(x, 3)
+            self.assertRaises(StopIteration, next, gen)
+            return x
+        self.assertEqual(outer(), 5)
+
+    def test_nonlocal_write_before_enclosing_assignment(self):
+        def outer():
+            def middle():
+                y = 2
+                def inner():
+                    nonlocal x
+                    x = y
+                inner()
+            middle()
+            return x
+            x = 1
+        self.assertEqual(outer(), 2)
+
+    def test_nonlocal_delete_and_rebind_through_intermediate_cells(self):
+        def outer():
+            x = 1
+            def middle():
+                y = 2
+                def delete():
+                    nonlocal x
+                    y
+                    del x
+                def bind():
+                    nonlocal x
+                    x = y
+                return delete, bind
+            delete, bind = middle()
+            delete()
+            with self.assertRaises(UnboundLocalError):
+                x
+            self.assertRaises(NameError, delete)
+            bind()
+            return x
+        self.assertEqual(outer(), 2)
+
+    def test_unbound_cell_shadows_outer_binding(self):
+        x = 10
+        y = 20
+        def capture():  # Keep the outer x in the enclosing cells.
+            return x
+        def middle():
+            y  # Give middle both a free variable and its own empty cell.
+            def inner():
+                return x
+            inner()
+            x = 1
+        self.assertRaises(NameError, middle)
+
     def test_function_preserves_shadowed_closure_cell(self):
         def outer():
             x = 1
@@ -245,6 +337,415 @@ class TestSys(unittest.TestCase):
         self.assertIs(implementation, sys.implementation)
         self.assertEqual(implementation.name, "skulpt")
         self.assertIsNone(implementation.cache_tag)
+
+
+class TestExceptionProtocols(unittest.TestCase):
+    def test_raise_base_exception_class(self):
+        with self.assertRaises(BaseException) as caught:
+            raise BaseException
+        self.assertIs(type(caught.exception), BaseException)
+
+    def test_explicit_cause(self):
+        for cause in (BaseException, None):
+            try:
+                raise RuntimeError("outer") from cause
+            except RuntimeError as error:
+                if cause is BaseException:
+                    self.assertIsInstance(error.__cause__, cause)
+                else:
+                    self.assertIs(error.__cause__, cause)
+
+    def test_cause_expression_precedes_exception_construction(self):
+        events = []
+
+        class OuterError(Exception):
+            def __init__(self):
+                events.append("exception")
+
+        def cause():
+            events.append("cause")
+            return ValueError()
+
+        with self.assertRaises(OuterError):
+            raise OuterError from cause()
+        self.assertEqual(events, ["cause", "exception"])
+
+        def failing_cause():
+            raise KeyError()
+
+        events.clear()
+        with self.assertRaises(KeyError):
+            raise OuterError from failing_cause()
+        self.assertEqual(events, [])
+
+    def test_primary_exception_validated_before_cause_construction(self):
+        events = []
+
+        class CauseError(Exception):
+            def __init__(self):
+                events.append("constructor")
+                raise RuntimeError()
+
+        def cause():
+            events.append("expression")
+            return CauseError
+
+        with self.assertRaises(TypeError):
+            raise 42 from cause()
+        self.assertEqual(events, ["expression"])
+
+    def test_missing_exit_does_not_enter(self):
+        entered = []
+        class EnterOnly:
+            def __enter__(self):
+                entered.append(True)
+        with self.assertRaises(TypeError):
+            with EnterOnly():
+                self.fail("body must not run")
+        self.assertEqual(entered, [])
+
+    def test_cause_constructor_must_return_exception(self):
+        class CauseError(Exception):
+            def __new__(cls):
+                return None
+
+        with self.assertRaises(TypeError):
+            raise RuntimeError from CauseError
+
+    def test_generator_exit_hierarchy(self):
+        self.assertTrue(issubclass(GeneratorExit, BaseException))
+        self.assertFalse(issubclass(GeneratorExit, Exception))
+
+
+class TestClassCell(unittest.TestCase):
+    """Tests for __class__ cell and super() handling - Issues #1171, #1340"""
+
+    def test_class_cell_available_in_creation_hooks(self):
+        seen = []
+        class Descriptor:
+            def __set_name__(self, owner, name):
+                seen.append(owner.get_class())
+        class Base:
+            def __init_subclass__(cls):
+                seen.append(cls.get_class())
+        class C(Base):
+            descriptor = Descriptor()
+            @staticmethod
+            def get_class():
+                return __class__
+        self.assertEqual(seen, [C, C])
+        self.assertNotIn("__classcell__", C.__dict__)
+
+    def test_class_cell_must_be_forwarded_by_prepared_namespace(self):
+        class Namespace(dict):
+            def __setitem__(self, key, value):
+                if key != "__classcell__":
+                    super().__setitem__(key, value)
+
+        class Meta(type):
+            @classmethod
+            def __prepare__(meta, name, bases):
+                return Namespace()
+
+            def __new__(meta, name, bases, namespace):
+                return super().__new__(meta, name, bases, dict(namespace))
+
+        with self.assertRaises(RuntimeError):
+            class C(metaclass=Meta):
+                def get_class(self):
+                    return __class__
+
+    def test_class_cell_and_nonlocal_share_outer_binding(self):
+        def outer():
+            count = 0
+            class C:
+                def increment(self):
+                    nonlocal count
+                    count += 1
+                    return __class__
+            self.assertIs(C().increment(), C)
+            return count
+        self.assertEqual(outer(), 1)
+
+    def test_issue_1171_super_in_nested_class_in_function(self):
+        """super() in __init_subclass__ of class defined inside a function"""
+        def bar():
+            class A:
+                def __init_subclass__(cls):
+                    super().__init_subclass__()
+
+            class B(A):
+                pass
+            return A, B
+
+        A, B = bar()
+        self.assertEqual(A.__name__, 'A')
+        self.assertEqual(B.__name__, 'B')
+
+    def test_super_in_nested_classes(self):
+        """super() works correctly in nested class hierarchies"""
+        class Outer:
+            class Inner:
+                def greet(self):
+                    return "Inner"
+
+            class InnerChild(Inner):
+                def greet(self):
+                    return super().greet() + "Child"
+
+        self.assertEqual(Outer.InnerChild().greet(), "InnerChild")
+
+    def test_multiple_levels_of_super(self):
+        """super() works through multiple inheritance levels"""
+        class A:
+            def f(self):
+                return 'A'
+
+        class B(A):
+            def f(self):
+                return super().f() + 'B'
+
+        class C(B):
+            def f(self):
+                return super().f() + 'C'
+
+        class D(C):
+            def f(self):
+                return super().f() + 'D'
+
+        self.assertEqual(D().f(), 'ABCD')
+
+    def test_super_in_init_subclass_chain(self):
+        """super().__init_subclass__() works through inheritance chain"""
+        calls = []
+
+        class Base:
+            def __init_subclass__(cls, **kwargs):
+                super().__init_subclass__(**kwargs)
+                calls.append(cls.__name__)
+
+        class Middle(Base):
+            pass
+
+        class Leaf(Middle):
+            pass
+
+        self.assertEqual(calls, ['Middle', 'Leaf'])
+
+
+class TestGeneratorCells(unittest.TestCase):
+    def test_cells_and_super_across_yields(self):
+        class Base:
+            def value(self):
+                return 10
+        class Child(Base):
+            def values(self):
+                count = 1
+                def update():
+                    nonlocal count
+                    count += 1
+                yield __class__, super().value(), count
+                update()
+                yield __class__, super().value(), count
+        self.assertEqual(list(Child().values()), [(Child, 10, 1), (Child, 10, 2)])
+
+    def test_unbound_cell_reservation(self):
+        value = 100
+        def gen():
+            def inner():
+                return value
+            yield inner
+            value = 2
+            yield inner
+        g = gen()
+        inner = next(g)
+        with self.assertRaises(NameError):
+            inner()
+        self.assertIs(next(g), inner)
+        self.assertEqual(inner(), 2)
+
+    def test_nonlocal_owner_across_generator_frames(self):
+        value = 1
+        def middle():
+            local = 5
+            def gen():
+                nonlocal value
+                yield local, value
+                value = 2
+                yield local, value
+                del value
+            return gen()
+        g = middle()
+        self.assertEqual(next(g), (5, 1))
+        self.assertEqual(next(g), (5, 2))
+        self.assertEqual(value, 2)
+        self.assertEqual(list(g), [])
+        with self.assertRaises(UnboundLocalError):
+            value
+
+
+class TestFinallyControlFlow(unittest.TestCase):
+    def test_nested_cleanup_preserves_pending_return(self):
+        calls = []
+
+        def run():
+            try:
+                return 10
+            finally:
+                try:
+                    pass
+                finally:
+                    calls.append('inner')
+                calls.append('outer tail')
+        self.assertEqual(run(), 10)
+        self.assertEqual(calls, ['inner', 'outer tail'])
+
+    def test_caught_exit_failure_cancels_pending_return(self):
+        class Manager:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                raise ValueError('exit')
+
+        def run():
+            try:
+                with Manager():
+                    return 1
+            except ValueError:
+                pass
+            try:
+                pass
+            finally:
+                pass
+            return 2
+        self.assertEqual(run(), 2)
+
+    def test_generator_preserves_pending_return_through_nested_cleanup(self):
+        def gen():
+            try:
+                return
+            finally:
+                try:
+                    yield 1
+                finally:
+                    pass
+                yield 2
+        self.assertEqual(list(gen()), [1, 2])
+
+    def test_finally_reraises(self):
+        error = ValueError("original")
+
+        def run():
+            try:
+                raise error
+            finally:
+                pass
+        with self.assertRaises(ValueError) as caught:
+            run()
+        self.assertIs(caught.exception, error)
+
+    def test_return_finally_raises_once(self):
+        calls = []
+
+        def run():
+            try:
+                return
+            finally:
+                calls.append("finally")
+                raise ValueError("cleanup")
+        self.assertRaises(ValueError, run)
+        self.assertEqual(calls, ["finally"])
+
+    def test_break_finally_removes_except_handler(self):
+        calls = []
+
+        def run():
+            for _ in range(2):
+                try:
+                    try:
+                        pass
+                    finally:
+                        break
+                except ValueError:
+                    calls.append("stale handler")
+            calls.append("after loop")
+            raise ValueError("after loop")
+        self.assertRaises(ValueError, run)
+        self.assertEqual(calls, ["after loop"])
+
+    def test_with_exit_raises_once_on_return(self):
+        calls = []
+
+        class Manager:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                calls.append("exit")
+                raise ValueError("exit")
+
+        def run():
+            with Manager():
+                return
+        self.assertRaises(ValueError, run)
+        self.assertEqual(calls, ["exit"])
+
+    def test_with_preserves_enclosing_finally(self):
+        # Extend CPython test_with.NonLocalFlowControlTestCase.testWithReturn
+        # to check cleanup outside the context manager as well.
+        calls = []
+
+        class Manager:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                calls.append("exit")
+
+        def run():
+            try:
+                with Manager():
+                    pass
+                return 42
+            finally:
+                calls.append("finally")
+        self.assertEqual(run(), 42)
+        self.assertEqual(calls, ["exit", "finally"])
+
+    def test_continue_preserves_handler_outside_loop(self):
+        calls = []
+        try:
+            for i in range(2):
+                try:
+                    try:
+                        continue
+                    finally:
+                        calls.append(i)
+                except ValueError:
+                    calls.append("stale handler")
+            raise ValueError("after loop")
+        except ValueError:
+            calls.append("outer handler")
+        self.assertEqual(calls, [0, 1, "outer handler"])
+
+    def test_nested_with_return_cleanup_order(self):
+        calls = []
+
+        class Manager:
+            def __init__(self, name):
+                self.name = name
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                calls.append(self.name)
+
+        def run():
+            try:
+                with Manager("outer"), Manager("inner"):
+                    return 42
+            finally:
+                calls.append("finally")
+
+        self.assertEqual(run(), 42)
+        self.assertEqual(calls, ["inner", "outer", "finally"])
 
 
 if __name__ == "__main__":

@@ -153,6 +153,19 @@ Sk.exportSymbol("Sk.builtin.checkNumber", Sk.builtin.checkNumber);
 
 /**
  * @description
+ * Check if arg is a real number or can be converted to one via __float__.
+ * This is used by math functions which accept Decimal, Fraction, etc.
+ * Unlike checkNumber, this accepts types with nb$float (like Decimal/Fraction).
+ *
+ * @param {*} arg
+ */
+Sk.builtin.checkRealNumber = function (arg) {
+    return Sk.builtin.checkNumber(arg) || (arg && arg.nb$float !== undefined);
+};
+Sk.exportSymbol("Sk.builtin.checkRealNumber", Sk.builtin.checkRealNumber);
+
+/**
+ * @description
  * Is the arg an instance of {@link Sk.builtin.complex}
  */
 Sk.builtin.checkComplex = function (arg) {
@@ -208,6 +221,15 @@ Sk.builtin.checkClass = function (arg) {
     return arg instanceof Sk.builtin.type;
 };
 Sk.exportSymbol("Sk.builtin.checkClass", Sk.builtin.checkClass);
+
+/**
+ * Is the Python object BaseException or one of its subclasses?
+ * Corresponds to CPython's PyExceptionClass_Check.
+ */
+Sk.builtin.checkExceptionClass = function (arg) {
+    return arg != null && (arg === Sk.builtin.BaseException || arg.prototype instanceof Sk.builtin.BaseException);
+};
+Sk.exportSymbol("Sk.builtin.checkExceptionClass", Sk.builtin.checkExceptionClass);
 
 /**
  * @description

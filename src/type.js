@@ -200,7 +200,7 @@ function tp$new(args, kwargs) {
 
 
     dict.$items().forEach(([key, val]) => {
-        if (!Sk.builtin.checkString(key)) {
+        if (!Sk.builtin.checkString(key) || key.v === "__classcell__") {
             return;
         }
         if (slotSet && slotSet.has(key.v)) {
@@ -229,6 +229,15 @@ function tp$new(args, kwargs) {
     overrideImplied(proto, "__class_getitem__", "classmethod");
 
     klass.$allocateSlots();
+
+    const classcell = dict.quick$lookup(new Sk.builtin.str("__classcell__"));
+    if (classcell !== undefined) {
+        if (!(classcell instanceof Sk.builtin.cell)) {
+            throw new Sk.builtin.TypeError("__classcell__ must be a nonlocal cell, not " + Sk.abstr.typeName(classcell));
+        }
+        // Creation hooks can call methods that need their defining class.
+        classcell.$closure.__class__ = klass;
+    }
 
     set_names(klass);
     init_subclass(klass, kwargs);
@@ -773,6 +782,14 @@ Sk.builtin.type.tp$classmethods = {
     },
 };
 
+Sk.builtin.type.prototype.tp$as_number = true;
+Sk.builtin.type.prototype.nb$or = function (other) {
+    return Sk.builtin.UnionType.$or.call(this, other);
+};
+Sk.builtin.type.prototype.nb$reflected_or = function (other) {
+    return Sk.builtin.UnionType.$or.call(other, this);
+};
+
 // similar to generic.getSetDict but have to check if there is a builtin __dict__ descriptor that we should use first!
 const subtype_dict_getset_description = {
     $get() {
@@ -829,15 +846,16 @@ function set_names(type) {
     Object.keys(proto).forEach((key) => {
         const set_func = Sk.abstr.lookupSpecial(proto[key], Sk.builtin.str.$setname);
         if (set_func !== undefined) {
-            const name = Sk.unfixReserved(key);
+            const name = new Sk.builtin.str(Sk.unfixReserved(key));
             try {
-                Sk.misceval.callsimArray(set_func, [type, new Sk.builtin.str(name)]);
+                Sk.misceval.callsimArray(set_func, [type, name]);
             } catch (e) {
-                const runtime_err = new Sk.builtin.RuntimeError(
-                    "Error calling __set_name__ on '" + Sk.abstr.typeName(proto[key]) + "' instance '" + name + "' in '" + type.prototype.tp$name + "'"
-                );
-                runtime_err.$cause = e;
-                throw runtime_err;
+                // CPython's type_new_set_names preserves the error and adds context as a note.
+                e.$addNote(new Sk.builtin.str(
+                    "Error calling __set_name__ on '" + Sk.abstr.typeName(proto[key]) + "' instance " +
+                    Sk.misceval.objectRepr(name) + " in '" + type.prototype.tp$name + "'"
+                ));
+                throw e;
             }
         }
     });

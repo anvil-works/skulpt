@@ -1112,6 +1112,25 @@ Sk.misceval.tryCatch = function (tryFn, catchFn) {
 Sk.exportSymbol("Sk.misceval.tryCatch", Sk.misceval.tryCatch);
 
 /**
+ * Run cleanUp once after tryFn completes, including any suspensions.
+ * Cleanup may suspend; its return value is ignored, and its exception replaces
+ * any pending result or exception.
+ */
+Sk.misceval.tryFinally = function (tryFn, cleanUp) {
+    return Sk.misceval.chain(
+        Sk.misceval.tryCatch(
+            tryFn,
+            // Rethrowing after cleanup skips the success continuation below.
+            (error) => Sk.misceval.chain(cleanUp(), () => {
+                throw error;
+            })
+        ),
+        (value) => Sk.misceval.chain(cleanUp(), () => value)
+    );
+};
+Sk.exportSymbol("Sk.misceval.tryFinally", Sk.misceval.tryFinally);
+
+/**
  * @function
  * @description
  * Perform a suspension-aware for-each on an iterator, without
@@ -1305,6 +1324,15 @@ function _isIE() {
     const ua = navigator.userAgent || "";
     return ua.indexOf("MSIE ") > -1 || ua.indexOf("Trident/") > -1;
 }
+/** Return the scope that owns a declared closure cell, including empty cells. */
+Sk.misceval.cellOwner = function (closure, name) {
+    while (!Object.prototype.hasOwnProperty.call(closure, name)) {
+        closure = Object.getPrototypeOf(closure);
+    }
+    return closure;
+};
+Sk.exportSymbol("Sk.misceval.cellOwner", Sk.misceval.cellOwner);
+
 /**
  * @function
  * @description
@@ -1324,10 +1352,10 @@ function _isIE() {
  */
 Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closure2) {
     const _name = new Sk.builtin.str(name);
-    const _bases = update_bases(bases); // todo this function should go through the bases and check for __mro_entries__
-
     kws = kws || [];
-    bases = bases || [];
+    const orig_bases = new Sk.builtin.tuple(bases || []);
+    const _bases = update_bases(orig_bases);
+    bases = _bases.v;
     let meta;
     let is_class = true;
     const meta_idx = kws.indexOf("metaclass");
@@ -1398,8 +1426,9 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
         Object.setPrototypeOf(l_cell, closure2);
     }
 
-    // pass the locals to the code object which populates the namespace of the class
-    func(globals, locals, l_cell);
+    // Retain the body's original cell, as __build_class__ does in CPython;
+    // a custom namespace may discard or replace its __classcell__ entry.
+    const classcell = func(globals, locals, l_cell);
 
     if (!localsIsProxy) {
         // put locals object inside the ns dict
@@ -1408,15 +1437,53 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
         });
     }
 
+    if (_bases !== orig_bases) {
+        Sk.abstr.objectSetItem(ns, new Sk.builtin.str("__orig_bases__"), orig_bases);
+    }
     const klass = Sk.misceval.callsimOrSuspendArray(meta, [_name, _bases, ns], kws);
 
-    return klass;
+    // type.__new__ must populate the cell, including when called by a metaclass.
+    return Sk.misceval.chain(klass, (resolvedKlass) => {
+        if (classcell instanceof Sk.builtin.cell && Sk.builtin.checkClass(resolvedKlass)) {
+            const value = classcell.$closure.__class__;
+            if (value === undefined) {
+                throw new Sk.builtin.RuntimeError("__class__ not set defining '" + name + "'. Was __classcell__ propagated to type.__new__?");
+            }
+            if (value !== resolvedKlass) {
+                throw new Sk.builtin.TypeError("__class__ set to a different class defining '" + name + "'");
+            }
+        }
+        return resolvedKlass;
+    });
 };
 Sk.exportSymbol("Sk.misceval.buildClass", Sk.misceval.buildClass);
 
-function update_bases(bases) {
-    /** @todo this function should go through the bases and check for __mro_entries__ */
-    return new Sk.builtin.tuple(bases);
+function update_bases(orig_bases) {
+    // As in CPython's update_bases, retain the original tuple unless a base
+    // supplies __mro_entries__. Each hook receives that same original tuple.
+    const bases = orig_bases.v;
+    let new_bases;
+    for (let i = 0; i < bases.length; i++) {
+        const base = bases[i];
+        const hook = Sk.builtin.checkClass(base)
+            ? undefined
+            : Sk.abstr.lookupAttr(base, Sk.builtin.str.$mro_entries);
+        if (hook === undefined) {
+            if (new_bases !== undefined) {
+                new_bases.push(base);
+            }
+            continue;
+        }
+        const entries = Sk.misceval.callsimArray(hook, [orig_bases]);
+        if (!(entries instanceof Sk.builtin.tuple)) {
+            throw new Sk.builtin.TypeError("__mro_entries__ must return a tuple");
+        }
+        if (new_bases === undefined) {
+            new_bases = bases.slice(0, i);
+        }
+        new_bases.push(...entries.v);
+    }
+    return new_bases === undefined ? orig_bases : new Sk.builtin.tuple(new_bases);
 }
 
 function calculate_meta(meta, bases) {
