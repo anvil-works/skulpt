@@ -8,12 +8,9 @@
  * but use BigInt as the primitive type
  *
  */
-const __JSBI = require("jsbi");
-// use jsbi which is es5 compliant - change to ES6 in the compilation version
+const JSBI = Sk.global.JSBI = !SKULPT_NATIVE_ONLY && Sk.global.BigInt === undefined ? require("jsbi") : {};
 
-const JSBI = Sk.global.JSBI = Sk.global.BigInt !== undefined ? {} : __JSBI;
-
-if (Sk.global.BigInt === undefined) {
+if (!SKULPT_NATIVE_ONLY && Sk.global.BigInt === undefined) {
     // __isBigInt is not part of the public api so include it if this is ever removed
     JSBI.__isBigInt || (JSBI.__isBigInt = (x) => x instanceof JSBI);
     JSBI.powermod = (x, y, z) => {
@@ -21,7 +18,7 @@ if (Sk.global.BigInt === undefined) {
         let number = One;
         y = JSBI.greaterThan(y, JSBI.__ZERO) ? y : JSBI.unaryMinus(y);
         while (JSBI.greaterThan(y, JSBI.__ZERO)) {
-            if (JSBI.bitwiseAnd(y, One)) {
+            if (JSBI.notEqual(JSBI.bitwiseAnd(y, One), JSBI.__ZERO)) {
                 number = JSBI.remainder(JSBI.multiply(number, x), z);
             }
             y = JSBI.signedRightShift(y, One);

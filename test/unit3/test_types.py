@@ -207,174 +207,181 @@ class TypesTests(unittest.TestCase):
         self.assertRaises(TypeError, type, 1, 2)
         self.assertRaises(TypeError, type, 1, 2, 3, 4)
 
-#     def test_int__format__(self):
-#         def test(i, format_spec, result):
-#             # just make sure we have the unified type for integers
-#             assert type(i) == int
-#             assert type(format_spec) == str
-#             self.assertEqual(i.__format__(format_spec), result)
+    def test_int__format__(self):
+        def test(i, format_spec, result):
+            # just make sure we have the unified type for integers
+            assert type(i) == int
+            assert type(format_spec) == str
+            self.assertEqual(i.__format__(format_spec), result)
 
-#         test(123456789, 'd', '123456789')
-#         test(123456789, 'd', '123456789')
+        test(123456789, 'd', '123456789')
+        test(123456789, 'd', '123456789')
 
-#         test(1, 'c', '\01')
+        test(1, 'c', '\x01')
 
-#         # sign and aligning are interdependent
-#         test(1, "-", '1')
-#         test(-1, "-", '-1')
-#         test(1, "-3", '  1')
-#         test(-1, "-3", ' -1')
-#         test(1, "+3", ' +1')
-#         test(-1, "+3", ' -1')
-#         test(1, " 3", '  1')
-#         test(-1, " 3", ' -1')
-#         test(1, " ", ' 1')
-#         test(-1, " ", '-1')
+        # sign and aligning are interdependent
+        test(1, "-", '1')
+        test(-1, "-", '-1')
+        test(1, "-3", '  1')
+        test(-1, "-3", ' -1')
+        test(1, "+3", ' +1')
+        test(-1, "+3", ' -1')
+        test(1, " 3", '  1')
+        test(-1, " 3", ' -1')
+        test(1, " ", ' 1')
+        test(-1, " ", '-1')
 
-#         # hex
-#         test(3, "x", "3")
-#         test(3, "X", "3")
-#         test(1234, "x", "4d2")
-#         test(-1234, "x", "-4d2")
-#         test(1234, "8x", "     4d2")
-#         test(-1234, "8x", "    -4d2")
-#         test(1234, "x", "4d2")
-#         test(-1234, "x", "-4d2")
-#         test(-3, "x", "-3")
-#         test(-3, "X", "-3")
-#         test(int('be', 16), "x", "be")
-#         test(int('be', 16), "X", "BE")
-#         test(-int('be', 16), "x", "-be")
-#         test(-int('be', 16), "X", "-BE")
+        # hex
+        test(3, "x", "3")
+        test(3, "X", "3")
+        test(1234, "x", "4d2")
+        test(-1234, "x", "-4d2")
+        test(1234, "8x", "     4d2")
+        test(-1234, "8x", "    -4d2")
+        test(1234, "x", "4d2")
+        test(-1234, "x", "-4d2")
+        test(-3, "x", "-3")
+        test(-3, "X", "-3")
+        test(int('be', 16), "x", "be")
+        test(int('be', 16), "X", "BE")
+        test(-int('be', 16), "x", "-be")
+        test(-int('be', 16), "X", "-BE")
 
-#         # octal
-#         test(3, "o", "3")
-#         test(-3, "o", "-3")
-#         test(65, "o", "101")
-#         test(-65, "o", "-101")
-#         test(1234, "o", "2322")
-#         test(-1234, "o", "-2322")
-#         test(1234, "-o", "2322")
-#         test(-1234, "-o", "-2322")
-#         test(1234, " o", " 2322")
-#         test(-1234, " o", "-2322")
-#         test(1234, "+o", "+2322")
-#         test(-1234, "+o", "-2322")
+        # octal
+        test(3, "o", "3")
+        test(-3, "o", "-3")
+        test(65, "o", "101")
+        test(-65, "o", "-101")
+        test(1234, "o", "2322")
+        test(-1234, "o", "-2322")
+        test(1234, "-o", "2322")
+        test(-1234, "-o", "-2322")
+        test(1234, " o", " 2322")
+        test(-1234, " o", "-2322")
+        test(1234, "+o", "+2322")
+        test(-1234, "+o", "-2322")
 
-#         # binary
-#         test(3, "b", "11")
-#         test(-3, "b", "-11")
-#         test(1234, "b", "10011010010")
-#         test(-1234, "b", "-10011010010")
-#         test(1234, "-b", "10011010010")
-#         test(-1234, "-b", "-10011010010")
-#         test(1234, " b", " 10011010010")
-#         test(-1234, " b", "-10011010010")
-#         test(1234, "+b", "+10011010010")
-#         test(-1234, "+b", "-10011010010")
+        # binary
+        test(3, "b", "11")
+        test(-3, "b", "-11")
+        test(1234, "b", "10011010010")
+        test(-1234, "b", "-10011010010")
+        test(1234, "-b", "10011010010")
+        test(-1234, "-b", "-10011010010")
+        test(1234, " b", " 10011010010")
+        test(-1234, " b", "-10011010010")
+        test(1234, "+b", "+10011010010")
+        test(-1234, "+b", "-10011010010")
 
-#         # alternate (#) formatting
-#         test(0, "#b", '0b0')
-#         test(0, "-#b", '0b0')
-#         test(1, "-#b", '0b1')
-#         test(-1, "-#b", '-0b1')
-#         test(-1, "-#5b", ' -0b1')
-#         test(1, "+#5b", ' +0b1')
-#         test(100, "+#b", '+0b1100100')
-#         test(100, "#012b", '0b0001100100')
-#         test(-100, "#012b", '-0b001100100')
+        # alternate (#) formatting
+        test(0, "#b", '0b0')
+        test(0, "-#b", '0b0')
+        test(1, "-#b", '0b1')
+        test(-1, "-#b", '-0b1')
+        test(-1, "-#5b", ' -0b1')
+        test(1, "+#5b", ' +0b1')
+        test(100, "+#b", '+0b1100100')
+        test(100, "#012b", '0b0001100100')
+        test(-100, "#012b", '-0b001100100')
 
-#         test(0, "#o", '0o0')
-#         test(0, "-#o", '0o0')
-#         test(1, "-#o", '0o1')
-#         test(-1, "-#o", '-0o1')
-#         test(-1, "-#5o", ' -0o1')
-#         test(1, "+#5o", ' +0o1')
-#         test(100, "+#o", '+0o144')
-#         test(100, "#012o", '0o0000000144')
-#         test(-100, "#012o", '-0o000000144')
+        test(0, "#o", '0o0')
+        test(0, "-#o", '0o0')
+        test(1, "-#o", '0o1')
+        test(-1, "-#o", '-0o1')
+        test(-1, "-#5o", ' -0o1')
+        test(1, "+#5o", ' +0o1')
+        test(100, "+#o", '+0o144')
+        test(100, "#012o", '0o0000000144')
+        test(-100, "#012o", '-0o000000144')
 
-#         test(0, "#x", '0x0')
-#         test(0, "-#x", '0x0')
-#         test(1, "-#x", '0x1')
-#         test(-1, "-#x", '-0x1')
-#         test(-1, "-#5x", ' -0x1')
-#         test(1, "+#5x", ' +0x1')
-#         test(100, "+#x", '+0x64')
-#         test(100, "#012x", '0x0000000064')
-#         test(-100, "#012x", '-0x000000064')
-#         test(123456, "#012x", '0x000001e240')
-#         test(-123456, "#012x", '-0x00001e240')
+        test(0, "#x", '0x0')
+        test(0, "-#x", '0x0')
+        test(1, "-#x", '0x1')
+        test(-1, "-#x", '-0x1')
+        test(-1, "-#5x", ' -0x1')
+        test(1, "+#5x", ' +0x1')
+        test(100, "+#x", '+0x64')
+        test(100, "#012x", '0x0000000064')
+        test(-100, "#012x", '-0x000000064')
+        test(123456, "#012x", '0x000001e240')
+        test(-123456, "#012x", '-0x00001e240')
 
-#         test(0, "#X", '0X0')
-#         test(0, "-#X", '0X0')
-#         test(1, "-#X", '0X1')
-#         test(-1, "-#X", '-0X1')
-#         test(-1, "-#5X", ' -0X1')
-#         test(1, "+#5X", ' +0X1')
-#         test(100, "+#X", '+0X64')
-#         test(100, "#012X", '0X0000000064')
-#         test(-100, "#012X", '-0X000000064')
-#         test(123456, "#012X", '0X000001E240')
-#         test(-123456, "#012X", '-0X00001E240')
+        test(0, "#X", '0X0')
+        test(0, "-#X", '0X0')
+        test(1, "-#X", '0X1')
+        test(-1, "-#X", '-0X1')
+        test(-1, "-#5X", ' -0X1')
+        test(1, "+#5X", ' +0X1')
+        test(100, "+#X", '+0X64')
+        test(100, "#012X", '0X0000000064')
+        test(-100, "#012X", '-0X000000064')
+        test(123456, "#012X", '0X000001E240')
+        test(-123456, "#012X", '-0X00001E240')
 
-#         test(123, ',', '123')
-#         test(-123, ',', '-123')
-#         test(1234, ',', '1,234')
-#         test(-1234, ',', '-1,234')
-#         test(123456, ',', '123,456')
-#         test(-123456, ',', '-123,456')
-#         test(1234567, ',', '1,234,567')
-#         test(-1234567, ',', '-1,234,567')
+        test(123, ',', '123')
+        test(-123, ',', '-123')
+        test(1234, ',', '1,234')
+        test(-1234, ',', '-1,234')
+        test(123456, ',', '123,456')
+        test(-123456, ',', '-123,456')
+        test(1234567, ',', '1,234,567')
+        test(-1234567, ',', '-1,234,567')
 
-#         # issue 5782, commas with no specifier type
-#         test(1234, '010,', '00,001,234')
+        # issue 5782, commas with no specifier type
+        test(1234, '010,', '00,001,234')
+        test(1234, '08,', '0,001,234')
+        test(-1234, '010,', '-0,001,234')
+        test(0xabc, '#012_x', '0x0_0000_0abc')
+        test(1234, '0=10,', '00,001,234')
+        # Right alignment pads outside the grouped digits.
+        test(1234, '0>10,', '000001,234')
 
-#         # Unified type for integers
-#         test(10**100, 'd', '1' + '0' * 100)
-#         test(10**100+100, 'd', '1' + '0' * 97 + '100')
+        # Unified type for integers
+        test(10**100, 'd', '1' + '0' * 100)
+        test(10**100+100, 'd', '1' + '0' * 97 + '100')
 
-#         # make sure these are errors
+        # make sure these are errors
 
-#         # precision disallowed
-#         self.assertRaises(ValueError, 3 .__format__, "1.3")
-#         # sign not allowed with 'c'
-#         self.assertRaises(ValueError, 3 .__format__, "+c")
-#         # format spec must be string
-#         self.assertRaises(TypeError, 3 .__format__, None)
-#         self.assertRaises(TypeError, 3 .__format__, 0)
-#         # can't have ',' with 'n'
-#         self.assertRaises(ValueError, 3 .__format__, ",n")
-#         # can't have ',' with 'c'
-#         self.assertRaises(ValueError, 3 .__format__, ",c")
-#         # can't have '#' with 'c'
-#         self.assertRaises(ValueError, 3 .__format__, "#c")
+        # precision disallowed
+        self.assertRaises(ValueError, 3 .__format__, "1.3")
+        # sign not allowed with 'c'
+        self.assertRaises(ValueError, 3 .__format__, "+c")
+        # format spec must be string
+        self.assertRaises(TypeError, 3 .__format__, None)
+        self.assertRaises(TypeError, 3 .__format__, 0)
+        # can't have ',' with 'n'
+        for spec in (",n", "_n"):
+            self.assertRaises(ValueError, 3 .__format__, spec)
+        # can't have ',' with 'c'
+        self.assertRaises(ValueError, 3 .__format__, ",c")
+        # can't have '#' with 'c'
+        self.assertRaises(ValueError, 3 .__format__, "#c")
 
-#         # ensure that only int and float type specifiers work
-#         for format_spec in ([chr(x) for x in range(ord('a'), ord('z')+1)] +
-#                             [chr(x) for x in range(ord('A'), ord('Z')+1)]):
-#             if not format_spec in 'bcdoxXeEfFgGn%':
-#                 self.assertRaises(ValueError, 0 .__format__, format_spec)
-#                 self.assertRaises(ValueError, 1 .__format__, format_spec)
-#                 self.assertRaises(ValueError, (-1) .__format__, format_spec)
+        # ensure that only int and float type specifiers work
+        for format_spec in ([chr(x) for x in range(ord('a'), ord('z')+1)] +
+                            [chr(x) for x in range(ord('A'), ord('Z')+1)]):
+            if not format_spec in 'bcdoxXeEfFgGn%':
+                self.assertRaises(ValueError, 0 .__format__, format_spec)
+                self.assertRaises(ValueError, 1 .__format__, format_spec)
+                self.assertRaises(ValueError, (-1) .__format__, format_spec)
 
-#         # ensure that float type specifiers work; format converts
-#         #  the int to a float
-#         for format_spec in 'eEfFgG%':
-#             for value in [0, 1, -1, 100, -100, 1234567890, -1234567890]:
-#                 self.assertEqual(value.__format__(format_spec),
-#                                  float(value).__format__(format_spec))
+        # ensure that float type specifiers work; format converts
+        #  the int to a float
+        for format_spec in 'eEfFgG%':
+            for value in [0, 1, -1, 100, -100, 1234567890, -1234567890]:
+                self.assertEqual(value.__format__(format_spec),
+                                 float(value).__format__(format_spec))
 
-#         # Issue 6902
-#         test(123456, "0<20", '12345600000000000000')
-#         test(123456, "1<20", '12345611111111111111')
-#         test(123456, "*<20", '123456**************')
-#         test(123456, "0>20", '00000000000000123456')
-#         test(123456, "1>20", '11111111111111123456')
-#         test(123456, "*>20", '**************123456')
-#         test(123456, "0=20", '00000000000000123456')
-#         test(123456, "1=20", '11111111111111123456')
-#         test(123456, "*=20", '**************123456')
+        # Issue 6902
+        test(123456, "0<20", '12345600000000000000')
+        test(123456, "1<20", '12345611111111111111')
+        test(123456, "*<20", '123456**************')
+        test(123456, "0>20", '00000000000000123456')
+        test(123456, "1>20", '11111111111111123456')
+        test(123456, "*>20", '**************123456')
+        test(123456, "0=20", '00000000000000123456')
+        test(123456, "1=20", '11111111111111123456')
+        test(123456, "*=20", '**************123456')
 
 #     @run_with_locale('LC_NUMERIC', 'en_US.UTF8')
 #     def test_float__format__locale(self):
@@ -554,24 +561,11 @@ class TypesTests(unittest.TestCase):
 #         test(12345.6, "1=20", '111111111111112345.6')
 #         test(12345.6, "*=20", '*************12345.6')
 
-#     def test_format_spec_errors(self):
-#         # int, float, and string all share the same format spec
-#         # mini-language parser.
-
-#         # Check that we can't ask for too many digits. This is
-#         # probably a CPython specific test. It tries to put the width
-#         # into a C long.
-#         self.assertRaises(ValueError, format, 0, '1'*10000 + 'd')
-
-#         # Similar with the precision.
-#         self.assertRaises(ValueError, format, 0, '.' + '1'*10000 + 'd')
-
-#         # And may as well test both.
-#         self.assertRaises(ValueError, format, 0, '1'*1000 + '.' + '1'*10000 + 'd')
-
-#         # Make sure commas aren't allowed with various type codes
-#         for code in 'xXobns':
-#             self.assertRaises(ValueError, format, 0, ',' + code)
+    def test_format_spec_errors(self):
+        # CPython's width/precision overflow checks depend on C integer limits.
+        # Make sure commas aren't allowed with various type codes.
+        for code in 'xXobns':
+            self.assertRaises(ValueError, format, 0, ',' + code)
 
 #     def test_internal_sizes(self):
 #         self.assertGreater(object.__basicsize__, 0)
@@ -1671,6 +1665,130 @@ class MappingProxyTests(unittest.TestCase):
 #             '__await__', '__iter__', '__next__', 'cr_code', 'cr_running',
 #             'cr_frame', 'gi_code', 'gi_frame', 'gi_running', 'send',
 #             'close', 'throw'}))
+
+
+class UnionTests(unittest.TestCase):
+    # Native-only selections from CPython's test_types.UnionTests, so this
+    # prerequisite does not depend on importing typing.
+    def test_or_types_operator(self):
+        self.assertEqual(int | type(None), int | None)
+        self.assertEqual(type(None) | int, None | int)
+        self.assertEqual(str | float | int | complex | int,
+                         (int | str) | (float | complex))
+        self.assertIs(int | int, int)
+        x = int | str
+        self.assertEqual(x, str | int)
+        self.assertNotEqual(x, {})
+        with self.assertRaises(TypeError):
+            int | 3
+        with self.assertRaises(TypeError):
+            3 | int
+        with self.assertRaises(TypeError):
+            x < x
+
+    def test_instancecheck_and_subclasscheck(self):
+        # CPython's native-union cases; assertTrue/False are used in place of
+        # its newer assertIsSubclass/assertNotIsSubclass helpers.
+        x = int | str
+        self.assertIsInstance(1, x)
+        self.assertIsInstance(True, x)
+        self.assertIsInstance("a", x)
+        self.assertNotIsInstance(None, x)
+        self.assertTrue(issubclass(int, x))
+        self.assertTrue(issubclass(bool, x))
+        self.assertTrue(issubclass(str, x))
+        self.assertFalse(issubclass(type(None), x))
+        x = int | None
+        self.assertIsInstance(None, x)
+        self.assertTrue(issubclass(type(None), x))
+
+    def test_bad_instancecheck(self):
+        # From CPython test_types: unions retain their members' runtime hooks.
+        class BadMeta(type):
+            def __instancecheck__(cls, inst):
+                1 / 0
+        x = int | BadMeta("A", (), {})
+        self.assertTrue(isinstance(1, x))
+        self.assertRaises(ZeroDivisionError, isinstance, [], x)
+
+    def test_bad_subclasscheck(self):
+        class BadMeta(type):
+            def __subclasscheck__(cls, sub):
+                1 / 0
+        x = int | BadMeta("A", (), {})
+        self.assertTrue(issubclass(int, x))
+        self.assertRaises(ZeroDivisionError, issubclass, list, x)
+
+    def test_hash(self):
+        self.assertEqual(hash(int | str), hash(str | int))
+
+    def test_or_type_operator_with_genericalias(self):
+        self.assertEqual(list[int] | str, str | list[int])
+        self.assertEqual((list[int] | str | list[int]).__args__, (list[int], str))
+        self.assertIsInstance(1, int | list[int])
+        with self.assertRaises(TypeError):
+            isinstance(1, list[int] | int)
+        with self.assertRaises(TypeError):
+            issubclass(int, list[int] | int)
+
+    def test_type_of_union(self):
+        from types import UnionType
+        self.assertIs(type(int | str), UnionType)
+        self.assertEqual((int | None).__args__, (int, type(None)))
+        with self.assertRaises(TypeError):
+            UnionType()
+
+    def test_names(self):
+        # Selected public-name contract from CPython TypesTests.test_names.
+        namespace = {}
+        exec("from types import *", namespace)
+        self.assertIs(namespace["UnionType"], type(int | str))
+
+    def test_union_construction_with_bad_equality(self):
+        # BadType construction cases from CPython's
+        # UnionTests.test_or_type_operator_with_genericalias.
+        class BadType(type):
+            def __eq__(self, other):
+                return 1 / 0
+
+        bt = BadType("bt", (), {})
+        bt2 = BadType("bt2", (), {})
+        self.assertIs((int | bt).__args__[1], bt)
+        with self.assertRaises(ZeroDivisionError):
+            bt | bt2
+
+
+class TestSkulptUnionRegressions(unittest.TestCase):
+    def test_subclass_hooks_precede_argument_validation(self):
+        # CPython's subclass-check protocol permits the hook to decide what
+        # constitutes an acceptable first argument, before fallback checking.
+        class Meta(type):
+            def __subclasscheck__(cls, value):
+                return value == 1
+
+        class C(metaclass=Meta): ...
+        self.assertTrue(issubclass(1, C))
+        self.assertTrue(issubclass(1, C | int))
+        self.assertFalse(issubclass(1, ()))
+
+    def test_cannot_subclass_union_of_heap_types(self):
+        # CPython rejects a union as a class base. Two ordinary user classes
+        # avoid an incidental builtin-layout conflict masking that check.
+        class A: ...
+        class B: ...
+        with self.assertRaisesRegex(TypeError, "Cannot subclass"):
+            class C(A | B): ...
+
+
+class TestTypingUnionParameters(unittest.TestCase):
+    def test_union_parameter_substitution(self):
+        # CPython test_types.UnionTests.test_union_parameter_substitution.
+        from typing import TypeVar
+        T = TypeVar("T")
+        alias = list[T] | None
+        self.assertEqual(alias.__parameters__, (T,))
+        self.assertEqual(alias[int], list[int] | None)
+        self.assertEqual(alias[int].__args__, (list[int], type(None)))
 
 
 if __name__ == '__main__':
