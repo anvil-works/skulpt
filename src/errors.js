@@ -80,9 +80,7 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
                 return this.$suppressContext ? Sk.builtin.bool.true$ : Sk.builtin.bool.false$;
             },
             $set(v) {
-                if (v === undefined) {
-                    throw new Sk.builtin.TypeError("can't delete numeric/char attribute");
-                }
+                checkDeleting(v, "__suppress_context__", "can't delete numeric/char attribute");
                 if (!(v instanceof Sk.builtin.bool)) {
                     throw new Sk.builtin.TypeError("attribute value type must be bool");
                 }
@@ -117,10 +115,9 @@ const BaseException = Sk.abstr.buildNativeClass("BaseException", {
     },
 });
 
-// will be used when we implement other getsets
-function checkDeleting(v, name) {
+function checkDeleting(v, name, message) {
     if (v === undefined) {
-        throw new Sk.builtin.TypeError(`${name} may not be deleted`);
+        throw new Sk.builtin.TypeError(message === undefined ? `${name} may not be deleted` : message);
     }
 }
 
