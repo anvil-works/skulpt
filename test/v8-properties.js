@@ -21,7 +21,12 @@ async function run() {
         Sk.configure({
             __future__: future,
             read: (filename) => {
-                const source = Sk.builtinFiles.files[filename];
+                let source = Sk.builtinFiles.files[filename];
+                if (typeof source === "number") {
+                    const chunk = JSON.parse(fs.readFileSync(`dist/skulpt-stdlib-${source}.json`, "utf8"));
+                    Object.assign(Sk.builtinFiles.files, chunk);
+                    source = Sk.builtinFiles.files[filename];
+                }
                 if (source === undefined) {
                     throw new Error("File not found: " + filename);
                 }

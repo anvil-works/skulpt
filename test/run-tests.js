@@ -43,12 +43,12 @@ function runRuntimeTests() {
     const webpack = require.resolve("webpack/bin/webpack.js");
     const outputDir = "support/tmp/runtime-test";
     for (const mode of ["production", "development"]) {
-        run(webpack, "--mode", mode, "--output-path", `${outputDir}/${mode}`);
+        run(webpack, "--mode", mode, "--env.languageOut=ECMASCRIPT_2018", "--output-path", `${outputDir}/${mode}`);
     }
 
     const productionCore = `${outputDir}/production/skulpt.min.js`;
     const developmentCore = `${outputDir}/development/skulpt.js`;
-    run("test/compat-syntax.js", productionCore);
+    run("test/compat-syntax.js", productionCore, "2018");
     for (const coreFile of [productionCore, developmentCore]) {
         run("--allow-natives-syntax", "test/v8-properties.js", coreFile);
     }
@@ -56,7 +56,7 @@ function runRuntimeTests() {
 }
 
 function runModernTests() {
-    run("test/build-variants.js");
+    run("test/build-variants.js", "dist", "2018");
     const productionCore = "dist/modern/skulpt.modern.min.js";
     run("test/testunit.js", "--python3", "--core", productionCore);
     const webpack = require.resolve("webpack/bin/webpack.js");
