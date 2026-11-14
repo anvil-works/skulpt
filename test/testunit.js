@@ -12,12 +12,6 @@ async function test (python3, opt, module = undefined, core = undefined) {
         process.exit(1);
     }
 
-    if (program.sourceParser) {
-        const {pathToFileURL} = require('url');
-        const {parseModule, scan} = await import(pathToFileURL(path.resolve(program.sourceParser)).href);
-        Sk.configure({sourceParser: parseModule, sourceTokenizer: scan || null});
-    }
-
     Sk.js_beautify = require('js-beautify').js;
 
     // Setup for appropriate Python version
@@ -127,7 +121,6 @@ program
     .option('-o, --opt', 'use optimized skulpt')
     .option('--module <module>', 'test specific module')
     .option('--core <file>', 'test a specific built Skulpt core')
-    .option('--source-parser <bundle>', 'use the experimental structural parser bundle')
     .parse(process.argv);
 
 test(program.python3, program.opt, program.module, program.core).catch((error) => {

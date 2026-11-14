@@ -36,7 +36,7 @@ class IntTestCases(unittest.TestCase):
         self.assertEqual(int("-3"), -3)
         self.assertEqual(int(" -3 "), -3)
         """ fails in skulpt
-        self.assertEqual(int("\N{EM SPACE}-3\N{EN SPACE}"), -3)
+        self.assertEqual(int("\u2003-3\u2002"), -3)
         """
 
         # Different base:
