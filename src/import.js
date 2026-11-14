@@ -291,6 +291,9 @@ Sk.importModuleInternal_ = function (name, dumpJS, modname, suppliedPyBody, rela
             };
 
             setInitializing(true);
+            if (co.funcname === "$compiledmod") {
+                module["$d"] = Sk.misceval.namespaceToJs(module["$d"]);
+            }
             // our module might suspend so we need to wrap it in a suspendable try catch
             // we can only setInitializing to false once the suspensions have completed
             return Sk.misceval.tryCatch(
