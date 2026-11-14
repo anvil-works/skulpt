@@ -452,7 +452,7 @@ def _apply_dataclass(
         _unsupported("dataclass(slots=True)")
     if weakref_slot:
         _unsupported("dataclass(weakref_slot=True)")
-    if any("__slots__" in base.__dict__ for base in cls.__mro__):
+    if any(base.__dict__.get("__slots__", ()) != () for base in cls.__mro__):
         _unsupported("classes with __slots__")
 
     if order and not eq:
