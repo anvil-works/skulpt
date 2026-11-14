@@ -517,7 +517,6 @@ SymbolTable.prototype.visitStmt = function (s) {
             this.addDef(s.name, DEF_LOCAL, s.lineno);
             if (s.args.defaults) {
                 this.SEQExpr(s.args.defaults);
-                this.SEQExpr(s.args.kw_defaults);
             }
             if (s.args.kw_defaults) {
                 this.SEQExpr(s.args.kw_defaults);
@@ -757,7 +756,6 @@ SymbolTable.prototype.visitExpr = function (e) {
             this.addDef(new Sk.builtin.str("lambda"), DEF_LOCAL, e.lineno);
             if (e.args.defaults) {
                 this.SEQExpr(e.args.defaults);
-                this.SEQExpr(e.args.kw_defaults);
             }
             if (e.args.kw_defaults) {
                 this.SEQExpr(e.args.kw_defaults);

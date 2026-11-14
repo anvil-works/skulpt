@@ -26,8 +26,8 @@ jobs:
       - run: npm test
       - name: Compare with the compatibility checkpoint and CPython
         run: |
-          git fetch --depth=1 origin 3bc2954482a03204b76e7d0db3ff76839710d17f
-          git worktree add --detach "$RUNNER_TEMP/skulpt-compat" 3bc2954482a03204b76e7d0db3ff76839710d17f
+          git fetch --depth=1 origin 6a98d6bb193e27dada8ba001b8a165ce15575357
+          git worktree add --detach "$RUNNER_TEMP/skulpt-compat" 6a98d6bb193e27dada8ba001b8a165ce15575357
           ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/skulpt-compat/node_modules"
           (cd "$RUNNER_TEMP/skulpt-compat" && npm run build)
           node test/structural_parser.mjs "$SKULPT_PARSER_DIR/index.js" dist/skulpt.min.js "$RUNNER_TEMP/skulpt-compat/dist/skulpt.min.js"
