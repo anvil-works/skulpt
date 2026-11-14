@@ -157,7 +157,7 @@ Compiler.prototype.niceName = function (roughName) {
 };
 
 // Hidden compiler bindings retain their public CPython code-object spelling.
-Sk.compilerName = function (name) {
+Sk.misceval.compilerName = function (name) {
     const names = { $annotationFormat: "format", $aliasFormat: ".format", $typeFormat: ".format",
         $typeDefaults: ".defaults", $typeKwdefaults: ".kwdefaults", $typeParams: ".type_params" };
     return names[name] || Sk.unfixReserved(name);
@@ -1517,7 +1517,7 @@ Compiler.prototype.outputCodeMetadata = function (unit) {
         kwonlyargcount: unit.kwonlyargcount,
         firstlineno: unit.firstlineno || 1,
         flags,
-        varnames: Array.from(varnames, Sk.compilerName),
+        varnames: Array.from(varnames, Sk.misceval.compilerName),
         cellvars: Array.from(cellvars, Sk.unfixReserved).sort(),
         freevars: freevars.map(Sk.unfixReserved).sort(),
     };
@@ -2488,7 +2488,7 @@ Compiler.prototype.buildcodeobj = function (n, coname, decorator_list, args, cal
     // binding.
     //
     if (argnamesarr.length > 0) {
-        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(Sk.compilerName)), ";");
+        out(scopename, ".co_varnames=", JSON.stringify(argnamesarr.map(Sk.misceval.compilerName)), ";");
     } else {
         out(scopename, ".co_varnames=[];");
     }
