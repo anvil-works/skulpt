@@ -44,6 +44,7 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
         // Class bodies can pass the same dictionary for both closures.
         this.func_closure = Sk.misceval.makeClosure(closure, closure2);
         this.func_annotations = null;
+        this.func_annotate = null;
         this.$memoiseFlags();
         this.memoised = code.co_fastcall || null;
         if (code.co_fastcall) {
@@ -170,8 +171,32 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
                 this.tp$call = this.func_code.co_fastcall ? this.func_code.bind(this) : this.$funcCall.bind(this);
             },
         },
+        // Objects/funcobject.c: function annotation evaluation and cache setters.
+        __annotate__: {
+            $get() { return this.func_annotate || Sk.builtin.none.none$; },
+            $set(value) {
+                if (value === undefined) {throw new Sk.builtin.TypeError("__annotate__ cannot be deleted");}
+                if (Sk.builtin.checkNone(value)) {
+                    this.func_annotate = value;
+                } else if (Sk.builtin.checkCallable(value)) {
+                    this.func_annotate = value;
+                    this.func_annotations = null;
+                } else {
+                    throw new Sk.builtin.TypeError("__annotate__ must be callable or None");
+                }
+            },
+        },
         __annotations__: {
             $get() {
+                if (this.func_annotations === null && this.func_annotate && !Sk.builtin.checkNone(this.func_annotate)) {
+                    return Sk.misceval.chain(Sk.misceval.callsimOrSuspendArray(this.func_annotate, [new Sk.builtin.int_(1)]), result => {
+                        if (!(result instanceof Sk.builtin.dict)) {
+                            throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
+                        }
+                        this.func_annotations = result;
+                        return result;
+                    });
+                }
                 if (this.func_annotations === null) {
                     this.func_annotations = new Sk.builtin.dict([]);
                 } else if (Array.isArray(this.func_annotations)) {
@@ -181,12 +206,13 @@ Sk.builtin.func = Sk.abstr.buildNativeClass("function", {
             },
             $set(v) {
                 if (v === undefined || Sk.builtin.checkNone(v)) {
-                    this.func_annotations = new Sk.builtin.dict([]);
+                    this.func_annotations = null;
                 } else if (v instanceof Sk.builtin.dict) {
                     this.func_annotations = v;
                 } else {
                     throw new Sk.builtin.TypeError("__annotations__ must be set to a dict object");
                 }
+                this.func_annotate = null;
             }
         },
         __defaults__: {
