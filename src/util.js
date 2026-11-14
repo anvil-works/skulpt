@@ -4,6 +4,7 @@ var Sk = { // jshint ignore:line
     unicode: undefined,
     parseExpression: undefined,
     parseInteractive: undefined,
+    parseFunctionType: undefined,
     build: {
         version: SKULPT_VERSION,
         githash: GITHASH,
