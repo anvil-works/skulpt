@@ -80,13 +80,13 @@ try:
 except NameError:
     pass
 
-# try:
-#     raise TypeError
-# except TypeError:
-#     tb = sys.exc_info()[2]
-#     TracebackType = type(tb)
-#     FrameType = type(tb.tb_frame)
-#     del tb
+try:
+    raise TypeError
+except TypeError as _error:
+    _tb = _error.__traceback__
+    TracebackType = type(_tb)
+    FrameType = type(_tb.tb_frame)
+    del _tb
 
 SliceType = slice
 EllipsisType = type(Ellipsis)
