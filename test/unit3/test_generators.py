@@ -19,9 +19,8 @@ class GeneratorTest(unittest.TestCase):
         # check generator names
         gen = func()
         self.assertEqual(gen.__name__, "func")
-        # @TODO nested qualname
-        # self.assertEqual(gen.__qualname__,
-        #                  "GeneratorTest.test_name.<locals>.func")
+        self.assertEqual(gen.__qualname__,
+                         "GeneratorTest.test_name.<locals>.func")
 
         # modify generator names
         gen.__name__ = "name"
@@ -46,7 +45,8 @@ class GeneratorTest(unittest.TestCase):
         gen = (x for x in range(10))
         self.assertEqual(gen.__name__,
                          "<genexpr>")
-
+        self.assertEqual(gen.__qualname__,
+                         "GeneratorTest.test_name.<locals>.<genexpr>")
 
     def test_copy(self):
         def f():
