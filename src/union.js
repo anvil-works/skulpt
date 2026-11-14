@@ -128,5 +128,8 @@ Sk.builtin.makeUnion = function (values, checked) {
 
 // Keep the shared dispatch entry point used by type, NoneType and GenericAlias.
 Sk.builtin.UnionType.$or = function (other) {
+    if (Sk.builtin.checkNone(this) && Sk.builtin.checkNone(other)) {
+        return Sk.builtin.NotImplemented.NotImplemented$;
+    }
     return Sk.builtin.typeUnion(this, other);
 };
