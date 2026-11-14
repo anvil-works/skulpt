@@ -153,6 +153,7 @@ function ISEOF(x) {
 }
 
 Sk.token = {};
+Sk.token.isIdentifier = (name) => Sk.unicode.isIdentifier(name);
 Sk.token.tokens = tokens;
 Sk.token.tok_name = tok_name;
 Sk.token.EXACT_TOKEN_TYPES = EXACT_TOKEN_TYPES;
