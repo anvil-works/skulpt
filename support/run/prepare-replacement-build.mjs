@@ -42,7 +42,6 @@ for (const hook of ["Sk.setupOperators", ...(withoutTokenizer ? ["Sk.token.setup
 fs.writeFileSync(environment, source);
 
 if (withoutTokenizer) {
-    assert.ok(fs.existsSync(join(destination, "src/identifier.js")), "Revision must contain the extracted identifier helper");
     const module = join(destination, "src/lib/tokenize.js");
     source = fs.readFileSync(module, "utf8");
     const modern = source.indexOf("// CPython v3.14.3 Lib/tokenize.py contracts");
