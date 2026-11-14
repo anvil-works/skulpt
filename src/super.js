@@ -30,6 +30,29 @@ Sk.builtin.super_ = Sk.abstr.buildNativeClass("super", {
         tp$new: Sk.generic.new,
         tp$init(args, kwargs) {
             Sk.abstr.checkNoKwargs("super", kwargs);
+            if (args.length === 0 && Sk.__future__.super_args) {
+                // Objects/typeobject.c: super_init_without_args. The compiler's
+                // active scope reader observes live fast/cell bindings, including
+                // temporary PEP 709 comprehension bindings.
+                const frame = Sk.misceval.currentFrame;
+                const [hasArg, firstArg, hasClass, cls] = frame ? frame["getSuper"]() : [false];
+                if (!hasArg) {
+                    throw new Sk.builtin.RuntimeError("super(): no arguments");
+                }
+                if (firstArg === undefined) {
+                    throw new Sk.builtin.RuntimeError("super(): arg[0] deleted");
+                }
+                if (!hasClass) {
+                    throw new Sk.builtin.RuntimeError("super(): __class__ cell not found");
+                }
+                if (cls === undefined) {
+                    throw new Sk.builtin.RuntimeError("super(): empty __class__ cell");
+                }
+                if (!Sk.builtin.checkClass(cls)) {
+                    throw new Sk.builtin.RuntimeError("super(): __class__ is not a type (" + Sk.abstr.typeName(cls) + ")");
+                }
+                args = [cls, firstArg];
+            }
             Sk.abstr.checkArgsLen("super", args, 1, 2);
             const a_type = args[0];
             const other_self = args[1];
