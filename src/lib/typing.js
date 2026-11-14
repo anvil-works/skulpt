@@ -46,7 +46,7 @@ function $builtinmodule() {
         if (!valid(this) || !valid(other)) {
             return pyNotImplemented;
         }
-        return typing.Union.mp$subscript(new pyTuple([this, other]));
+        return Sk.builtin.makeUnion([typeArgument(this), typeArgument(other)], true);
     }
 
     function unionRor(other) {
@@ -173,9 +173,6 @@ function $builtinmodule() {
                 return new pyStr(origin_repr + "[" + arg_repr + "]");
             },
             tp$hash() {
-                if (this.$origin === typing.Union) {
-                    return objectHash(new pyFrozenSet(this.$args.v));
-                }
                 if (this.$origin === typing.Literal) {
                     return objectHash(literalValues(this));
                 }
@@ -186,10 +183,6 @@ function $builtinmodule() {
             tp$richcompare(other, op) {
                 if (op !== "Eq" && op !== "NotEq") {
                     return pyNotImplemented;
-                }
-                if (this.$origin === typing.Union && (other instanceof pyUnionType ||
-                    (other instanceof _GenericAlias && other.$origin === typing.Union))) {
-                    return richCompareBool(new pyFrozenSet(this.$args.v), new pyFrozenSet(other.$args.v), op);
                 }
                 if (!(other instanceof _GenericAlias)) {
                     return pyNotImplemented;
@@ -233,27 +226,18 @@ function $builtinmodule() {
                 if (this.$origin === typing.Annotated) {
                     args.push(...this.$args.v.slice(1));
                 }
-                if (this.$origin === typing.Union) {
-                    return typing.Union.mp$subscript(new pyTuple(args));
-                }
                 return new _GenericAlias(this.$origin, new pyTuple(args), this.$name);
             },
         },
         methods: {
             __instancecheck__: {
-                $meth(obj) {
-                    if (this.$origin === typing.Union) {
-                        return Sk.builtin.isinstance(obj, this.$args);
-                    }
+                $meth() {
                     throw new pyTypeError("Subscripted generics cannot be used with class and instance checks");
                 },
                 $flags: { OneArg: true },
             },
             __subclasscheck__: {
-                $meth(cls) {
-                    if (this.$origin === typing.Union) {
-                        return Sk.builtin.issubclass(cls, this.$args);
-                    }
+                $meth() {
                     throw new pyTypeError("Subscripted generics cannot be used with class and instance checks");
                 },
                 $flags: { OneArg: true },
@@ -356,23 +340,7 @@ function $builtinmodule() {
     // Any - represents any type
     typing.Any = new _SpecialForm("Any", "Special type indicating an unconstrained type.", null);
 
-    // Union - represents Union[X, Y]
-    typing.Union = new _SpecialForm("Union", "Union type; Union[X, Y] means either X or Y.", (item) => {
-        if (!(item instanceof pyTuple)) {
-            item = new pyTuple([item]);
-        }
-        const args = [];
-        for (let arg of item.v) {
-            arg = typeArgument(arg);
-            const nested = arg instanceof pyUnionType || (arg instanceof _GenericAlias && arg.$origin === typing.Union);
-            for (const member of nested ? arg.$args.v : [arg]) {
-                if (!args.some((existing) => richCompareBool(existing, member, "Eq"))) {
-                    args.push(member);
-                }
-            }
-        }
-        return args.length === 1 ? args[0] : new _GenericAlias(typing.Union, new pyTuple(args));
-    });
+    typing.Union = pyUnionType;
 
     // Optional - Optional[X] is equivalent to Union[X, None]
     typing.Optional = new _SpecialForm(
@@ -381,7 +349,7 @@ function $builtinmodule() {
         (item) => {
             const noneType = pyNone.ob$type;
             const args = new pyTuple([item, noneType]);
-            return typing.Union.mp$subscript(args);
+            return Sk.builtin.makeUnion(args.v.map(typeArgument), true);
         },
     );
 
@@ -1215,7 +1183,6 @@ function $builtinmodule() {
                     return tp.$origin;
                 }
                 // Return the __origin__ of a generic type
-                // PEP 604: UnionType returns types.UnionType as origin (not typing.Union)
                 if (tp instanceof pyUnionType) {
                     return pyUnionType;
                 }
@@ -1367,8 +1334,7 @@ function $builtinmodule() {
     typing.__doc__ = new pyStr(
         "Support for type hints.\n\n" +
             "Annotation support for common collection aliases, TypeVar/Generic,\n" +
-            "NamedTuple and TypedDict schemas. Uses the Python 3.13 split between\n" +
-            "typing.Union and types.UnionType. Full hint evaluation, structural\n" +
+            "NamedTuple and TypedDict schemas. Full hint evaluation, structural\n" +
             "Protocol checks and parameter-pack substitution are not implemented.",
     );
     typing.__all__ = new pyList(

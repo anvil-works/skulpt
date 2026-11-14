@@ -97,7 +97,8 @@ Sk.builtin.makeUnion = function (values, checked) {
         }
         if (checked) {
             if (Sk.builtin.checkString(arg)) {
-                throw new Sk.builtin.NotImplementedError("union string arguments require typing ForwardRef support");
+                const typing = Sk.importModule("typing");
+                arg = Sk.misceval.callsimArray(typing.$d.ForwardRef, [arg]);
             }
             if (arg.ob$type === Sk.builtin.tuple) {
                 throw new Sk.builtin.TypeError("Union[arg, ...]: each arg must be a type. Got " + Sk.misceval.objectRepr(arg) + ".");
