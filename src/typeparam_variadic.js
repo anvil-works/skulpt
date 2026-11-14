@@ -47,7 +47,7 @@ Sk.builtin.ParamSpec = Sk.abstr.buildNativeClass("typing.ParamSpec", {
         __mro_entries__: { $meth() { throw new Sk.builtin.TypeError("Cannot subclass an instance of ParamSpec"); }, $flags: { OneArg: true } },
         __reduce__: { $meth() { return this.$name; }, $flags: { NoArgs: true } },
     },
-    proto: { $getValue: Sk.builtin.TypeVar.prototype.$getValue, sk$hasDict: true },
+    proto: { $getValue: Sk.builtin.TypeVar.prototype.$getValue, sk$hasDict: true, $isTypeParameter: true, $isVariadic: true },
     flags: { sk$unacceptableBase: true },
 });
 
@@ -105,7 +105,7 @@ Sk.builtin.TypeVarTuple = Sk.abstr.buildNativeClass("typing.TypeVarTuple", {
         __mro_entries__: { $meth() { throw new Sk.builtin.TypeError("Cannot subclass an instance of TypeVarTuple"); }, $flags: { OneArg: true } },
         __reduce__: { $meth() { return this.$name; }, $flags: { NoArgs: true } },
     },
-    proto: { $getValue: Sk.builtin.TypeVar.prototype.$getValue, sk$hasDict: true },
+    proto: { $getValue: Sk.builtin.TypeVar.prototype.$getValue, sk$hasDict: true, $isTypeParameter: true, $isVariadic: true },
     flags: { sk$unacceptableBase: true },
 });
 

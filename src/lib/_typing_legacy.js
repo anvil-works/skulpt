@@ -285,7 +285,7 @@ function $builtinmodule() {
         // rebuilds the parameter list on each call.
         const args = alias.$args.v;
         const first = args[0];
-        if (args.length === 2 && (first === pyEllipsis || first instanceof ParamSpec ||
+        if (args.length === 2 && (first === pyEllipsis || (first instanceof ParamSpec || first instanceof Sk.builtin.ParamSpec) ||
             first.$origin === typing.Concatenate)) {
             return alias.$args;
         }
@@ -468,7 +468,7 @@ function $builtinmodule() {
                 // the public parameter list so callers cannot mutate the alias.
                 return new _GenericAlias(typing.Callable, new pyTuple([...params.v, result]), "Callable");
             }
-            if (params !== pyEllipsis && !(params instanceof ParamSpec) && params.$origin !== typing.Concatenate) {
+            if (params !== pyEllipsis && !(params instanceof ParamSpec || params instanceof Sk.builtin.ParamSpec) && params.$origin !== typing.Concatenate) {
                 throw new pyTypeError("Callable parameters must be a list, ellipsis or parameter specification");
             }
             return new _GenericAlias(typing.Callable, item, "Callable");
