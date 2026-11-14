@@ -1579,7 +1579,7 @@ Sk.misceval.buildClass = function (globals, func, name, bases, cell, kws, closur
     }
 
     if (is_class) {
-        meta = calculate_meta(meta, bases); // we should do this in type as well
+        meta = Sk.misceval.calculateMetaclass(meta, bases);
     }
     /* else: meta is not a class, so we cannot do the metaclass
        calculation, so we will use the explicitly given object as it is */
@@ -1670,7 +1670,7 @@ function update_bases(orig_bases) {
     return new_bases === undefined ? orig_bases : new Sk.builtin.tuple(new_bases);
 }
 
-function calculate_meta(meta, bases) {
+Sk.misceval.calculateMetaclass = function (meta, bases) {
     let winner = meta;
     bases.forEach((base) => {
         let tmptype = base.ob$type;
@@ -1683,7 +1683,7 @@ function calculate_meta(meta, bases) {
         }
     });
     return winner;
-}
+};
 
 function do_prepare(meta, _name, _bases, kws, is_class) {
     // we have a metaclass
