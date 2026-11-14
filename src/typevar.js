@@ -116,6 +116,7 @@ Sk.builtin.TypeVar = Sk.abstr.buildNativeClass("typing.TypeVar", {
             });
         },
         sk$hasDict: true,
+        $isTypeParameter: true,
     },
     flags: { sk$unacceptableBase: true },
 });
