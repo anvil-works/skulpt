@@ -565,6 +565,16 @@ class ListComprehensionTest(unittest.TestCase):
         self._check_in_scopes(code, {"value": [1, None]})
 
 
+    def test_assignment_expression(self):
+        code = """
+            x = -1
+            items = [(x:=y) for y in range(3)]
+        """
+        outputs = {"x": 2}
+        # assignment expression in comprehension is disallowed in class scope
+        self._check_in_scopes(code, outputs, scopes=["module", "function"])
+
+
     def test_only_calls_dunder_iter_once(self):
 
         class Iterator:
