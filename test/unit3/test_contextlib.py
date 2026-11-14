@@ -1,12 +1,65 @@
-# Selected CPython contextlib tests. Async managers, traceback introspection
-# and the remaining contextlib classes are outside this implementation.
-"""Unit tests for contextlib.py, and other context managers."""
-
+# CPython 3.14 Lib/test/test_contextlib.py at 18ef0f0cb52.
+# Complete selected test bodies unchanged. Docstring decorators are omitted;
+# assertion/subTest and implementation-detail helpers are adapted.
+# Slots, traceback formatting and weakref/GC tests await those runtime features.
 import unittest
-from contextlib import *  # Tests __all__
+from contextlib import *
+from test_type_parameters import SubTest
+
+class Support:
+    def check_impl_detail(self, **kwargs): return True
+support = Support()
+
+class ContextAssertions(unittest.TestCase):
+    def subTest(self, *args, **kwargs): return SubTest()
+    def assertIsSubclass(self, cls, base): self.assertTrue(issubclass(cls, base))
+    def assertNotIsSubclass(self, cls, base): self.assertFalse(issubclass(cls, base))
+
+class TestAbstractContextManager(ContextAssertions):
+
+    def test_enter(self):
+        class DefaultEnter(AbstractContextManager):
+            def __exit__(self, *args):
+                super().__exit__(*args)
+
+        manager = DefaultEnter()
+        self.assertIs(manager.__enter__(), manager)
 
 
-class ContextManagerTestCase(unittest.TestCase):
+    def test_exit_is_abstract(self):
+        class MissingExit(AbstractContextManager):
+            pass
+
+        with self.assertRaises(TypeError):
+            MissingExit()
+
+    def test_structural_subclassing(self):
+        class ManagerFromScratch:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc_value, traceback):
+                return None
+
+        self.assertIsSubclass(ManagerFromScratch, AbstractContextManager)
+
+        class DefaultEnter(AbstractContextManager):
+            def __exit__(self, *args):
+                super().__exit__(*args)
+
+        self.assertIsSubclass(DefaultEnter, AbstractContextManager)
+
+        class NoEnter(ManagerFromScratch):
+            __enter__ = None
+
+        self.assertNotIsSubclass(NoEnter, AbstractContextManager)
+
+        class NoExit(ManagerFromScratch):
+            __exit__ = None
+
+        self.assertNotIsSubclass(NoExit, AbstractContextManager)
+
+
+class ContextManagerTestCase(ContextAssertions):
 
     def test_contextmanager_plain(self):
         state = []
@@ -38,6 +91,7 @@ class ContextManagerTestCase(unittest.TestCase):
                 raise ZeroDivisionError()
         self.assertEqual(state, [1, 42, 999])
 
+
     def test_contextmanager_no_reraise(self):
         @contextmanager
         def whee():
@@ -56,9 +110,11 @@ class ContextManagerTestCase(unittest.TestCase):
                 yield
         ctx = whoo()
         ctx.__enter__()
-        self.assertRaises(
-            RuntimeError, ctx.__exit__, TypeError, TypeError("foo"), None
-        )
+        with self.assertRaises(RuntimeError):
+            ctx.__exit__(TypeError, TypeError("foo"), None)
+        if support.check_impl_detail(cpython=True):
+            # The "gen" attribute is an implementation detail.
+            self.assertFalse(ctx.gen.gi_suspended)
 
     def test_contextmanager_trap_no_yield(self):
         @contextmanager
@@ -68,6 +124,19 @@ class ContextManagerTestCase(unittest.TestCase):
         ctx = whoo()
         with self.assertRaises(RuntimeError):
             ctx.__enter__()
+
+    def test_contextmanager_trap_second_yield(self):
+        @contextmanager
+        def whoo():
+            yield
+            yield
+        ctx = whoo()
+        ctx.__enter__()
+        with self.assertRaises(RuntimeError):
+            ctx.__exit__(None, None, None)
+        if support.check_impl_detail(cpython=True):
+            # The "gen" attribute is an implementation detail.
+            self.assertFalse(ctx.gen.gi_suspended)
 
     def test_contextmanager_non_normalised(self):
         @contextmanager
@@ -100,20 +169,43 @@ class ContextManagerTestCase(unittest.TestCase):
         self.assertEqual(state, [1, 42, 999])
 
     def test_contextmanager_except_stopiter(self):
-        stop_exc = StopIteration('spam')
         @contextmanager
         def woohoo():
             yield
+
+        class StopIterationSubclass(StopIteration):
+            pass
+
+        for stop_exc in (StopIteration('spam'), StopIterationSubclass('spam')):
+            with self.subTest(type=type(stop_exc)):
+                try:
+                    with woohoo():
+                        raise stop_exc
+                except Exception as ex:
+                    self.assertIs(ex, stop_exc)
+                else:
+                    self.fail(f'{stop_exc} was suppressed')
+
+    def test_contextmanager_except_pep479(self):
+        code = """\
+from __future__ import generator_stop
+from contextlib import contextmanager
+@contextmanager
+def woohoo():
+    yield
+"""
+        locals = {}
+        exec(code, locals, locals)
+        woohoo = locals['woohoo']
+
+        stop_exc = StopIteration('spam')
         try:
-            # with self.assertWarnsRegex(DeprecationWarning,
-            #                            "StopIteration"):
-                with woohoo():
-                    raise stop_exc
+            with woohoo():
+                raise stop_exc
         except Exception as ex:
             self.assertIs(ex, stop_exc)
         else:
             self.fail('StopIteration was suppressed')
-
 
     def test_contextmanager_do_not_unchain_non_stopiteration_exceptions(self):
         @contextmanager
@@ -144,17 +236,19 @@ class ContextManagerTestCase(unittest.TestCase):
             try:
                 yield
             except Exception as exc:
-                raise RuntimeError('caught {}'.format(exc)) from exc
+                raise RuntimeError(f'caught {exc}') from exc
 
         with self.assertRaises(RuntimeError):
             with woohoo():
                 1 / 0
 
+        # If the context manager wrapped StopIteration in a RuntimeError,
+        # we also unwrap it, because we can't tell whether the wrapping was
+        # done by the generator machinery or by the generator itself.
         with self.assertRaises(StopIteration):
             with woohoo():
                 raise StopIteration
 
-    # Newer CPython closes immediately here; 3.7 waited for finalization.
     def test_contextmanager_trap_second_yield_closes(self):
         state = []
 
@@ -172,6 +266,7 @@ class ContextManagerTestCase(unittest.TestCase):
             ctx.__exit__(None, None, None)
         self.assertEqual(state, ['cleanup'])
 
+
     def _create_contextmanager_attribs(self):
         def attribs(**kw):
             def decorate(func):
@@ -183,6 +278,7 @@ class ContextManagerTestCase(unittest.TestCase):
         @attribs(foo='bar')
         def baz(spam):
             """Whee!"""
+            yield
         return baz
 
     def test_contextmanager_attribs(self):
@@ -190,12 +286,10 @@ class ContextManagerTestCase(unittest.TestCase):
         self.assertEqual(baz.__name__,'baz')
         self.assertEqual(baz.foo, 'bar')
 
-    # @support.requires_docstrings
     def test_contextmanager_doc_attrib(self):
         baz = self._create_contextmanager_attribs()
         self.assertEqual(baz.__doc__, "Whee!")
 
-    # @support.requires_docstrings
     def test_instance_docstring_given_cm_docstring(self):
         baz = self._create_contextmanager_attribs()(None)
         self.assertEqual(baz.__doc__, "Whee!")
@@ -222,12 +316,13 @@ class ContextManagerTestCase(unittest.TestCase):
             woohoo(b=3)
 
     def test_recursive(self):
-        global depth
         depth = 0
+        ncols = 0
         @contextmanager
         def woohoo():
-            global depth
-            # nonlocal depth
+            nonlocal ncols
+            ncols += 1
+            nonlocal depth
             before = depth
             depth += 1
             yield
@@ -240,7 +335,224 @@ class ContextManagerTestCase(unittest.TestCase):
                 recursive()
 
         recursive()
+        self.assertEqual(ncols, 10)
         self.assertEqual(depth, 0)
+
+
+class ClosingTestCase(ContextAssertions):
+
+    def test_instance_docs(self):
+        # Issue 19330: ensure context manager instances have good docstrings
+        cm_docstring = closing.__doc__
+        obj = closing(None)
+        self.assertEqual(obj.__doc__, cm_docstring)
+
+    def test_closing(self):
+        state = []
+        class C:
+            def close(self):
+                state.append(1)
+        x = C()
+        self.assertEqual(state, [])
+        with closing(x) as y:
+            self.assertEqual(x, y)
+        self.assertEqual(state, [1])
+
+    def test_closing_error(self):
+        state = []
+        class C:
+            def close(self):
+                state.append(1)
+        x = C()
+        self.assertEqual(state, [])
+        with self.assertRaises(ZeroDivisionError):
+            with closing(x) as y:
+                self.assertEqual(x, y)
+                1 / 0
+        self.assertEqual(state, [1])
+
+
+class NullcontextTestCase(ContextAssertions):
+    def test_nullcontext(self):
+        class C:
+            pass
+        c = C()
+        with nullcontext(c) as c_in:
+            self.assertIs(c_in, c)
+
+
+class mycontext(ContextDecorator):
+    """Example decoration-compatible context manager for testing"""
+    started = False
+    exc = None
+    catch = False
+
+    def __enter__(self):
+        self.started = True
+        return self
+
+    def __exit__(self, *exc):
+        self.exc = exc
+        return self.catch
+
+
+class TestContextDecorator(ContextAssertions):
+
+    def test_instance_docs(self):
+        # Issue 19330: ensure context manager instances have good docstrings
+        cm_docstring = mycontext.__doc__
+        obj = mycontext()
+        self.assertEqual(obj.__doc__, cm_docstring)
+
+    def test_contextdecorator(self):
+        context = mycontext()
+        with context as result:
+            self.assertIs(result, context)
+            self.assertTrue(context.started)
+
+        self.assertEqual(context.exc, (None, None, None))
+
+
+    def test_contextdecorator_with_exception(self):
+        context = mycontext()
+
+        with self.assertRaisesRegex(NameError, 'foo'):
+            with context:
+                raise NameError('foo')
+        self.assertIsNotNone(context.exc)
+        self.assertIs(context.exc[0], NameError)
+
+        context = mycontext()
+        context.catch = True
+        with context:
+            raise NameError('foo')
+        self.assertIsNotNone(context.exc)
+        self.assertIs(context.exc[0], NameError)
+
+
+    def test_decorator(self):
+        context = mycontext()
+
+        @context
+        def test():
+            self.assertIsNone(context.exc)
+            self.assertTrue(context.started)
+        test()
+        self.assertEqual(context.exc, (None, None, None))
+
+
+    def test_decorator_with_exception(self):
+        context = mycontext()
+
+        @context
+        def test():
+            self.assertIsNone(context.exc)
+            self.assertTrue(context.started)
+            raise NameError('foo')
+
+        with self.assertRaisesRegex(NameError, 'foo'):
+            test()
+        self.assertIsNotNone(context.exc)
+        self.assertIs(context.exc[0], NameError)
+
+
+    def test_decorating_method(self):
+        context = mycontext()
+
+        class Test(object):
+
+            @context
+            def method(self, a, b, c=None):
+                self.a = a
+                self.b = b
+                self.c = c
+
+        # these tests are for argument passing when used as a decorator
+        test = Test()
+        test.method(1, 2)
+        self.assertEqual(test.a, 1)
+        self.assertEqual(test.b, 2)
+        self.assertEqual(test.c, None)
+
+        test = Test()
+        test.method('a', 'b', 'c')
+        self.assertEqual(test.a, 'a')
+        self.assertEqual(test.b, 'b')
+        self.assertEqual(test.c, 'c')
+
+        test = Test()
+        test.method(a=1, b=2)
+        self.assertEqual(test.a, 1)
+        self.assertEqual(test.b, 2)
+
+
+    def test_typo_enter(self):
+        class mycontext(ContextDecorator):
+            def __unter__(self):
+                pass
+            def __exit__(self, *exc):
+                pass
+
+        with self.assertRaisesRegex(TypeError, 'the context manager'):
+            with mycontext():
+                pass
+
+
+    def test_typo_exit(self):
+        class mycontext(ContextDecorator):
+            def __enter__(self):
+                pass
+            def __uxit__(self, *exc):
+                pass
+
+        with self.assertRaisesRegex(TypeError, 'the context manager.*__exit__'):
+            with mycontext():
+                pass
+
+
+    def test_contextdecorator_as_mixin(self):
+        class somecontext(object):
+            started = False
+            exc = None
+
+            def __enter__(self):
+                self.started = True
+                return self
+
+            def __exit__(self, *exc):
+                self.exc = exc
+
+        class mycontext(somecontext, ContextDecorator):
+            pass
+
+        context = mycontext()
+        @context
+        def test():
+            self.assertIsNone(context.exc)
+            self.assertTrue(context.started)
+        test()
+        self.assertEqual(context.exc, (None, None, None))
+
+
+    def test_contextmanager_as_decorator(self):
+        @contextmanager
+        def woohoo(y):
+            state.append(y)
+            yield
+            state.append(999)
+
+        state = []
+        @woohoo(1)
+        def test(x):
+            self.assertEqual(state, [1])
+            state.append(x)
+        test('something')
+        self.assertEqual(state, [1, 'something', 999])
+
+        # Issue #11647: Ensure the decorated function is 'reusable'
+        state = []
+        test('something else')
+        self.assertEqual(state, [1, 'something else', 999])
 
 
 class TestSuppress(unittest.TestCase):
@@ -296,50 +608,6 @@ class TestSuppress(unittest.TestCase):
             outer_continued = True
             1/0
         self.assertTrue(outer_continued)
-
-
-class NullcontextTestCase(unittest.TestCase):
-    def test_nullcontext(self):
-        class C:
-            pass
-        c = C()
-        with nullcontext(c) as c_in:
-            self.assertIs(c_in, c)
-
-
-class ClosingTestCase(unittest.TestCase):
-
-    #@support.requires_docstrings
-    def test_instance_docs(self):
-        # Issue 19330: ensure context manager instances have good docstrings
-        cm_docstring = closing.__doc__
-        obj = closing(None)
-        self.assertEqual(obj.__doc__, cm_docstring)
-
-    def test_closing(self):
-        state = []
-        class C:
-            def close(self):
-                state.append(1)
-        x = C()
-        self.assertEqual(state, [])
-        with closing(x) as y:
-            self.assertEqual(x, y)
-        self.assertEqual(state, [1])
-
-    def test_closing_error(self):
-        state = []
-        class C:
-            def close(self):
-                state.append(1)
-        x = C()
-        self.assertEqual(state, [])
-        with self.assertRaises(ZeroDivisionError):
-            with closing(x) as y:
-                self.assertEqual(x, y)
-                1 / 0
-        self.assertEqual(state, [1])
-
 
 
 class ContextManagerProtocolTests(unittest.TestCase):
@@ -443,5 +711,5 @@ class ContextManagerProtocolTests(unittest.TestCase):
         self.assertEqual(events, ["closed"])
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+if __name__ == '__main__': unittest.main()
