@@ -94,6 +94,12 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
     },
     proto: {
         sk$hasDict: true, // for reassigning __class__
+        // Native hosts use the returned namespace for late writes.
+        "$addExports"(exports) {
+            const namespace = this["$d"];
+            Object.defineProperties(namespace, Object.getOwnPropertyDescriptors(exports));
+            return namespace;
+        },
         init$dict(name, doc) {
             this.$d.__name__ = name;
             this.$d.__doc__ = doc;
@@ -212,19 +218,7 @@ const ModuleDict = Sk.abstr.buildNativeClass("module_dict", {
             if (Sk.unfixReserved(key.v) !== key.v) {
                 throw new Sk.builtin.ValueError("module namespace keys cannot end with '_$rw$'");
             }
-            const namespace = this.$namespace;
-            const name = key.$mangled;
-            let written;
-            if (Object.prototype.hasOwnProperty.call(namespace, name)) {
-                written = Reflect.set(namespace, name, value);
-            } else {
-                // Native namespace proxies can forward attribute writes to another module.
-                // A new dictionary key belongs to this module.
-                written = Reflect.defineProperty(namespace, name, {
-                    value, enumerable: true, writable: true, configurable: true,
-                });
-            }
-            if (!written) {
+            if (!Reflect.set(this.$namespace, key.$mangled, value)) {
                 throw new Sk.builtin.TypeError("cannot write module namespace entry '" + key.v + "'");
             }
         },

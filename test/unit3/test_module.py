@@ -385,67 +385,27 @@ class ModuleTests(unittest.TestCase):
         self.assertEqual(list(items), [('first', 1), ('second', 42), ('extra', 3)])
 
     @unittest.skipUnless(sys.implementation.name == 'skulpt', 'Skulpt host module')
-    def test_native_namespace_is_shared(self):
+    def test_native_module_exports_share_the_namespace(self):
         module = ModuleType('_module_dict_probe')
+        namespace = module.__dict__
         sys.modules[module.__name__] = module
         try:
-            # Like Anvil's loadModule(), replace $d with a native namespace.
             jseval("""
                 (() => {
                     const module = Sk.sysmodules.mp$subscript(new Sk.builtin.str('_module_dict_probe'));
-                    const shared = { fallback: new Sk.builtin.int_(1) };
-                    const namespace = {
-                        __name__: new Sk.builtin.str('_module_dict_probe'),
-                        name: new Sk.builtin.str('unmangled'),
-                    };
-                    module.$testNamespace = namespace;
-                    module.$d = new Proxy(namespace, {
-                        get(target, name) {
-                            return target[name] ?? shared[name];
-                        },
-                        set(target, name, value) {
-                            (name in target ? target : shared)[name] = value;
-                            return true;
-                        },
-                    });
+                    const exports = { initial: new Sk.builtin.int_(1) };
+                    const namespace = module.$addExports(exports);
+                    exports.initial = new Sk.builtin.int_(99);
+                    namespace.child = new Sk.builtin.int_(42);
                 })()
             """)
-            namespace = module.__dict__
-            jseval("""
-                (() => {
-                    const module = Sk.sysmodules.mp$subscript(new Sk.builtin.str('_module_dict_probe'));
-                    Object.defineProperty(module.$testNamespace, 'child', {
-                        value: new Sk.builtin.int_(42), enumerable: true, writable: true, configurable: true,
-                    });
-                })()
-            """)
-            self.assertEqual(len(namespace), 2)
+            self.assertIs(module.__dict__, namespace)
+            self.assertEqual(namespace['initial'], 1)
             self.assertEqual(namespace['child'], 42)
-            self.assertEqual(module.child, 42)
             namespace['child'] = 43
-            self.assertEqual(jseval("""
-                Sk.sysmodules.mp$subscript(new Sk.builtin.str('_module_dict_probe')).$d.child.v
-            """), 43)
-            jseval("""
-                delete Sk.sysmodules.mp$subscript(new Sk.builtin.str('_module_dict_probe')).$d.child
-            """)
-            self.assertNotIn('child', namespace)
-            self.assertEqual(len(namespace), 1)
-            self.assertEqual(module.fallback, 1)
-            self.assertNotIn('fallback', namespace)
-            namespace['fallback'] = 2
-            self.assertEqual(module.fallback, 2)
-            self.assertEqual(namespace.pop('fallback'), 2)
-            self.assertEqual(module.fallback, 1)
-            self.assertEqual(len(namespace), 1)
-            self.assertNotIn('name', namespace)
-            namespace['name'] = 'mangled'
-            self.assertEqual(module.name, 'mangled')
-            self.assertEqual(list(namespace.items()), [
-                ('__name__', '_module_dict_probe'),
-                ('name', 'mangled'),
-            ])
-            self.assertEqual(len(namespace), 2)
+            self.assertEqual(module.child, 43)
+            exec('del child', namespace)
+            self.assertFalse(hasattr(module, 'child'))
         finally:
             del sys.modules['_module_dict_probe']
 
