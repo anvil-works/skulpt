@@ -70,7 +70,8 @@ module.exports = (env, argv) => {
                 {
                      test: /\.js$/,
                      enforce: 'pre',
-                     exclude: styleexcludes,
+                     // Checkout directory names must not disable source linting.
+                     exclude: filename => styleexcludes.test(path.relative(__dirname, filename)),
                      loader: 'eslint-loader'
                 }
             ]

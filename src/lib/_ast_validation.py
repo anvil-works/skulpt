@@ -32,6 +32,67 @@ def _exprs(nodes, context=Load, null_ok=False):
         _expr(node, context)
 
 
+def _capture(name):
+    if name == '_': raise ValueError("can't capture name '_' in patterns")
+    _name(name)
+
+
+def _pattern_value(node):
+    _expr(node)
+    if isinstance(node, Constant):
+        if type(node.value) in (int, float, complex, bytes, str): return
+        raise ValueError('unexpected constant inside of a literal pattern')
+    if isinstance(node, (Attribute, JoinedStr, TemplateStr)): return
+    def negative(value, types):
+        return isinstance(value, UnaryOp) and isinstance(value.op, USub) and isinstance(value.operand, Constant) and type(value.operand.value) in types
+    if negative(node, (int, float, complex)): return
+    if isinstance(node, BinOp) and isinstance(node.op, (Add, Sub)):
+        left, right = node.left, node.right
+        real = (isinstance(left, Constant) and type(left.value) in (int, float)) or negative(left, (int, float))
+        imaginary = isinstance(right, Constant) and type(right.value) is complex and right.value.real == 0
+        if real and imaginary: return
+    raise ValueError('patterns may only match literals and attribute lookups')
+
+
+def _pattern(node, star_ok=False):
+    _positions(node)
+    if isinstance(node, MatchValue): _pattern_value(node.value)
+    elif isinstance(node, MatchSingleton):
+        if node.value is not None and type(node.value) is not bool:
+            raise ValueError('MatchSingleton can only contain True, False and None')
+    elif isinstance(node, MatchSequence):
+        for child in node.patterns: _pattern(child, True)
+    elif isinstance(node, MatchMapping):
+        if len(node.keys) != len(node.patterns):
+            raise ValueError("MatchMapping doesn't have the same number of keys as patterns")
+        if node.rest is not None: _capture(node.rest)
+        for key in node.keys:
+            if isinstance(key, Constant) and (key.value is None or type(key.value) is bool): continue
+            _pattern_value(key)
+        for child in node.patterns: _pattern(child)
+    elif isinstance(node, MatchClass):
+        if len(node.kwd_attrs) != len(node.kwd_patterns):
+            raise ValueError("MatchClass doesn't have the same number of keyword attributes as patterns")
+        _expr(node.cls)
+        cls = node.cls
+        while isinstance(cls, Attribute): cls = cls.value
+        if not isinstance(cls, Name):
+            raise ValueError('MatchClass cls field can only contain Name or Attribute nodes.')
+        for name in node.kwd_attrs: _name(name)
+        for child in node.patterns + node.kwd_patterns: _pattern(child)
+    elif isinstance(node, MatchStar):
+        if not star_ok: raise ValueError("can't use MatchStar here")
+        if node.name is not None: _capture(node.name)
+    elif isinstance(node, MatchAs):
+        if node.name is not None: _capture(node.name)
+        if node.pattern is not None:
+            if node.name is None: raise ValueError('MatchAs must specify a target name if a pattern is given')
+            _pattern(node.pattern)
+    elif isinstance(node, MatchOr):
+        if len(node.patterns) < 2: raise ValueError('MatchOr requires at least 2 patterns')
+        for child in node.patterns: _pattern(child)
+
+
 def _arguments(args):
     for arg in args.posonlyargs + args.args + args.kwonlyargs:
         _positions(arg)
@@ -159,7 +220,12 @@ def _stmt(node):
             if item.optional_vars is not None: _expr(item.optional_vars, Store)
         _body(node.body, owner)
     elif isinstance(node, Match):
-        raise NotImplementedError('edited pattern AST validation follows with pattern compilation')
+        _expr(node.subject)
+        _nonempty(node.cases, 'cases', 'Match')
+        for case in node.cases:
+            _pattern(case.pattern)
+            if case.guard is not None: _expr(case.guard)
+            _body(case.body, 'match_case')
     elif isinstance(node, Raise):
         if node.exc is not None:
             _expr(node.exc)
