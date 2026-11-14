@@ -672,21 +672,53 @@ Sk.exportSymbol("Sk.misceval.print_", Sk.misceval.print_);
  * @example
  * Sk.misceval.loadname("foo", Sk.globals);
  */
-Sk.misceval.loadname = function (name, other) {
-    var bi;
-    var v = other[name];
-    if (v !== undefined) {
-        return v;
+// Python/ceval.c LOAD_GLOBAL / LOAD_NAME: globals first, then the frame's
+// captured builtin mapping; only KeyError means a missing builtin name.
+Sk.misceval.getBuiltins = function (globals) {
+    let builtins = globals && globals.__builtins__;
+    if (builtins === undefined) {
+        const frame = Sk.misceval.currentFrame;
+        return frame ? frame.getBuiltins() : Sk.misceval.namespaceDict(Sk.builtins);
     }
-
-    bi = Sk.builtins[name];
-    if (bi !== undefined) {
-        return bi;
+    if (builtins instanceof Sk.builtin.module) {
+        builtins = Sk.misceval.namespaceDict(builtins.$d);
     }
+    return builtins;
+};
+Sk.exportSymbol("Sk.misceval.getBuiltins", Sk.misceval.getBuiltins);
 
+Sk.misceval.lookupBuiltin = function (name, builtins) {
+    try {
+        return Sk.misceval.retryOptionalSuspensionOrThrow(
+            Sk.abstr.objectGetItem(builtins, new Sk.builtin.str(Sk.unfixReserved(name)))
+        );
+    } catch (err) {
+        if (err instanceof Sk.builtin.KeyError) {return undefined;}
+        throw err;
+    }
+};
+Sk.exportSymbol("Sk.misceval.lookupBuiltin", Sk.misceval.lookupBuiltin);
+
+Sk.misceval.loadname = function (name, other, builtins) {
+    const value = other[name];
+    if (value !== undefined) {return value;}
+    const builtin = Sk.misceval.lookupBuiltin(name, builtins === undefined ? Sk.misceval.getBuiltins(other) : builtins);
+    if (builtin !== undefined) {return builtin;}
     throw new Sk.builtin.NameError("name '" + Sk.unfixReserved(name) + "' is not defined");
 };
 Sk.exportSymbol("Sk.misceval.loadname", Sk.misceval.loadname);
+
+// Python/ceval.c IMPORT_NAME uses only the frame's builtin __import__.
+Sk.misceval.importName = function (name, globals, locals, fromlist, level, builtins) {
+    const importer = Sk.misceval.lookupBuiltin("__import__", builtins);
+    if (importer === undefined) {throw new Sk.builtin.ImportError("__import__ not found");}
+    return Sk.misceval.callsimOrSuspendArray(importer, [
+        new Sk.builtin.str(name), Sk.misceval.namespaceDict(globals), locals,
+        fromlist === null ? Sk.builtin.none.none$ : new Sk.builtin.tuple(fromlist.map(name => new Sk.builtin.str(name))),
+        new Sk.builtin.int_(level)
+    ]);
+};
+Sk.exportSymbol("Sk.misceval.importName", Sk.misceval.importName);
 
 /**
  *
