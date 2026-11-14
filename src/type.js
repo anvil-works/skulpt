@@ -726,7 +726,7 @@ Sk.builtin.type.prototype.tp$getsets = {
         $set(value) {
             check_special_type_attr(this, value, Sk.builtin.str.$doc);
             this.prototype.__doc__ = value;
-            this.$classDict.dict$setItem(Sk.builtin.str.$doc, value);
+            if (this.$classDict !== undefined) {this.$classDict.dict$setItem(Sk.builtin.str.$doc, value);}
         },
     },
     __name__: {
@@ -783,7 +783,7 @@ Sk.builtin.type.prototype.tp$getsets = {
             // they can set the module to whatever they like
             check_special_type_attr(this, value, Sk.builtin.str.$module);
             this.prototype.__module__ = value;
-            this.$classDict.dict$setItem(Sk.builtin.str.$module, value);
+            if (this.$classDict !== undefined) {this.$classDict.dict$setItem(Sk.builtin.str.$module, value);}
         },
     },
 };
