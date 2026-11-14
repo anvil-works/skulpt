@@ -774,8 +774,11 @@ Sk.builtin.type.prototype.tp$getsets = {
                     if (!(result instanceof Sk.builtin.dict)) {
                         throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
                     }
-                    if (dict === undefined) {this.prototype.__annotations__ = result;}
-                    else {dict.dict$setItem(new Sk.builtin.str("__annotations_cache__"), result);}
+                    if (dict === undefined) {
+                        this.prototype.__annotations__ = result;
+                    } else {
+                        dict.dict$setItem(new Sk.builtin.str("__annotations_cache__"), result);
+                    }
                     return result;
                 });
             });
