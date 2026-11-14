@@ -195,7 +195,7 @@ Sk.builtin.prepReraiseStar = function (original, exceptions) {
     const none = Sk.builtin.none.none$;
     if (!(original instanceof Sk.builtin.BaseExceptionGroup)) {return exceptions[0] || none;}
     const raised = [], keep = new Set();
-    const metadata = exception => [exception.$traceback || none, exception.$cause || none, exception.context || none];
+    const metadata = exception => [exception.$traceback || none, exception.$cause || none, exception.$context || none];
     const originalMetadata = metadata(original);
     function collectLeaves(exception) {
         if (exception instanceof Sk.builtin.BaseExceptionGroup) {exception.$exceptions.v.forEach(collectLeaves);} else {keep.add(exception);}
