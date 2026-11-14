@@ -747,8 +747,10 @@ Sk.builtin.jsmillis = function jsmillis() {
     return now.valueOf();
 };
 
-const pyCode = Sk.abstr.buildNativeClass("code", {
+const pyCode = Sk.builtin.code = Sk.abstr.buildNativeClass("code", {
     constructor: function code(filename, compiled) {
+        // compile() supplies executable source. A function supplies its JS body
+        // with metadata and can only be inspected through this object.
         this.compiled = compiled;
         this.code = compiled.code;
         this.filename = filename;
@@ -758,10 +760,41 @@ const pyCode = Sk.abstr.buildNativeClass("code", {
             throw new Sk.builtin.NotImplementedError("cannot construct a code object in skulpt");
         },
         $r() {
-            return new Sk.builtin.str("<code object <module>, file " + this.filename + ">");
+            const name = this.compiled.co_name;
+            return new Sk.builtin.str("<code object " + (name ? name.v : "<module>") + ", file " + this.filename + ">");
         },
     },
+    getsets: {
+        co_filename: { $get() { return new Sk.builtin.str(this.filename); } },
+        co_name: { $get() { return this.compiled.co_name || new Sk.builtin.str("<module>"); } },
+        co_firstlineno: { $get() { return new Sk.builtin.int_(this.compiled.$codeMetadata ? this.compiled.$codeMetadata.firstlineno : 1); } },
+        co_argcount: {
+            $get() {
+                const code = this.compiled;
+                const count = code.co_argcount === undefined ? (code.co_varnames || []).length : code.co_argcount;
+                return new Sk.builtin.int_(count);
+            },
+        },
+        // The existing parser has no positional-only parameter syntax.
+        co_posonlyargcount: { $get() { return new Sk.builtin.int_(0); } },
+        co_kwonlyargcount: { $get() { return new Sk.builtin.int_(this.compiled.co_kwonlyargcount || 0); } },
+        co_varnames: {
+            $get() {
+                const metadata = this.compiled.$codeMetadata;
+                return new Sk.builtin.tuple(metadata ? metadata.varnames.map((name) => new Sk.builtin.str(name)) : []);
+            },
+        },
+        co_flags: { $get() { return new Sk.builtin.int_(this.compiled.$codeMetadata ? this.compiled.$codeMetadata.flags : 0); } },
+    },
 });
+
+// A compiled body is shared by closures and by every invocation's frame.
+Sk.builtin.code.fromCompiled = function (compiled, filename) {
+    if (compiled.$pythonCode === undefined) {
+        compiled.$pythonCode = new pyCode(filename, compiled);
+    }
+    return compiled.$pythonCode;
+};
 
 Sk.builtin.compile = function (source, filename, mode, flags, dont_inherit, optimize) {
     Sk.builtin.pyCheckType("source", "str", Sk.builtin.checkString(source));
@@ -794,6 +827,8 @@ Sk.builtin.exec = function (code, globals, locals) {
         code = Sk.compile(code, filename, "exec", true);
     } else if (!(code instanceof pyCode)) {
         throw new Sk.builtin.TypeError("exec() arg 1 must be a string, bytes or code object");
+    } else if (code.code === undefined) {
+        throw new Sk.builtin.NotImplementedError("executing function code objects is not supported in skulpt");
     }
     Sk.asserts.assert(
         globals === undefined || globals.constructor === Object,
@@ -1192,8 +1227,16 @@ Sk.builtin.next_ = function next_(iter, default_) {
 Sk.builtin.reload = function reload() {
     throw new Sk.builtin.NotImplementedError("reload is not yet implemented");
 };
-Sk.builtin.vars = function vars() {
-    throw new Sk.builtin.NotImplementedError("vars is not yet implemented");
+Sk.builtin.vars = function vars(obj) {
+    if (obj === undefined) {
+        return Sk.builtin.locals();
+    }
+    return Sk.misceval.chain(Sk.builtin.getattr(obj, new Sk.builtin.str("__dict__"), null), (dict) => {
+        if (dict === null) {
+            throw new Sk.builtin.TypeError("vars() argument must have __dict__ attribute");
+        }
+        return dict;
+    });
 };
 
 Sk.builtin.apply_ = function apply_() {
