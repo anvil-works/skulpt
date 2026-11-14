@@ -14,7 +14,7 @@ function parseSource(source, filename, expression) {
         return (expression ? parseExpression : parseModule)(source, {
             filename,
             pythonVersion: Sk.__future__.python3 ? 3 : 2,
-            asyncAwaitAsIdentifiers: true,
+            asyncAwaitAsIdentifiers: !Sk.__future__.python3,
             printFunction: Sk.__future__.print_function
         });
     } catch (error) {
