@@ -153,6 +153,18 @@ Sk.builtin.chainException = function (error, context) {
     error.$context = context;
 };
 
+// Python/ceval.c: CHECK_EXC_MATCH validates the complete tuple before matching.
+Sk.builtin.checkExceptType = function (condition) {
+    const types = condition instanceof Sk.builtin.tuple ? condition.v : [condition];
+    if (!types.every(cls => Sk.builtin.checkClass(cls) && cls.$isSubType(Sk.builtin.BaseException))) {
+        throw new Sk.builtin.TypeError("catching classes that do not inherit from BaseException is not allowed");
+    }
+    return types;
+};
+Sk.builtin.exceptionMatches = function (exception, condition) {
+    return Sk.builtin.checkExceptType(condition).some(cls => exception.ob$type.$isSubType(cls));
+};
+
 function checkDeleting(v, name, message) {
     if (v === undefined) {
         throw new Sk.builtin.TypeError(message === undefined ? `${name} may not be deleted` : message);
@@ -327,7 +339,7 @@ const UnboundLocalError = simpleExtends(
 const OSError = complexExtends(Exception, "OSError", "Base class for I/O related errors.", function (args, kws) {
     BaseExc_init.call(this, args, kws);
 });
-// const BlockingIOError = simpleExtends(OSError, "BlockingIOError", "I/O operation would block.");
+const BlockingIOError = simpleExtends(OSError, "BlockingIOError", "I/O operation would block.");
 // const ChildProcessError = simpleExtends(OSError, "ChildProcessError", "Child process error.");
 // const ConnectionError = simpleExtends(OSError, "ConnectionError", "Connection error.");
 // const BrokenPipeError = simpleExtends(ConnectionError, "BrokenPipeError", "Broken pipe.");
@@ -428,7 +440,7 @@ const pyExc = {
     UnboundLocalError,
     OSError,
     IOError: OSError,
-    // BlockingIOError,
+    BlockingIOError,
     // ChildProcessError,
     // ConnectionError,
     // BrokenPipeError,

@@ -30,7 +30,7 @@ def build_module(code, name='top'):
 def check_syntax_error(case, code, message):
     with case.assertRaisesRegex(SyntaxError, message): compile(code, '<test>', 'exec')
 
-# test_try_star/test_match join these cases when their compiler support lands.
+# test_match joins these cases when match compiler support lands.
 class TypeAnnotationTests(HarnessCase):
     def test_annotations_are_created_correctly(self):
         class C:
@@ -115,6 +115,37 @@ class TestSetupAnnotations(HarnessCase):
             except:
                 x: int = 1
         """)
+
+    def test_try_star(self):
+        self.check("""
+            try:
+                x: int = 1
+            except* Exception:
+                pass
+        """)
+        self.check("""
+            try:
+                pass
+            except* Exception:
+                pass
+            else:
+                x: int = 1
+        """)
+        self.check("""
+            try:
+                pass
+            except* Exception:
+                pass
+            finally:
+                x: int = 1
+        """)
+        self.check("""
+            try:
+                1/0
+            except* Exception:
+                x: int = 1
+        """)
+
 
 class DeferredEvaluationTests(HarnessCase):
     def test_class(self):
@@ -303,6 +334,24 @@ class ConditionalAnnotationTests(HarnessCase):
         """
         expected = {"before": "before", "after": "after"}
         self.check_scopes(code, expected, expected)
+
+    def test_try_star(self):
+        code = """
+            try:
+                if {cond}:
+                    raise Exception
+                in_try_star: "try"
+            except* Exception:
+                in_except_star: "except"
+            finally:
+                in_finally: "finally"
+        """
+        self.check_scopes(
+            code,
+            {"in_except_star": "except", "in_finally": "finally"},
+            {"in_try_star": "try", "in_finally": "finally"}
+        )
+
 
 class AdditionalDeferredEvaluationTests(HarnessCase):
     def test_module(self):
