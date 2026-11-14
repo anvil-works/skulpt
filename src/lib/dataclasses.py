@@ -255,7 +255,7 @@ def _collect_inherited_fields(cls, frozen):
 
 
 def _process_own_fields(cls, all_fields, default_kw_only):
-    annotations = cls.__dict__.get("__annotations__", {})
+    annotations = getattr(cls, "__annotations__", {})
     class_dict = cls.__dict__
     seen_kw_only = False
     for name, typ in annotations.items():

@@ -682,6 +682,15 @@ function $builtinmodule() {
         },
     });
 
+    function classAnnotations(ns) {
+        const annotations = ns.mp$lookup(new pyStr("__annotations__"));
+        if (annotations !== undefined) {
+            return annotations;
+        }
+        const annotate = ns.mp$lookup(new pyStr("__annotate_func__"));
+        return annotate === undefined ? new pyDict() : pyCallOrSuspend(annotate, [new Sk.builtin.int_(1)]);
+    }
+
     // ==================== NamedTuple ====================
     // NamedTuple is a callable factory that creates namedtuple classes
     // It also supports class-based syntax via __mro_entries__ and NamedTupleMeta (like CPython)
@@ -718,50 +727,49 @@ function $builtinmodule() {
                     throw new pyTypeError("NamedTuple supports only a single NamedTuple base");
                 }
 
-                // Get __annotations__ from namespace
-                const annotations = ns.mp$lookup(new pyStr("__annotations__")) || new pyDict();
-
-                // Extract field names and types
-                const field_names = [];
-                for (let iter = pyIter(annotations), k = iter.tp$iternext();
-                     k !== undefined; k = iter.tp$iternext()) {
-                    field_names.push(k);
-                }
-
-                // Extract defaults from namespace (class body assignments)
-                const defaults = [];
-                for (const fname of field_names) {
-                    const val = ns.mp$lookup(fname);
-                    if (val !== undefined) {
-                        defaults.push(val);
-                    } else if (defaults.length) {
-                        throw new pyTypeError("Non-default namedtuple field " + fname.toString() + " cannot follow default fields");
+                return chainOrSuspend(classAnnotations(ns), (annotations) => {
+                    // Extract field names and types
+                    const field_names = [];
+                    for (let iter = pyIter(annotations), k = iter.tp$iternext();
+                         k !== undefined; k = iter.tp$iternext()) {
+                        field_names.push(k);
                     }
-                }
 
-                // Get module from namespace
-                const module = ns.mp$lookup(new pyStr("__module__"));
-
-                // Retain the generated constructor while preserving class-body members.
-                return chainOrSuspend(
-                    makeNamedTuple(name, field_names, defaults, module, annotations),
-                    (klass) => {
-                        const prohibited = new Set([
-                            "__new__", "__init__", "__slots__", "__getnewargs__",
-                            "_fields", "_field_defaults", "_make", "_replace", "_asdict", "_source",
-                        ]);
-                        for (let iter = pyIter(ns), key = iter.tp$iternext(); key !== undefined; key = iter.tp$iternext()) {
-                            const name = key.toString();
-                            if (prohibited.has(name)) {
-                                throw new Sk.builtin.AttributeError("Cannot overwrite NamedTuple attribute " + name);
-                            }
-                            if (annotations.mp$lookup(key) === undefined && name !== "__module__" && name !== "__annotations__" && name !== "__name__") {
-                                klass.tp$setattr(key, ns.mp$subscript(key));
-                            }
+                    // Extract defaults from namespace (class body assignments)
+                    const defaults = [];
+                    for (const fname of field_names) {
+                        const val = ns.mp$lookup(fname);
+                        if (val !== undefined) {
+                            defaults.push(val);
+                        } else if (defaults.length) {
+                            throw new pyTypeError("Non-default namedtuple field " + fname.toString() + " cannot follow default fields");
                         }
-                        return klass;
                     }
-                );
+
+                    // Get module from namespace
+                    const module = ns.mp$lookup(new pyStr("__module__"));
+
+                    // Retain the generated constructor while preserving class-body members.
+                    return chainOrSuspend(
+                        makeNamedTuple(name, field_names, defaults, module, annotations),
+                        (klass) => {
+                            const prohibited = new Set([
+                                "__new__", "__init__", "__slots__", "__getnewargs__",
+                                "_fields", "_field_defaults", "_make", "_replace", "_asdict", "_source",
+                            ]);
+                            for (let iter = pyIter(ns), key = iter.tp$iternext(); key !== undefined; key = iter.tp$iternext()) {
+                                const name = key.toString();
+                                if (prohibited.has(name)) {
+                                    throw new Sk.builtin.AttributeError("Cannot overwrite NamedTuple attribute " + name);
+                                }
+                                if (annotations.mp$lookup(key) === undefined && name !== "__module__" && !["__annotations__", "__annotate_func__", "__classdictcell__", "__name__"].includes(name)) {
+                                    klass.tp$setattr(key, ns.mp$subscript(key));
+                                }
+                            }
+                            return klass;
+                        }
+                    );
+                });
             },
         },
     });
@@ -844,53 +852,54 @@ function $builtinmodule() {
                     total = kwargs[i + 1];
                 }
                 const [name, bases, ns] = args;
-                const annotations = new pyDict();
-                const required = new Set();
-                const optional = new Set();
-                for (const base of bases.v) {
-                    if (base.ob$type !== TypedDictMeta) {
-                        throw new pyTypeError("cannot inherit from both a TypedDict type and a non-TypedDict base class");
+                return chainOrSuspend(classAnnotations(ns), (own) => {
+                    const annotations = new pyDict();
+                    const required = new Set();
+                    const optional = new Set();
+                    for (const base of bases.v) {
+                        if (base.ob$type !== TypedDictMeta) {
+                            throw new pyTypeError("cannot inherit from both a TypedDict type and a non-TypedDict base class");
+                        }
+                        const inherited = base.$typeLookup(new pyStr("__annotations__"));
+                        for (const [key, value] of inherited.$items()) {
+                            annotations.mp$ass_subscript(key, value);
+                        }
+                        for (const key of Sk.misceval.arrayFromIterable(base.$typeLookup(new pyStr("__required_keys__")))) {
+                            required.add(key.toString());
+                            optional.delete(key.toString());
+                        }
+                        for (const key of Sk.misceval.arrayFromIterable(base.$typeLookup(new pyStr("__optional_keys__")))) {
+                            optional.add(key.toString());
+                            required.delete(key.toString());
+                        }
                     }
-                    const inherited = base.$typeLookup(new pyStr("__annotations__"));
-                    for (const [key, value] of inherited.$items()) {
+                    for (const [key, value] of own.$items()) {
                         annotations.mp$ass_subscript(key, value);
+                        const name = key.toString();
+                        let qualifier = value;
+                        while (qualifier.$origin === typing.Annotated) {
+                            qualifier = qualifier.$args.v[0];
+                        }
+                        const isRequired = qualifier.$origin === typing.Required ||
+                            (qualifier.$origin !== typing.NotRequired && isTrue(total));
+                        if (isRequired) {
+                            required.add(name);
+                            optional.delete(name);
+                        } else {
+                            optional.add(name);
+                            required.delete(name);
+                        }
                     }
-                    for (const key of Sk.misceval.arrayFromIterable(base.$typeLookup(new pyStr("__required_keys__")))) {
-                        required.add(key.toString());
-                        optional.delete(key.toString());
+                    ns.mp$ass_subscript(new pyStr("__annotations__"), annotations);
+                    const origBases = new pyStr("__orig_bases__");
+                    if (ns.mp$lookup(origBases) === undefined) {
+                        ns.mp$ass_subscript(origBases, bases);
                     }
-                    for (const key of Sk.misceval.arrayFromIterable(base.$typeLookup(new pyStr("__optional_keys__")))) {
-                        optional.add(key.toString());
-                        required.delete(key.toString());
-                    }
-                }
-                const own = ns.mp$lookup(new pyStr("__annotations__")) || new pyDict();
-                for (const [key, value] of own.$items()) {
-                    annotations.mp$ass_subscript(key, value);
-                    const name = key.toString();
-                    let qualifier = value;
-                    while (qualifier.$origin === typing.Annotated) {
-                        qualifier = qualifier.$args.v[0];
-                    }
-                    const isRequired = qualifier.$origin === typing.Required ||
-                        (qualifier.$origin !== typing.NotRequired && isTrue(total));
-                    if (isRequired) {
-                        required.add(name);
-                        optional.delete(name);
-                    } else {
-                        optional.add(name);
-                        required.delete(name);
-                    }
-                }
-                ns.mp$ass_subscript(new pyStr("__annotations__"), annotations);
-                const origBases = new pyStr("__orig_bases__");
-                if (ns.mp$lookup(origBases) === undefined) {
-                    ns.mp$ass_subscript(origBases, bases);
-                }
-                ns.mp$ass_subscript(new pyStr("__total__"), total);
-                ns.mp$ass_subscript(new pyStr("__required_keys__"), new pyFrozenSet([...required].map((key) => new pyStr(key))));
-                ns.mp$ass_subscript(new pyStr("__optional_keys__"), new pyFrozenSet([...optional].map((key) => new pyStr(key))));
-                return pyType.prototype.tp$new.call(this, [name, new pyTuple([pyDict]), ns], []);
+                    ns.mp$ass_subscript(new pyStr("__total__"), total);
+                    ns.mp$ass_subscript(new pyStr("__required_keys__"), new pyFrozenSet([...required].map((key) => new pyStr(key))));
+                    ns.mp$ass_subscript(new pyStr("__optional_keys__"), new pyFrozenSet([...optional].map((key) => new pyStr(key))));
+                    return pyType.prototype.tp$new.call(this, [name, new pyTuple([pyDict]), ns], []);
+                });
             },
             tp$call(args, kwargs) {
                 return pyCallOrSuspend(pyDict, args, kwargs);

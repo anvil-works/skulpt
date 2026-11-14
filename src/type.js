@@ -725,6 +725,9 @@ Sk.builtin.type.prototype.tp$getsets = {
                 throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '__annotate__'");
             }
             const dict = this.$classDict;
+            if (dict === undefined) {
+                return this.prototype.hasOwnProperty("__annotate__") ? this.prototype.__annotate__ : Sk.builtin.none.none$;
+            }
             let annotate = dict.quick$lookup(new Sk.builtin.str("__annotate__"));
             if (annotate === undefined) {annotate = dict.quick$lookup(new Sk.builtin.str("__annotate_func__"));}
             if (annotate === undefined) {
@@ -739,8 +742,14 @@ Sk.builtin.type.prototype.tp$getsets = {
             if (!Sk.builtin.checkNone(value) && !Sk.builtin.checkCallable(value)) {
                 throw new Sk.builtin.TypeError("__annotate__ must be callable or None");
             }
-            this.$classDict.dict$setItem(new Sk.builtin.str("__annotate_func__"), value);
-            if (!Sk.builtin.checkNone(value)) {this.$classDict.dict$delItem(new Sk.builtin.str("__annotations_cache__"));}
+            const dict = this.$classDict;
+            if (dict === undefined) {
+                this.prototype.__annotate__ = value;
+                if (!Sk.builtin.checkNone(value)) {delete this.prototype.__annotations__;}
+                return;
+            }
+            dict.dict$setItem(new Sk.builtin.str("__annotate_func__"), value);
+            if (!Sk.builtin.checkNone(value)) {dict.dict$delItem(new Sk.builtin.str("__annotations_cache__"));}
         },
     },
     __annotations__: {
@@ -749,8 +758,12 @@ Sk.builtin.type.prototype.tp$getsets = {
                 throw new Sk.builtin.AttributeError("type object '" + this.prototype.tp$name + "' has no attribute '__annotations__'");
             }
             const dict = this.$classDict;
-            let annotations = dict.quick$lookup(new Sk.builtin.str("__annotations__"));
-            if (annotations === undefined) {annotations = dict.quick$lookup(new Sk.builtin.str("__annotations_cache__"));}
+            let annotations = dict === undefined
+                ? (this.prototype.hasOwnProperty("__annotations__") ? this.prototype.__annotations__ : undefined)
+                : dict.quick$lookup(new Sk.builtin.str("__annotations__"));
+            if (annotations === undefined && dict !== undefined) {
+                annotations = dict.quick$lookup(new Sk.builtin.str("__annotations_cache__"));
+            }
             if (annotations !== undefined) {
                 return annotations.tp$descr_get ? annotations.tp$descr_get(null, this, true) : annotations;
             }
@@ -761,7 +774,8 @@ Sk.builtin.type.prototype.tp$getsets = {
                     if (!(result instanceof Sk.builtin.dict)) {
                         throw new Sk.builtin.TypeError("__annotate__ returned non-dict of type '" + Sk.abstr.typeName(result) + "'");
                     }
-                    dict.dict$setItem(new Sk.builtin.str("__annotations_cache__"), result);
+                    if (dict === undefined) {this.prototype.__annotations__ = result;}
+                    else {dict.dict$setItem(new Sk.builtin.str("__annotations_cache__"), result);}
                     return result;
                 });
             });
@@ -769,6 +783,17 @@ Sk.builtin.type.prototype.tp$getsets = {
         $set(value) {
             if (!this.sk$klass) {throw new Sk.builtin.TypeError("cannot set '__annotations__' attribute of immutable type '" + this.prototype.tp$name + "'");}
             const dict = this.$classDict;
+            if (dict === undefined) {
+                const proto = this.prototype;
+                if (value === undefined) {
+                    if (!proto.hasOwnProperty("__annotations__")) {throw new Sk.builtin.AttributeError("__annotations__");}
+                    delete proto.__annotations__;
+                } else {
+                    proto.__annotations__ = value;
+                }
+                delete proto.__annotate__;
+                return;
+            }
             const annotations = new Sk.builtin.str("__annotations__");
             const cache = new Sk.builtin.str("__annotations_cache__");
             const key = dict.quick$lookup(annotations) === undefined ? cache : annotations;
