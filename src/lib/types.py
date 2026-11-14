@@ -209,8 +209,10 @@ def get_original_bases(cls, /):
         ) from None
 
 
-del sys, _f, _g, _C, _x                           # Not for export
 GenericAlias = type(type[int])
-UnionType = type(int | str)
+if sys.version_info[0] >= 3:
+    UnionType = type(int | str)
+
+del sys, _f, _g, _C, _x                           # Not for export
 
 __all__ = list(n for n in globals() if n[:1] != '_')

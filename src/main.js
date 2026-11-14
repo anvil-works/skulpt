@@ -80,7 +80,7 @@ require("./import.js");
 require("./timsort.js");
 require("./super.js");
 require("./generic_alias.js");
-require("./union_type.js");
+require("./union.js");
 require("./builtindict.js");
 require("./constants.js");
 require("./exception_group.js");
