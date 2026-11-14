@@ -441,5 +441,103 @@ class TestSpecifics(unittest.TestCase):
         self.assertEqual(result['result'], 42)
         self.assertIs(result['__builtins__'], custom)
 
+    def test_exec_globals_frozen(self):
+        class frozendict_error(Exception):
+            pass
+
+        class frozendict(dict):
+            def __setitem__(self, key, value):
+                raise frozendict_error("frozendict is readonly")
+
+        # read-only builtins
+        if isinstance(__builtins__, types.ModuleType):
+            frozen_builtins = frozendict(__builtins__.__dict__)
+        else:
+            frozen_builtins = frozendict(__builtins__)
+        code = compile("__builtins__['superglobal']=2; print(superglobal)", "test", "exec")
+        self.assertRaises(frozendict_error,
+                          exec, code, {'__builtins__': frozen_builtins})
+
+        # no __build_class__ function
+        code = compile("class A: pass", "", "exec")
+        self.assertRaisesRegex(NameError, "__build_class__ not found",
+                               exec, code, {'__builtins__': {}})
+        # __build_class__ in a custom __builtins__
+        exec(code, {'__builtins__': frozen_builtins})
+        self.assertRaisesRegex(NameError, "__build_class__ not found",
+                               exec, code, {'__builtins__': frozendict()})
+
+        # read-only globals
+        namespace = frozendict({})
+        code = compile("x=1", "test", "exec")
+        self.assertRaises(frozendict_error,
+                          exec, code, namespace)
+
+
+    # CPython codegen_class / builtin___build_class__ ordering and hook dispatch.
+    def test_class_builder_hook(self):
+        import builtins
+        events = []
+        def hook(body, name, *bases, **kwargs):
+            events.append((body.__name__, name, bases, kwargs))
+            with self.assertRaises(TypeError):
+                body(1)
+            return builtins.__build_class__(body, name, *bases, **kwargs)
+        custom = dict(vars(builtins))
+        custom['__build_class__'] = hook
+        ns = {'__builtins__': custom, '__name__': 'example'}
+        exec('class C(object):\n value = 42\n def method(self): return __class__', ns)
+        self.assertEqual(events, [('C', 'C', (object,), {})])
+        self.assertEqual(ns['C'].value, 42)
+        self.assertEqual(ns['C'].__module__, 'example')
+        self.assertIs(ns['C']().method(), ns['C'])
+
+    def test_class_builder_lookup_before_bases(self):
+        events = []
+        ns = {'__builtins__': {}, 'base': lambda: events.append('base')}
+        with self.assertRaisesRegex(NameError, '__build_class__ not found'):
+            exec('class C(base()): pass', ns)
+        self.assertEqual(events, [])
+
+    def test_class_builder_argument_validation(self):
+        import builtins
+        build = builtins.__build_class__
+        self.assertRaises(TypeError, build)
+        self.assertRaises(TypeError, build, None, 'C')
+        self.assertRaises(TypeError, build, lambda: None, 1)
+        self.assertRaises(TypeError, build, len, 'C')
+        cls = build(lambda: None, 'C')
+        self.assertEqual(cls.__name__, 'C')
+
+    # codegen_class returns the cell without reading __prepare__'s mapping.
+    def test_class_cell_return_ignores_namespace_lookup(self):
+        class Namespace(dict):
+            def __getitem__(self, key):
+                if key == '__classcell__':
+                    raise ValueError('unexpected class cell lookup')
+                return dict.__getitem__(self, key)
+        class Meta(type):
+            @classmethod
+            def __prepare__(cls, name, bases):
+                return Namespace()
+        class C(metaclass=Meta):
+            def method(self):
+                return __class__
+        self.assertIs(C().method(), C)
+
+    def test_direct_class_body_uses_globals(self):
+        import builtins
+        seen = []
+        def hook(body, name):
+            body()
+            return object
+        custom = dict(vars(builtins))
+        custom['__build_class__'] = hook
+        ns = {'__builtins__': custom, 'seen': seen}
+        exec('class C:\n seen.append(locals() is globals())\n x = 42', ns)
+        self.assertEqual(seen, [True])
+        self.assertEqual(ns['x'], 42)
+        self.assertIs(ns['C'], object)
+
 if __name__ == "__main__":
     unittest.main()
