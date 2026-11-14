@@ -262,5 +262,61 @@ class TestSpecifics(unittest.TestCase):
         self.assertRaises(TypeError, compile, 'pass', '?', 'exec',
                           mode='eval', source='0', filename='tmp')
 
+    # CPython interactive-mode methods; assertions unchanged.
+    def compile_single(self, source):
+        compile(source, "<single>", "single")
+
+    def assertInvalidSingle(self, source):
+        self.assertRaises(SyntaxError, self.compile_single, source)
+
+    def test_single_statement(self):
+        self.compile_single("1 + 2")
+        self.compile_single("\n1 + 2")
+        self.compile_single("1 + 2\n")
+        self.compile_single("1 + 2\n\n")
+        self.compile_single("1 + 2\t\t\n")
+        self.compile_single("1 + 2\t\t\n        ")
+        self.compile_single("1 + 2 # one plus two")
+        self.compile_single("1; 2")
+        self.compile_single("import sys; sys")
+        self.compile_single("def f():\n   pass")
+        self.compile_single("while False:\n   pass")
+        self.compile_single("if x:\n   f(x)")
+        self.compile_single("if x:\n   f(x)\nelse:\n   g(x)")
+        self.compile_single("class T:\n   pass")
+        self.compile_single("c = '''\na=1\nb=2\nc=3\n'''")
+
+    def test_bad_single_statement(self):
+        self.assertInvalidSingle('1\n2')
+        self.assertInvalidSingle('def f(): pass')
+        self.assertInvalidSingle('a = 13\nb = 187')
+        self.assertInvalidSingle('del x\ndel y')
+        self.assertInvalidSingle('f()\ng()')
+        self.assertInvalidSingle('f()\n# blah\nblah()')
+        self.assertInvalidSingle('f()\nxy # blah\nblah()')
+        self.assertInvalidSingle('x = 5 # comment\nx = 6\n')
+        self.assertInvalidSingle("c = '''\nd=1\n'''\na = 1\n\nb = 2\n")
+
+    def test_docstring_interactive_mode(self):
+        srcs = [
+            """def with_docstring():
+                "docstring"
+            """,
+            """class with_docstring:
+                "docstring"
+            """,
+        ]
+
+        for opt in [0, 1, 2]:
+            for src in srcs:
+                if True:  # No subTest context in Skulpt unittest.
+                    code = compile(textwrap.dedent(src), "<test>", "single", optimize=opt)
+                    ns = {}
+                    exec(code, ns)
+                    if opt < 2:
+                        self.assertEqual(ns['with_docstring'].__doc__, "docstring")
+                    else:
+                        self.assertIsNone(ns['with_docstring'].__doc__)
+
 if __name__ == "__main__":
     unittest.main()
