@@ -304,3 +304,36 @@ Full execution validation also restores the explicit Python 2 annotated-assignme
 The variable annotation review correction shares namespace scope analysis for nonsimple annotations and initializes conditional bookkeeping for every module annotation, including future mode. A CPython-checked regression covers nonsimple closure captures and empty conditional sets. The duplicate upstream format-name collision method remains only in its existing class-scope test module. Legacy annotation fixture/test expectations are updated to CPython 3.14: default modules no longer create __annotations__ eagerly, explicit mapping writes were removed upstream, and the separate-globals/locals exec method now accesses __annotate__ after merging namespaces.
 
 A further Spec correction retains conditional parent bookkeeping without capturing its synthetic set in an annotation function unless a simple annotation requires a membership check. The namespace regression verifies closure arity with conditional nonsimple targets in either statement order.
+
+## Exception notes and chaining descriptors
+
+Upstream supplies exception notes, chaining descriptors and the OSError
+builtin. The compiler stack retains a regression for note descriptors and
+native list append.
+
+## Exception group runtime
+
+`stu-dev/compiler/exception-groups` implements BaseExceptionGroup construction,
+readonly message/exceptions, derive, subgroup and split, following
+Objects/exceptions.c. ExceptionGroup is created through the existing type
+constructor with BaseExceptionGroup and Exception bases, matching CPython's
+mutable heap type. Construction snapshots the exceptions, chooses ExceptionGroup
+for non-base exceptions, validates subclass restrictions and preserves custom
+sequence repr. Recursive partitioning retains hierarchy/order/leaf identity,
+uses overridden derive and copies cause/context/notes. Predicates, derive and
+metadata descriptors may suspend. Both group names are Python 3-only builtins.
+
+Thirty-six unchanged upstream methods and the repr test with its Sequence ABC
+helper base omitted, plus two CPython-checked regressions, cover construction,
+multiple inheritance, fields/repr, generic aliases, splitting and custom derive
+metadata. Harness adapters provide subTest/assertIsSubclass and narrow the
+helper's known list template assertion. Existing MemoryError is exposed because
+the actual upstream group helper uses it. Class-subscript and repr failure
+diagnostics are aligned where these upstream methods require them. Traceback
+introspection and the upstream limited-thread-stack machinery remain separate
+runtime work; except-star compilation follows the group runtime.
+
+The group Spec review correction retains supplied exact tuple identity while
+converting tuple subclasses, and applies Python string conversion to message
+subclasses. A CPython-checked regression covers both identities and conversion
+failures.
