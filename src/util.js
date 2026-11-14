@@ -46,7 +46,7 @@ Sk.exportSymbol = function (name, object) {
 };
 
 Sk.isArrayLike = function (object) {
-    if ((object instanceof Array) || (object && object.length && (typeof object.length == "number"))) {
+    if ((Array.isArray(object)) || (object && object.length && (typeof object.length == "number"))) {
         return true;
     }
     return false;
