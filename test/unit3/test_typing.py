@@ -794,9 +794,9 @@ class TestSkulptUnsupportedTyping(unittest.TestCase):
 
     def test_unsupported_parameter_options(self):
         self.assertTrue(TypeVar("T", infer_variance=True).__infer_variance__)
+        self.assertIs(ParamSpec("P", default=...).__default__, ...)
+        self.assertEqual(TypeVarTuple("Ts", default=tuple[int]).__default__, tuple[int])
         for parameter in (ParamSpec, TypeVarTuple):
-            with self.assertRaises(NotImplementedError):
-                parameter("P", default=int)
             with self.assertRaises(TypeError):
                 parameter(42)
         with self.assertRaises(NotImplementedError):
