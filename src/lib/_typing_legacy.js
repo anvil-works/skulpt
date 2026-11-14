@@ -57,7 +57,7 @@ function $builtinmodule() {
         if (arg === pyNone) {
             return pyNone.ob$type;
         }
-        return arg instanceof pyStr ? new typing.ForwardRef(arg.toString()) : arg;
+        return arg instanceof pyStr ? pyCall(typing.ForwardRef, [arg]) : arg;
     }
 
     // ==================== _SpecialForm ====================

@@ -787,9 +787,8 @@ class TestSkulptUnsupportedTyping(unittest.TestCase):
         from typing import get_type_hints
         def f(value: "MissingType"):
             pass
-        with self.assertRaises(NotImplementedError):
-            get_type_hints(f, {}, {})
-        with self.assertRaises(NotImplementedError):
+        self.assertEqual(get_type_hints(f, {"MissingType": int}), {"value": int})
+        with self.assertRaises(NameError):
             get_type_hints(f, include_extras=True)
 
     def test_unsupported_parameter_options(self):
@@ -799,8 +798,7 @@ class TestSkulptUnsupportedTyping(unittest.TestCase):
         for parameter in (ParamSpec, TypeVarTuple):
             with self.assertRaises(TypeError):
                 parameter(42)
-        with self.assertRaises(NotImplementedError):
-            ForwardRef("T", module="other")
+        self.assertEqual(ForwardRef("T", module="other").__forward_module__, "other")
         with self.assertRaises(TypeError):
             ForwardRef(42)
 
