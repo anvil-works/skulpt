@@ -1418,6 +1418,10 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
             get(target, name) {
                 // Generated Python identifiers are reserved-name mangled; these
                 // unmangled properties belong to the JS execution machinery.
+                if (typeof name === "string" && name[0] === "$" && namespace.mp$subscript === undefined) {
+                    // Native module helpers stay outside the Python dictionary.
+                    return Reflect.get(namespace, name);
+                }
                 if (typeof name !== "string" || name === "constructor" || name[0] === "$") {
                     return Reflect.get(target, name);
                 }
@@ -1467,6 +1471,34 @@ Sk.misceval.namespaceToJs = function (namespace, globals) {
     return entry[role];
 };
 Sk.exportSymbol("Sk.misceval.namespaceToJs", Sk.misceval.namespaceToJs);
+
+// Native module functions close over their original JS namespace. Bind its
+// existing properties to the same Python dictionary used by module attributes,
+// preserving live stdout/state access after import replaces the module proxy.
+Sk.misceval.moduleNamespace = function (namespace) {
+    const proxy = Sk.misceval.namespaceToJs(namespace);
+    if (namespace !== proxy && namespace.mp$subscript === undefined && !namespaceCache.get(namespace).boundModule) {
+        const entry = namespaceCache.get(namespace);
+        entry.boundModule = true;
+        for (const name of Object.keys(namespace)) {
+            if (name[0] === "$") {continue;}
+            const key = new Sk.builtin.str(Sk.unfixReserved(name));
+            Object.defineProperty(namespace, name, {
+                enumerable: true, configurable: true,
+                get() { return entry.dict.mp$lookup(key); },
+                set(value) {
+                    if (value === undefined) {
+                        if (entry.dict.mp$lookup(key) !== undefined) {entry.dict.dict$delItem(key);}
+                    } else {
+                        entry.dict.dict$setItem(key, value);
+                    }
+                },
+            });
+        }
+    }
+    return proxy;
+};
+Sk.exportSymbol("Sk.misceval.moduleNamespace", Sk.misceval.moduleNamespace);
 
 Sk.misceval.namespaceDict = function (namespace) {
     Sk.misceval.namespaceToJs(namespace);
