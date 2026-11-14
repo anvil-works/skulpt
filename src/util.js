@@ -2,6 +2,7 @@
 // Declare these together to retain V8 fast properties in both build modes.
 var Sk = { // jshint ignore:line
     unicode: undefined,
+    parseExpression: undefined,
     build: {
         version: SKULPT_VERSION,
         githash: GITHASH,
