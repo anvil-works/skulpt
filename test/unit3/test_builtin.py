@@ -377,17 +377,17 @@ class BuiltinTest(unittest.TestCase):
         self.assertEqual(eval('c', globals, locals), 300)
         globals = {'a': 1, 'b': 2}
         locals = {'b': 200, 'c': 300}
-        # bom = b'\xef\xbb\xbf'
-        # self.assertEqual(eval(bom + b'a', globals, locals), 1)
+        bom = b'\xef\xbb\xbf'
+        self.assertEqual(eval(bom + b'a', globals, locals), 1)
         self.assertEqual(eval('"\xe5"', globals), "\xe5")
         self.assertRaises(TypeError, eval)
         self.assertRaises(TypeError, eval, ())
-        # self.assertRaises(SyntaxError, eval, bom[:2] + b'a')
+        self.assertRaises(SyntaxError, eval, bom[:2] + b'a')
 
-        # class X:
-        #     def __getitem__(self, key):
-        #         raise ValueError
-        # self.assertRaises(ValueError, eval, "foo", {}, X())
+        class X:
+            def __getitem__(self, key):
+                raise ValueError
+        self.assertRaises(ValueError, eval, "foo", {}, X())
 
     def test_exec(self):
         g = {}
