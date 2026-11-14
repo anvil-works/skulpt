@@ -385,21 +385,21 @@ class ModuleTests(unittest.TestCase):
         self.assertEqual(list(items), [('first', 1), ('second', 42), ('extra', 3)])
 
     @unittest.skipUnless(sys.implementation.name == 'skulpt', 'Skulpt host module')
-    def test_native_module_exports_share_the_namespace(self):
+    def test_native_module_uses_plain_namespace(self):
         module = ModuleType('_module_dict_probe')
-        namespace = module.__dict__
         sys.modules[module.__name__] = module
         try:
             jseval("""
                 (() => {
                     const module = Sk.sysmodules.mp$subscript(new Sk.builtin.str('_module_dict_probe'));
-                    const exports = { initial: new Sk.builtin.int_(1) };
-                    const namespace = module.$addExports(exports);
-                    exports.initial = new Sk.builtin.int_(99);
-                    namespace.child = new Sk.builtin.int_(42);
+                    module.$d = { initial: new Sk.builtin.int_(1) };
                 })()
             """)
-            self.assertIs(module.__dict__, namespace)
+            namespace = module.__dict__
+            jseval("""
+                Sk.sysmodules.mp$subscript(new Sk.builtin.str('_module_dict_probe')).$d.child =
+                    new Sk.builtin.int_(42)
+            """)
             self.assertEqual(namespace['initial'], 1)
             self.assertEqual(namespace['child'], 42)
             namespace['child'] = 43

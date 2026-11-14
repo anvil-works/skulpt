@@ -94,12 +94,6 @@ Sk.builtin.module = Sk.abstr.buildNativeClass("module", {
     },
     proto: {
         sk$hasDict: true, // for reassigning __class__
-        // Native hosts use the returned namespace for late writes.
-        "$addExports"(exports) {
-            const namespace = this["$d"];
-            Object.defineProperties(namespace, Object.getOwnPropertyDescriptors(exports));
-            return namespace;
-        },
         init$dict(name, doc) {
             this.$d.__name__ = name;
             this.$d.__doc__ = doc;
