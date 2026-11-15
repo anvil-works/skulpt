@@ -169,10 +169,6 @@ class _AssertRaisesContext(object):
         feedback = ""
         self.exception = exc_value
         try:
-            act_exc = exc_type.__name__
-        except AttributeError:
-            act_exc = str(exc_type)
-        try:
             exp_exc = self.expected.__name__
         except AttributeError:
             exp_exc = str(self.expected)
@@ -181,10 +177,7 @@ class _AssertRaisesContext(object):
             res = False
             feedback = "{} not raised".format(exp_exc)
         elif not issubclass(exc_type, self.expected):
-            if not self.test_case._legacy_assertions:
-                return False
-            res = False
-            feedback = "Expected {} but got {}".format(exp_exc, act_exc)
+            return False
 
         elif self.expected_regex is not None:
             expected_regex = self.expected_regex
@@ -192,7 +185,7 @@ class _AssertRaisesContext(object):
                 res = False
                 feedback = '"{}" does not match "{}"'.format(expected_regex.pattern, str(exc_value))
 
-        self.test_case.appendResult(res, act_exc, exp_exc, feedback)
+        self.test_case._check_assertion(res, feedback)
 
         return True
 
@@ -268,7 +261,6 @@ class TestResult(object):
 class TestCase(object):
     failureException = AssertionError
     longMessage = True
-    _legacy_assertions = False
 
     def __init_subclass__(cls, **kwargs):
         cls._class_cleanups = []
@@ -285,15 +277,6 @@ class TestCase(object):
         self._expected_subtest_failure = None
         if methodName != 'runTest' and not hasattr(self, methodName):
             raise ValueError('no such test method in %s: %s' % (self.__class__, methodName))
-        self.numPassed = 0
-        self.numFailed = 0
-        self.numSkipped = 0
-        self.assertPassed = 0
-        self.assertFailed = 0
-        self.verbosity = 1
-        self.tlist = []
-        if methodName == 'runTest':
-            self.tlist = [getattr(self, name) for name in dir(self) if name.startswith('test')]
 
     def id(self):
         return '%s.%s' % (_class_name(type(self)), self._testMethodName)
@@ -341,67 +324,6 @@ class TestCase(object):
     @classmethod
     def doClassCleanups(cls):
         cls.tearDown_exceptions = _run_scope_cleanups(cls._class_cleanups)
-    
-    def cleanName(self,funcName):
-        return funcName.__func__.__name__
-
-    def main(self):
-        # The browser and standalone harnesses consume this runner's counters.
-        previous = self._legacy_assertions
-        self._legacy_assertions = True
-        try:
-            self._run_legacy_tests()
-        finally:
-            self._legacy_assertions = previous
-
-    def _run_legacy_tests(self):
-
-        for func in self.tlist:
-            # Check if test is marked as skipped
-            # Need to check __func__ for bound methods to get the decorated function attributes
-            underlying_func = getattr(func, '__func__', func)
-            skip_class = getattr(self.__class__, '__unittest_skip__', False)
-            if skip_class or getattr(underlying_func, '__unittest_skip__', False):
-                skipped_item = self.__class__ if skip_class else underlying_func
-                skip_reason = getattr(skipped_item, '__unittest_skip_why__', '')
-                self.numSkipped += 1
-                if self.verbosity > 1:
-                    print('Skipped %s: %s' % (self.cleanName(func), skip_reason))
-                continue
-
-            if self.verbosity > 1:
-                print('Running %s' % self.cleanName(func))
-            self.assertPassed = 0
-            self.assertFailed = 0
-            skip_error = None
-            try:
-                self.setUp()
-                try:
-                    func()
-                except SkipTest as e:
-                    skip_error = e
-                self.tearDown()
-            except SkipTest as e:
-                skip_error = e
-            except Exception as e:
-                self.assertFailed += 1
-                self.numFailed += 1
-                print('Test threw exception in %s (%s)' % (self.cleanName(func), e))
-                self._run_legacy_cleanups()
-                continue
-
-            if not self._run_legacy_cleanups():
-                self.assertFailed += 1
-            if self.assertFailed:
-                self.numFailed += 1
-                print('Tests failed in %s ' % self.cleanName(func))
-            elif skip_error is not None:
-                self.numSkipped += 1
-                if self.verbosity > 1:
-                    print('Skipped %s: %s' % (self.cleanName(func), str(skip_error)))
-            else:
-                self.numPassed += 1
-        self.showSummary()
 
     def defaultTestResult(self):
         return TestResult()
@@ -424,19 +346,6 @@ class TestCase(object):
                 success = False
         if self._cleanup_result is not None:
             self._cleanups_ok = self._cleanups_ok and success
-        return success
-
-    def _run_legacy_cleanups(self):
-        if not self._cleanups:
-            return True
-        result = TestResult()
-        self._cleanup_result = result
-        try:
-            success = self.doCleanups()
-        finally:
-            self._cleanup_result = None
-        for _, message in result.failures + result.errors:
-            print(message)
         return success
 
     def _run_test_part(self, function, result, expecting_failure=False):
@@ -614,73 +523,73 @@ class TestCase(object):
         res = actual==expected
         if not res:
             msg = self._formatMessage(msg, "Expected %s to equal %s" % (str(actual),str(expected)))
-        self.appendResult(res, actual ,expected, msg)
+        self._check_assertion(res, msg)
 
     def assertNotEqual(self, actual, expected, msg=None):
         res = actual != expected
         if not res:
             msg = self._formatMessage(msg, "Expected %s to not equal %s" % (str(actual),str(expected)))
-        self.appendResult(res, actual, expected, msg)
+        self._check_assertion(res, msg)
 
     def assertTrue(self,x, msg=None):
         res = bool(x) is True
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be True" % (str(x)))
-        self.appendResult(res, x, True, msg)
+        self._check_assertion(res, msg)
 
     def assertFalse(self,x, msg=None):
         res = not bool(x)
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be False" % (str(x)))
-        self.appendResult(res, x, False, msg)
+        self._check_assertion(res, msg)
 
     def assertIs(self,a,b, msg=None):
         res = a is b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be the same object as %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertIsNot(self,a,b, msg=None):
         res = a is not b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to not be the same object as %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertIsNone(self,x, msg=None):
         res = x is None
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be None" % (str(x)))
-        self.appendResult(res, x, None, msg)
+        self._check_assertion(res, msg)
 
     def assertIsNotNone(self,x, msg=None):
         res = x is not None
         if not res:
             msg = self._formatMessage(msg, "Expected %s to not be None" % (str(x)))
-        self.appendResult(res, x, None, msg)
+        self._check_assertion(res, msg)
 
     def assertIn(self, a, b, msg=None):
         res = a in b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be in %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertNotIn(self, a, b, msg=None):
         res = a not in b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to not be in %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertIsInstance(self,a,b, msg=None):
         res = isinstance(a,b)
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be an instance of %s" % (str(a), str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertNotIsInstance(self,a,b, msg=None):
         res = not isinstance(a,b)
         if not res:
             msg = self._formatMessage(msg, "Expected %s to not be an instance of %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertRegex(self, text, expected_regex, msg=None):
         """Fail the test unless the text matches the regular expression."""
@@ -692,7 +601,7 @@ class TestCase(object):
                 expected_regex.pattern, text))
         else:
             res = True
-        self.appendResult(res, text, expected_regex, msg)
+        self._check_assertion(res, msg)
 
     def assertNotRegex(self, text, unexpected_regex, msg=None):
         """Fail the test if the text matches the regular expression."""
@@ -705,7 +614,7 @@ class TestCase(object):
                 unexpected_regex.pattern,
                 text)
             msg = self._formatMessage(msg, default)
-        self.appendResult(not bool(match), text, unexpected_regex, msg)
+        self._check_assertion(not bool(match), msg)
 
     def assertAlmostEqual(self, a, b, places=7, msg=None, delta=None):
 
@@ -718,7 +627,7 @@ class TestCase(object):
         
         if not res:
             msg = self._formatMessage(msg, "Expected %s to equal %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertNotAlmostEqual(self, a, b, places=7, msg=None, delta=None):
 
@@ -732,40 +641,35 @@ class TestCase(object):
 
         if not res:
             msg = self._formatMessage(msg, "Expected %s to not equal %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertGreater(self,a,b, msg=None):
         res = a > b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be greater than %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertGreaterEqual(self,a,b, msg=None):
         res = a >= b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be >= %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertLess(self, a, b, msg=None):
         res = a < b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be less than %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
     def assertLessEqual(self,a,b, msg=None):
         res = a <= b
         if not res:
             msg = self._formatMessage(msg, "Expected %s to be <= %s" % (str(a),str(b)))
-        self.appendResult(res, a, b, msg)
+        self._check_assertion(res, msg)
 
-    def appendResult(self,res,actual,expected,feedback):
-        if res:
-            self.assertPassed += 1
-        elif self._legacy_assertions:
-            print('Fail: ' + feedback)
-            self.assertFailed += 1
-        else:
-            raise self.failureException(feedback)
+    def _check_assertion(self, passed, message):
+        if not passed:
+            self.fail(message)
 
     def assertRaises(self, expected_exception, *args, **kwargs):
         context = _AssertRaisesContext(expected_exception, self)
@@ -781,38 +685,26 @@ class TestCase(object):
         return context.handle('assertRaisesRegex', args, kwargs)
 
     def fail(self, msg=None):
-        if not self._legacy_assertions:
-            raise self.failureException(msg)
-        if msg is None:
-            msg = 'Fail'
-        else:
-            msg = 'Fail: ' + msg
-        print(msg)
-        self.assertFailed += 1
+        raise self.failureException(msg)
 
     def skipTest(self, reason):
         """Skip this test."""
         raise SkipTest(reason)
 
-    def showSummary(self):
-        # don't divde by zero
-        # pct = self.numPassed / (self.numPassed+self.numFailed) * 100
-        total = self.numPassed + self.numFailed + self.numSkipped
-        print("Ran %d tests, passed: %d failed: %d skipped: %d\n" % (total,
-                                               self.numPassed, self.numFailed, self.numSkipped))
 
-
-
-def main(verbosity=1):
-    glob = globals() # globals() still needs work
-    for name in glob:
-        if type(glob[name]) == type and issubclass(glob[name], TestCase):
-            try:
-                tc = glob[name]()
-                tc.verbosity = verbosity
-                tc.main()
-            except:
-                print("Uncaught Error in: ", name)
+def main(module='__main__', verbosity=1, exit=True, testRunner=None):
+    """Run the tests loaded from a module."""
+    if isinstance(module, str):
+        module = __import__(module, fromlist=['__name__'])
+    suite = defaultTestLoader.loadTestsFromModule(module)
+    if testRunner is None:
+        testRunner = TextTestRunner(verbosity=verbosity)
+    elif isinstance(testRunner, type):
+        testRunner = testRunner(verbosity=verbosity)
+    result = testRunner.run(suite)
+    if exit:
+        raise SystemExit(0 if result.wasSuccessful() else 1)
+    return result
 
 
 from .suite import TestSuite
