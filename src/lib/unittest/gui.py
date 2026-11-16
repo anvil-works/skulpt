@@ -6,6 +6,10 @@ class TestCaseGui(TestCase):
 
      def __init__(self):
           TestCase.__init__(self)
+          self.numPassed = 0
+          self.numFailed = 0
+          self.assertFailed = 0
+          self.tlist = [getattr(self, name) for name in dir(self) if name.startswith('test')]
           self.divid = document.currentDiv()
           self.mydiv = document.getElementById(self.divid)
           res = document.getElementById(self.divid+'_unit_results')
@@ -43,6 +47,10 @@ class TestCaseGui(TestCase):
                  self.appendResult('Error', None, None, e)
                  self.numFailed += 1
                  self.showSummary()
+
+     def fail(self, msg=None):
+         print('Fail' if msg is None else 'Fail: ' + msg)
+         self.assertFailed += 1
 
      def appendResult(self,res,actual,expected,param):
          trimActual = False
