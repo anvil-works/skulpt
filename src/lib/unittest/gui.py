@@ -22,6 +22,7 @@ class TestCaseGui(TestCase):
 
 
      def main(self):
+         # Existing exercises call this directly for per-assertion feedback.
          t = document.createElement('table')
          self.resTable = t
          self.resdiv.appendChild(self.resTable)
@@ -47,10 +48,12 @@ class TestCaseGui(TestCase):
                  self.showSummary()
 
      def fail(self, msg=None):
+         # Preserve the GUI's non-raising behaviour for explicit fail() calls.
          print('Fail' if msg is None else 'Fail: ' + msg)
          self.assertFailed += 1
 
      def _handle_unexpected_exception(self, actual, expected):
+         # Score the mismatch and suppress the exception so later checks still run.
          self.appendResult(False, actual, expected, "Expected {} but got {}".format(expected, actual))
          return True
 

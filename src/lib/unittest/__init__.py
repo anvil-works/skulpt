@@ -672,12 +672,12 @@ class TestCase(object):
         self.appendResult(res, a, b, msg)
 
     def appendResult(self, res, actual, expected, feedback):
-        # TestCaseGui uses the actual and expected values to display each assertion.
+        # TestCaseGui renders both values for every assertion, including passes.
         if not res:
             self.fail(feedback)
 
     def _handle_unexpected_exception(self, actual, expected):
-        # Let a wrong exception escape assertRaises so the runner reports it as an error.
+        # Returning False from the assertRaises context propagates the original exception.
         return False
 
     def assertRaises(self, expected_exception, *args, **kwargs):
@@ -703,6 +703,7 @@ class TestCase(object):
 
 def main(module='__main__', verbosity=1, exit=False, testRunner=None):
     """Run a module's tests, with optional SystemExit for standalone callers."""
+    # Embedded callers use the result to decide how to handle failures.
     if isinstance(module, str):
         module = __import__(module, fromlist=['__name__'])
     suite = defaultTestLoader.loadTestsFromModule(module)
