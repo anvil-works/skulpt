@@ -2,8 +2,6 @@ import document
 from unittest import TestCase
 
 class TestCaseGui(TestCase):
-     _legacy_assertions = True
-
      def __init__(self):
           TestCase.__init__(self)
           self.numPassed = 0
@@ -51,6 +49,10 @@ class TestCaseGui(TestCase):
      def fail(self, msg=None):
          print('Fail' if msg is None else 'Fail: ' + msg)
          self.assertFailed += 1
+
+     def _handle_unexpected_exception(self, actual, expected):
+         self.appendResult(False, actual, expected, "Expected {} but got {}".format(expected, actual))
+         return True
 
      def appendResult(self,res,actual,expected,param):
          trimActual = False

@@ -181,10 +181,7 @@ class _AssertRaisesContext(object):
             res = False
             feedback = "{} not raised".format(exp_exc)
         elif not issubclass(exc_type, self.expected):
-            if not self.test_case._legacy_assertions:
-                return False
-            res = False
-            feedback = "Expected {} but got {}".format(exp_exc, act_exc)
+            return self.test_case._handle_unexpected_exception(act_exc, exp_exc)
 
         elif self.expected_regex is not None:
             expected_regex = self.expected_regex
@@ -268,7 +265,6 @@ class TestResult(object):
 class TestCase(object):
     failureException = AssertionError
     longMessage = True
-    _legacy_assertions = False
 
     def __init_subclass__(cls, **kwargs):
         cls._class_cleanups = []
@@ -679,6 +675,10 @@ class TestCase(object):
         # TestCaseGui uses the actual and expected values to display each assertion.
         if not res:
             self.fail(feedback)
+
+    def _handle_unexpected_exception(self, actual, expected):
+        # Let a wrong exception escape assertRaises so the runner reports it as an error.
+        return False
 
     def assertRaises(self, expected_exception, *args, **kwargs):
         context = _AssertRaisesContext(expected_exception, self)
