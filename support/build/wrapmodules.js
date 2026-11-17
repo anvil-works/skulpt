@@ -190,6 +190,7 @@ const group1Paths = new Set([
     "src/lib/itertools.js",
     "src/lib/functools.js",
     "src/lib/contextlib.js",
+    "src/lib/_contextlib_exitstack.py",
     "src/lib/_random.js",
     "src/lib/collections.js",
     "src/lib/operator.js",

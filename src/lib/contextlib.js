@@ -1,14 +1,14 @@
 function $builtinmodule() {
-    const dependencies = {};
-    return Sk.misceval.chain(Sk.importModule("functools", false, true), (functools_mod) => {
-        dependencies.wraps = functools_mod.$d.wraps;
-        return contextlib_mod(dependencies);
-    });
+    return Sk.misceval.chain(
+        Sk.importModule("functools", false, true),
+        (functools) => Sk.misceval.chain(
+            Sk.importModule("_contextlib_exitstack", false, true),
+            (exitstack) => contextlib_mod(functools.$d.wraps, exitstack.$d.ExitStack)
+        )
+    );
 }
 
-function contextlib_mod(dependencies) {
-    const { wraps } = dependencies;
-
+function contextlib_mod(wraps, ExitStack) {
     const {
         str: pyStr,
         func: pyFunc,
@@ -38,9 +38,11 @@ function contextlib_mod(dependencies) {
 
     const contextlib = {
         __name__: new pyStr("contextlib"),
+        ExitStack,
         __all__: toPy([
             "contextmanager",
             "closing",
+            "ExitStack",
             "nullcontext",
             "suppress",
         ]),
