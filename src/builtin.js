@@ -865,9 +865,8 @@ Sk.builtin.eval = function (source, globals, locals) {
     }
     if (typeof source === "string") {
         source = source.trim();
-        const parse = Sk.parse("?", source);
-        const ast = Sk.astFromParse(parse.cst, "?", parse.flags);
-        if (ast.body.length > 1 || !(ast.body[0] instanceof Sk.astnodes.Expr)) {
+        const ast = Sk.parseModule(source, "?");
+        if (ast.body.length !== 1 || ast.body[0]._type !== "Expr") {
             throw new Sk.builtin.SyntaxError("invalid syntax");
         }
         source = "__final_res__ = " + source;

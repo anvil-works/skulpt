@@ -213,10 +213,8 @@ Sk.configure = function (options) {
 
     Sk.builtin.str.$next = Sk.__future__.python3 ? new Sk.builtin.str("__next__") : new Sk.builtin.str("next");
 
-    Sk.setupOperators(Sk.__future__.python3);
     Sk.setupDunderMethods(Sk.__future__.python3);
     Sk.setupObjects(Sk.__future__.python3);
-    Sk.token.setupTokens(Sk.__future__.python3);
 };
 
 Sk.exportSymbol("Sk.configure", Sk.configure);

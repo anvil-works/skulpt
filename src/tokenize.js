@@ -81,17 +81,6 @@ function rstrip (input, what) {
 
 
 
-/**
- * test if string is an identifier
- *
- * @param {str} string
- * @returns {boolean}
- */
-function isidentifier(str) {
-    return Sk.unicode.isIdentifier(str);
-}
-
-Sk.token.isIdentifier = isidentifier;
 
 /* we have to use string and ctor to be able to build patterns up. + on /.../
  * does something strange.
@@ -464,7 +453,7 @@ function _tokenize(filename, readline, encoding, yield_) {
                         yield_(new TokenInfo(tokens.T_STRING, token, spos, epos, line));
                     }
 
-                } else if (isidentifier(initial)) {              // ordinary name
+                } else if (Sk.token.isIdentifier(initial)) {              // ordinary name
                     yield_(new TokenInfo(tokens.T_NAME, token, spos, epos, line));
                 } else if (initial == '\\') {                  // continued stmt
                     continued = 1

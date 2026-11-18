@@ -3,7 +3,7 @@ const path = require('path');
 const program = require('commander');
 const reqskulpt = require('../support/run/require-skulpt').requireSkulpt;
 
-function test (python3, opt, module = undefined, core = undefined) {
+async function test (python3, opt, module = undefined, core = undefined) {
     var startime, endtime, elapsed;
 
     // Import Skulpt
@@ -123,4 +123,7 @@ program
     .option('--core <file>', 'test a specific built Skulpt core')
     .parse(process.argv);
 
-test(program.python3, program.opt, program.module, program.core);
+test(program.python3, program.opt, program.module, program.core).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

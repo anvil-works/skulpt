@@ -1,0 +1,27 @@
+{
+  "node": "v26.7.0",
+  "baselineCommit": "86a1844a5b6016faf9dd535ed3e57d6321d1f25c",
+  "bundles": [
+    {
+      "name": "baseline-runtime",
+      "sha256": "8fa268b7db7c634afdc87a4d304ae1163c089d42fe9193620a5ff8b10a7504ac",
+      "raw": 620275,
+      "gzip": 163661,
+      "brotli": 132942
+    },
+    {
+      "name": "runtime-with-adapter",
+      "sha256": "8697e33f55b8892c32dcf3336b0ad7827d5fd9f557b910b88010ef8c59ed4df4",
+      "raw": 626216,
+      "gzip": 165356,
+      "brotli": 134373
+    },
+    {
+      "name": "lean-parser",
+      "sha256": "6ad46ed7b5ad267777392393aacf2905bbdd2924906f72164dd5a00648ed2fd1",
+      "raw": 230871,
+      "gzip": 37118,
+      "brotli": 28333
+    }
+  ]
+}

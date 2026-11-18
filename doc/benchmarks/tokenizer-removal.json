@@ -1,0 +1,57 @@
+{
+  "node": "v26.7.0",
+  "sourceCommit": "876d7f798c9393481d41d13e4fa30ba259b8d479",
+  "baselineCommit": "86a1844a5b6016faf9dd535ed3e57d6321d1f25c",
+  "compression": "Node zlib defaults; sum separately compressed artifacts",
+  "artifacts": [
+    {
+      "name": "baseline-runtime",
+      "sha256": "8fa268b7db7c634afdc87a4d304ae1163c089d42fe9193620a5ff8b10a7504ac",
+      "raw": 620275,
+      "gzip": 163661,
+      "brotli": 132942
+    },
+    {
+      "name": "baseline-stdlib",
+      "sha256": "b676fff6cbe0f9859ca4af3e0fc0fde5972c218e5e326f4ab7af2ea12e558352",
+      "raw": 491450,
+      "gzip": 123474,
+      "brotli": 105003
+    },
+    {
+      "name": "retained-runtime",
+      "sha256": "5afa8ba79f9d571e43b72feef4c1db403e6d096fe9be6c424f9bc970ed28bfb7",
+      "raw": 562560,
+      "gzip": 148021,
+      "brotli": 119920
+    },
+    {
+      "name": "retained-stdlib",
+      "sha256": "2c18002ef22b7d4725857439f244dd39a7a79708c0e9ae018e245226e7c24e00",
+      "raw": 497398,
+      "gzip": 125504,
+      "brotli": 106611
+    },
+    {
+      "name": "removed-runtime",
+      "sha256": "47b5ed91e107c657d010abd813475d82d4a02e6f5cc0294d7a291044c49e9721",
+      "raw": 557743,
+      "gzip": 146087,
+      "brotli": 118366
+    },
+    {
+      "name": "removed-stdlib",
+      "sha256": "340450800d0048c392c1aa51ac983a96d904bb6a74a6b926ae16eaafddeee5b1",
+      "raw": 496816,
+      "gzip": 125396,
+      "brotli": 106511
+    },
+    {
+      "name": "lean-parser",
+      "sha256": "6ad46ed7b5ad267777392393aacf2905bbdd2924906f72164dd5a00648ed2fd1",
+      "raw": 230871,
+      "gzip": 37118,
+      "brotli": 28333
+    }
+  ]
+}

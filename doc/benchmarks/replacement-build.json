@@ -1,0 +1,49 @@
+{
+  "node": "v26.7.0",
+  "sourceCommit": "abc3fa1d7cf618bc5205f6df6263337ff0c1da95",
+  "baselineCommit": "86a1844a5b6016faf9dd535ed3e57d6321d1f25c",
+  "bundles": [
+    {
+      "name": "baseline-runtime",
+      "sha256": "8fa268b7db7c634afdc87a4d304ae1163c089d42fe9193620a5ff8b10a7504ac",
+      "raw": 620275,
+      "gzip": 163661,
+      "brotli": 132942
+    },
+    {
+      "name": "dual-frontend-runtime",
+      "sha256": "8697e33f55b8892c32dcf3336b0ad7827d5fd9f557b910b88010ef8c59ed4df4",
+      "raw": 626216,
+      "gzip": 165356,
+      "brotli": 134373
+    },
+    {
+      "name": "replacement-runtime",
+      "sha256": "464376f357c88d0b9dbbde891c7b22fa4ede5ae63ee5c0c0b577078722bf71f7",
+      "raw": 562390,
+      "gzip": 147969,
+      "brotli": 119875
+    },
+    {
+      "name": "lean-parser",
+      "sha256": "6ad46ed7b5ad267777392393aacf2905bbdd2924906f72164dd5a00648ed2fd1",
+      "raw": 230871,
+      "gzip": 37118,
+      "brotli": 28333
+    },
+    {
+      "name": "baseline-stdlib",
+      "sha256": "b676fff6cbe0f9859ca4af3e0fc0fde5972c218e5e326f4ab7af2ea12e558352",
+      "raw": 491450,
+      "gzip": 123474,
+      "brotli": 105003
+    },
+    {
+      "name": "replacement-stdlib",
+      "sha256": "b676fff6cbe0f9859ca4af3e0fc0fde5972c218e5e326f4ab7af2ea12e558352",
+      "raw": 491450,
+      "gzip": 123474,
+      "brotli": 105003
+    }
+  ]
+}
