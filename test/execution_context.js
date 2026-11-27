@@ -479,6 +479,95 @@ record("caller_after_dispatch", get_priv())
         }
     }
 
+    // 7. Python contextvars + decimal.localcontext isolation across concurrent suspensions
+    {
+        const dA = deferred();
+        const dB = deferred();
+        const results = {};
+
+        Sk.builtins.pause_a = new Sk.builtin.func(() => Sk.misceval.promiseToSuspension(dA.promise));
+        Sk.builtins.pause_b = new Sk.builtin.func(() => Sk.misceval.promiseToSuspension(dB.promise));
+        Sk.builtins.record_py = new Sk.builtin.func((k, v) => {
+            results[Sk.ffi.remapToJs(k)] = Sk.ffi.remapToJs(v);
+            return Sk.builtin.none.none$;
+        });
+
+        try {
+            const setupMod = await Sk.misceval.asyncToPromise(() =>
+                Sk.importMainWithBody(
+                    "<ctx_py_mod>",
+                    false,
+                    `
+import contextvars
+import decimal
+
+cv = contextvars.ContextVar("cv", default="root")
+
+def fiber_a():
+    cv.set("A")
+    with decimal.localcontext(prec=4):
+        before = (cv.get(), str(decimal.Decimal(1) / decimal.Decimal(3)))
+        pause_a()
+        after = (cv.get(), str(decimal.Decimal(1) / decimal.Decimal(3)))
+    record_py("a_before", list(before))
+    record_py("a_after", list(after))
+    record_py("a_post_local", decimal.getcontext().prec)
+
+def fiber_b():
+    start_cv = cv.get()
+    start_prec = decimal.getcontext().prec
+    cv.set("B")
+    with decimal.localcontext(prec=6):
+        pause_b()
+        during = (cv.get(), str(decimal.Decimal(1) / decimal.Decimal(3)))
+    record_py("b_start", [start_cv, start_prec])
+    record_py("b_during", list(during))
+
+def run_nested_context():
+    cv.set("outer")
+    ctx = contextvars.Context()
+    def inner():
+        cv.set("inner")
+        pause_a()
+        return cv.get()
+    val = ctx.run(inner)
+    return (val, cv.get())
+`,
+                    true
+                )
+            );
+
+            const modDict = setupMod.$d;
+            const pA = Sk.misceval.callAsync(null, modDict.fiber_a);
+            const pB = Sk.misceval.callAsync(null, modDict.fiber_b);
+
+            dB.resolve();
+            await pB;
+            dA.resolve();
+            await pA;
+
+            assert.deepStrictEqual(results, {
+                b_start: ["root", 28],
+                b_during: ["B", "0.333333"],
+                a_before: ["A", "0.3333"],
+                a_after: ["A", "0.3333"],
+                a_post_local: 28,
+            });
+
+            // Also test Python Context.run() across a suspension
+            const dNested = deferred();
+            Sk.builtins.pause_a = new Sk.builtin.func(() => Sk.misceval.promiseToSuspension(dNested.promise));
+            const pNested = Sk.misceval.callAsync(null, modDict.run_nested_context);
+            dNested.resolve();
+            const nestedRes = Sk.ffi.remapToJs(await pNested);
+            assert.deepStrictEqual(nestedRes, ["inner", "outer"]);
+        } finally {
+            delete Sk.builtins.pause_a;
+            delete Sk.builtins.pause_b;
+            delete Sk.builtins.record_py;
+        }
+    }
+
     console.log("Execution context tests passed");
 }
 
