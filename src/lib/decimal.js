@@ -3420,15 +3420,18 @@ function decimalImpl({ math, sys, collections }) {
         },
     });
 
-    // Skulpt has one module-wide context; thread/coroutine-local contexts are unsupported.
-    let _currentContext = null;
+    // Fiber-local decimal context backed by Sk.misceval.context.ContextVar.
+    const _currentContextVar = new Sk.misceval.context.ContextVar("decimal_context", { default: null });
 
     // getcontext - returns the current context, creating one if necessary
     function getContext() {
-        if (_currentContext === null) {
-            _currentContext = new Context();
+        let ctx = _currentContextVar.get();
+        if (ctx === null) {
+            ctx = DefaultContext.$copy();
+            ctx.$flags = Object.fromEntries(_signals.map((signal) => [signal, 0]));
+            _currentContextVar.set(ctx);
         }
-        return _currentContext;
+        return ctx;
     }
 
     // setContext - JS helper to set the current context
@@ -3441,7 +3444,7 @@ function decimalImpl({ math, sys, collections }) {
             context = context.$copy();
             context.$flags = Object.fromEntries(_signals.map((signal) => [signal, 0]));
         }
-        _currentContext = context;
+        _currentContextVar.set(context);
     }
 
     Sk.abstr.setUpModuleMethods("decimal", decimalMod, {
@@ -3532,9 +3535,6 @@ function decimalImpl({ math, sys, collections }) {
         Object.fromEntries(_signals.map((s) => [s, 0])) // traps - all 0
     );
 
-    // Initialize the default context
-    _currentContext = DefaultContext.$copy();
-
     // ##### crud for parsing strings #############################################
     // #
     // # Regular expression used for parsing numeric strings.  Additional
@@ -3621,7 +3621,7 @@ function decimalImpl({ math, sys, collections }) {
         HAVE_THREADS: pyFalse,
 
         // # C version: compile time choice that enables the coroutine local context
-        HAVE_CONTEXTVAR: pyFalse,
+        HAVE_CONTEXTVAR: pyTrue,
     });
 
     return decimalMod;
