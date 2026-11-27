@@ -384,75 +384,48 @@ const UnicodeEncodeError = simpleExtends(UnicodeError, "UnicodeEncodeError", "Un
 // const BytesWarning = simpleExtends(Warning, "BytesWarning", "Base class for warnings about bytes and buffer related problems, mostly\nrelated to conversion from str or comparing to str.");
 // const ResourceWarning = simpleExtends(Warning, "ResourceWarning", "Base class for warnings about resource usage.");
 
-const pyExc = {
-    BaseException,
-    SystemExit,
-    KeyboardInterrupt,
-    GeneratorExit,
-    Exception,
-    StopIteration,
-    StopAsyncIteration,
-    ArithmeticError,
-    FloatingPointError,
-    OverflowError,
-    ZeroDivisionError,
-    AssertionError,
-    AttributeError,
-    BufferError,
-    EOFError,
-    ImportError,
-    ModuleNotFoundError,
-    LookupError,
-    IndexError,
-    KeyError,
-    MemoryError,
-    NameError,
-    UnboundLocalError,
-    OSError,
-    IOError: OSError,
-    // BlockingIOError,
-    // ChildProcessError,
-    // ConnectionError,
-    // BrokenPipeError,
-    // ConnectionAbortedError,
-    // ConnectionRefusedError,
-    // ConnectionResetError,
-    // FileExistsError,
-    FileNotFoundError,
-    // InterruptedError,
-    // IsADirectoryError,
-    // NotADirectoryError,
-    // PermissionError,
-    // ProcessLookupError,
-    TimeoutError,
-    ReferenceError,
-    RuntimeError,
-    NotImplementedError,
-    RecursionError,
-    SyntaxError,
-    IndentationError,
-    TabError,
-    SystemError,
-    TypeError,
-    ValueError,
-    UnicodeError,
-    UnicodeDecodeError,
-    UnicodeEncodeError,
-    // UnicodeTranslateError,
-    // Warning,
-    // DeprecationWarning,
-    // PendingDeprecationWarning,
-    // RuntimeWarning,
-    // SyntaxWarning,
-    // UserWarning,
-    // FutureWarning,
-    // ImportWarning,
-    // UnicodeWarning,
-    // BytesWarning,
-    // ResourceWarning,
-};
-
-Object.assign(Sk.builtin, pyExc);
+// Assign exception classes directly so Sk.builtin retains V8 fast properties
+// (Object.assign adds enough dynamic properties to push Sk.builtin into dictionary mode).
+Sk.builtin.BaseException = BaseException;
+Sk.builtin.SystemExit = SystemExit;
+Sk.builtin.KeyboardInterrupt = KeyboardInterrupt;
+Sk.builtin.GeneratorExit = GeneratorExit;
+Sk.builtin.Exception = Exception;
+Sk.builtin.StopIteration = StopIteration;
+Sk.builtin.StopAsyncIteration = StopAsyncIteration;
+Sk.builtin.ArithmeticError = ArithmeticError;
+Sk.builtin.FloatingPointError = FloatingPointError;
+Sk.builtin.OverflowError = OverflowError;
+Sk.builtin.ZeroDivisionError = ZeroDivisionError;
+Sk.builtin.AssertionError = AssertionError;
+Sk.builtin.AttributeError = AttributeError;
+Sk.builtin.BufferError = BufferError;
+Sk.builtin.EOFError = EOFError;
+Sk.builtin.ImportError = ImportError;
+Sk.builtin.ModuleNotFoundError = ModuleNotFoundError;
+Sk.builtin.LookupError = LookupError;
+Sk.builtin.IndexError = IndexError;
+Sk.builtin.KeyError = KeyError;
+Sk.builtin.MemoryError = MemoryError;
+Sk.builtin.NameError = NameError;
+Sk.builtin.UnboundLocalError = UnboundLocalError;
+Sk.builtin.OSError = OSError;
+Sk.builtin.IOError = OSError;
+Sk.builtin.FileNotFoundError = FileNotFoundError;
+Sk.builtin.TimeoutError = TimeoutError;
+Sk.builtin.ReferenceError = ReferenceError;
+Sk.builtin.RuntimeError = RuntimeError;
+Sk.builtin.NotImplementedError = NotImplementedError;
+Sk.builtin.RecursionError = RecursionError;
+Sk.builtin.SyntaxError = SyntaxError;
+Sk.builtin.IndentationError = IndentationError;
+Sk.builtin.TabError = TabError;
+Sk.builtin.SystemError = SystemError;
+Sk.builtin.TypeError = TypeError;
+Sk.builtin.ValueError = ValueError;
+Sk.builtin.UnicodeError = UnicodeError;
+Sk.builtin.UnicodeDecodeError = UnicodeDecodeError;
+Sk.builtin.UnicodeEncodeError = UnicodeEncodeError;
 
 
 Sk.builtin.SuspensionError = simpleExtends(Exception, "SuspensionError", "Unsupported Suspension in code.");
