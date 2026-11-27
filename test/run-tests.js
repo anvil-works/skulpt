@@ -167,6 +167,7 @@ switch (process.argv[2] || "all") {
             console.log("Skipping JSBI and Unicode fallback tests (built core omits fallbacks)");
         }
         run("test/generator_suspensions.js");
+        run("test/execution_context.js");
         run("test/testwrapper.js");
         run("test/testunit.js");
         run("test/testunit.js", "--python3");

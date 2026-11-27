@@ -56,6 +56,7 @@ Sk.exportSymbol("Sk.misceval.Suspension", Sk.misceval.Suspension);
 Sk.misceval.retryOptionalSuspensionOrThrow = function (susp, message) {
     while (susp instanceof Sk.misceval.Suspension) {
         if (!susp.optional) {
+            Sk.misceval.context.$abortSuspension(susp);
             const err = new Sk.builtin.SuspensionError(message || "Cannot call a function that blocks or suspends here");
             let prev_susp = susp;
             const tb = [];
@@ -920,90 +921,217 @@ const SUSP_YIELD = "Sk.yield";
  * asyncToPromise() returns a Promise that will be resolved with the final
  * return value, or rejected with an exception if one is thrown.
  *
+ * When `context` is omitted, the fiber runs in a shallow snapshot of the
+ * currently active execution context (allocated lazily on first write).
+ * When an explicit `context` is provided, it is entered in-place with
+ * exclusive ownership until the returned Promise settles.
+ *
  * @param{function()} suspendablefn returns either a result or a Suspension
  * @param{Object=} suspHandlers an object map of suspension handlers
+ * @param{Sk.misceval.context.Context=} context optional execution context for this fiber
  */
-Sk.misceval.asyncToPromise = function (suspendablefn, suspHandlers) {
-    return new Promise(function (resolve, reject) {
-        try {
-            var r = suspendablefn();
-
-            (function handleResponse(r) {
-                try {
-                    // jsh*nt insists these be defined outside the loop
-                    var resume = function () {
-                        try {
-                            handleResponse(r.resume());
-                        } catch (e) {
-                            reject(e);
-                        }
-                    };
-                    var resumeWithData = function resolved(x) {
-                        try {
-                            r.data["result"] = x;
-                            resume();
-                        } catch (e) {
-                            reject(e);
-                        }
-                    };
-                    var resumeWithError = function rejected(e) {
-                        try {
-                            r.data["error"] = e;
-                            resume();
-                        } catch (ex) {
-                            reject(ex);
-                        }
-                    };
-
-                    while (r instanceof Sk.misceval.Suspension) {
-                        const type = r.data["type"];
-                        let handler = suspHandlers && (suspHandlers[type] || suspHandlers["*"]);
-                        if (!handler) {
-                            handler = Sk.misceval.defaultHandlers[type] || Sk.misceval.defaultHandlers["*"];
-                        }
-
-                        if (handler) {
-                            var handlerPromise = handler(r);
-                            if (handlerPromise) {
-                                handlerPromise.then(handleResponse, reject);
-                                return;
-                            }
-                        }
-
-                        if (type === SUSP_PROMISE) {
-                            r.data["promise"].then(resumeWithData, resumeWithError);
-                            return;
-                        } else if (type === SUSP_YIELD) {
-                            // Assumes all yields are optional, as Sk.setTimeout might
-                            // not be able to yield.
-                            //Sk.setTimeout(resume, 0);
-                            Sk.global["setImmediate"](resume);
-                            return;
-                        } else if (type === SUSP_DELAY) {
-                            //Sk.setTimeout(resume, 1);
-                            Sk.global["setImmediate"](resume);
-                            return;
-                        } else if (r.optional) {
-                            // Unhandled optional suspensions just get
-                            // resumed immediately, and we go around the loop again.
-                            r = r.resume();
-                        } else {
-                            // Unhandled, non-optional suspension.
-                            throw new Sk.builtin.SuspensionError("Unhandled non-optional suspension of type '" + r.data["type"] + "'");
-                        }
-                    }
-
-                    resolve(r);
-                } catch (e) {
-                    reject(e);
-                }
-            })(r);
-        } catch (e) {
-            reject(e);
+Sk.misceval.asyncToPromise = function (suspendablefn, suspHandlers, context) {
+    const ctxApi = Sk.misceval.context;
+    let fiberContext;
+    if (context !== undefined) {
+        if (!(context instanceof ctxApi.Context)) {
+            return Promise.reject(new Sk.builtin.TypeError("context must be an Sk.misceval.context.Context"));
         }
-    });
+        fiberContext = context;
+    } else {
+        fiberContext = ctxApi.$snapshotIfNonEmpty();
+    }
+
+    let r;
+    let acquired = false;
+    try {
+        if (fiberContext !== null) {
+            ctxApi.$acquire(fiberContext);
+            acquired = true;
+        }
+        ctxApi.$pushFiber(fiberContext);
+        try {
+            r = suspendablefn();
+        } finally {
+            const materialized = ctxApi.$popFiber(fiberContext);
+            if (materialized !== null) {
+                fiberContext = materialized;
+                acquired = true;
+            }
+        }
+        if (!(r instanceof Sk.misceval.Suspension)) {
+            if (acquired) {
+                ctxApi.$release(fiberContext);
+            }
+            return Promise.resolve(r);
+        }
+    } catch (e) {
+        if (acquired) {
+            ctxApi.$release(fiberContext);
+        }
+        return Promise.reject(e);
+    }
+
+    return Sk.misceval.$driveSuspension(r, suspHandlers, fiberContext);
 };
 Sk.exportSymbol("Sk.misceval.asyncToPromise", Sk.misceval.asyncToPromise);
+
+/**
+ * Drive an already-created Suspension to completion inside an already-acquired
+ * fiber context (`Context` with `_entered === true`, or `null` for a lazy fiber).
+ * Used by `asyncToPromise` and FFI `pyWrappedCallable` handoff.
+ *
+ * @param {Sk.misceval.Suspension} initialSusp
+ * @param {Object=} suspHandlers
+ * @param {?Sk.misceval.context.Context=} fiberContext
+ * @return {Promise}
+ */
+Sk.misceval.$driveSuspension = function (initialSusp, suspHandlers, fiberContext) {
+    const ctxApi = Sk.misceval.context;
+    let activeFiber = fiberContext === undefined ? null : fiberContext;
+
+    return new Promise(function (resolve, reject) {
+        let settled = false;
+        const releaseFiber = function () {
+            if (!settled) {
+                settled = true;
+                ctxApi.$release(activeFiber);
+            }
+        };
+        const finishResolve = function (val) {
+            releaseFiber();
+            resolve(val);
+        };
+        const finishReject = function (err) {
+            releaseFiber();
+            reject(err);
+        };
+        const exitFiber = function () {
+            const materialized = ctxApi.$popFiber(activeFiber);
+            if (materialized !== null) {
+                activeFiber = materialized;
+            }
+        };
+        const callInFiber = function (fn, self, args) {
+            if (settled) {
+                throw new Sk.builtin.RuntimeError("suspension already settled");
+            }
+            ctxApi.$pushFiber(activeFiber);
+            try {
+                return args !== undefined ? fn.apply(self, args) : fn.call(self);
+            } finally {
+                exitFiber();
+            }
+        };
+        const findHandler = function (type) {
+            let handler = suspHandlers && (suspHandlers[type] || suspHandlers["*"]);
+            if (!handler) {
+                handler = Sk.misceval.defaultHandlers[type] || Sk.misceval.defaultHandlers["*"];
+            }
+            return handler;
+        };
+
+        (function handleResponse(r) {
+            try {
+                const resume = function () {
+                    try {
+                        handleResponse(callInFiber(r.resume, r));
+                    } catch (e) {
+                        finishReject(e);
+                    }
+                };
+                const resumeWithData = function resolved(x) {
+                    try {
+                        r.data["result"] = x;
+                        resume();
+                    } catch (e) {
+                        finishReject(e);
+                    }
+                };
+                const resumeWithError = function rejected(e) {
+                    try {
+                        r.data["error"] = e;
+                        resume();
+                    } catch (ex) {
+                        finishReject(ex);
+                    }
+                };
+
+                while (r instanceof Sk.misceval.Suspension) {
+                    const type = r.data["type"];
+                    const handler = findHandler(type);
+
+                    if (handler) {
+                        // Handler scheduling runs outside the fiber context while the
+                        // deferred `susp.resume()` call re-enters `activeFiber`.
+                        const origResume = r.resume;
+                        const susp = r;
+                        susp.resume = function () {
+                            susp.resume = origResume;
+                            return callInFiber(origResume, this, arguments);
+                        };
+                        let handlerPromise;
+                        try {
+                            handlerPromise = handler(susp);
+                        } catch (e) {
+                            susp.resume = origResume;
+                            ctxApi.$abortSuspension(susp);
+                            throw e;
+                        }
+                        if (handlerPromise) {
+                            handlerPromise.then(handleResponse, function (err) {
+                                ctxApi.$abortSuspension(susp);
+                                finishReject(err);
+                            });
+                            return;
+                        }
+                        susp.resume = origResume;
+                    }
+
+                    if (type === SUSP_PROMISE) {
+                        r.data["promise"].then(resumeWithData, resumeWithError);
+                        return;
+                    } else if (type === SUSP_YIELD) {
+                        // Assumes all yields are optional, as Sk.setTimeout might
+                        // not be able to yield.
+                        //Sk.setTimeout(resume, 0);
+                        Sk.global["setImmediate"](resume);
+                        return;
+                    } else if (type === SUSP_DELAY) {
+                        //Sk.setTimeout(resume, 1);
+                        Sk.global["setImmediate"](resume);
+                        return;
+                    } else if (r.optional) {
+                        // Unhandled optional suspensions resume synchronously in one context slice.
+                        ctxApi.$pushFiber(activeFiber);
+                        try {
+                            do {
+                                r = r.resume();
+                            } while (
+                                r instanceof Sk.misceval.Suspension &&
+                                r.optional &&
+                                r.data["type"] !== SUSP_PROMISE &&
+                                r.data["type"] !== SUSP_YIELD &&
+                                r.data["type"] !== SUSP_DELAY &&
+                                !findHandler(r.data["type"])
+                            );
+                        } finally {
+                            exitFiber();
+                        }
+                    } else {
+                        // Unhandled, non-optional suspension.
+                        ctxApi.$abortSuspension(r);
+                        throw new Sk.builtin.SuspensionError("Unhandled non-optional suspension of type '" + r.data["type"] + "'");
+                    }
+                }
+
+                finishResolve(r);
+            } catch (e) {
+                finishReject(e);
+            }
+        })(initialSusp);
+    });
+};
 
 Sk.misceval.applyAsync = function (suspHandlers, func, kwdict, varargseq, kws, args) {
     return Sk.misceval.asyncToPromise(function () {

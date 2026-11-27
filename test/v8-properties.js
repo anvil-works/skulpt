@@ -15,6 +15,7 @@ async function run() {
             ["Sk.builtin", Sk.builtin],
             ["Sk.builtins", Sk.builtins],
             ["Sk.misceval", Sk.misceval],
+            ["Sk.misceval.context", Sk.misceval.context],
             ["Sk.abstr", Sk.abstr],
             ["Sk.ffi", Sk.ffi],
             ["Sk.generic", Sk.generic],

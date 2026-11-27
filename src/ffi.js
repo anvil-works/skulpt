@@ -435,31 +435,43 @@ const unhandledPythonObject = (obj) => {
     }
     const pyWrappedCallable = (...args) => {
         args = args.map((x) => toPy(x, pyHooks));
-        let ret = Sk.misceval.tryCatch(
-            () => Sk.misceval.chain(obj.tp$call(args), (res) => toJs(res, jsHooks)),
-            (e) => {
-                if (Sk.uncaughtException) {
-                    Sk.uncaughtException(e);
-                } else {
-                    throw e;
+        // Borrow the caller's execution context copy-on-write so synchronous JS
+        // helpers inherit reads while mutations (especially across suspensions)
+        // stay isolated to this callback and transfer cleanly on Promise handoff.
+        const ctxApi = Sk.misceval.context;
+        ctxApi.$pushCow();
+        let handedOff = false;
+        try {
+            let ret = Sk.misceval.tryCatch(
+                () => Sk.misceval.chain(obj.tp$call(args), (res) => toJs(res, jsHooks)),
+                (e) => {
+                    if (Sk.uncaughtException) {
+                        Sk.uncaughtException(e);
+                    } else {
+                        throw e;
+                    }
                 }
+            );
+            while (ret instanceof Sk.misceval.Suspension) {
+                // Better to return a Promise than expect JS callers to drive a suspension;
+                // debug suspensions also hand off when a debugger handler is registered.
+                const isDebugSusp =
+                    ret.data &&
+                    ret.data.type === DEBUG_SUSP_HANDLER &&
+                    DEBUG_SUSP_HANDLER in Sk.misceval.defaultHandlers;
+                if (!ret.optional || isDebugSusp) {
+                    handedOff = true;
+                    const fiberContext = ctxApi.$popCowForHandoff();
+                    return Sk.misceval.$driveSuspension(ret, undefined, fiberContext);
+                }
+                ret = ret.resume();
             }
-        );
-        while (ret instanceof Sk.misceval.Suspension) {
-            // better to return a promise here then hope the javascript library will handle a suspension
-            if (!ret.optional) {
-                return Sk.misceval.asyncToPromise(() => ret);
+            return ret;
+        } finally {
+            if (!handedOff) {
+                ctxApi.$popCow();
             }
-            // if we're debugging then we want the debug handler to be called
-            // it's a compromise between making a debugger pause inside a python function
-            // and giving the javascript caller a Promise as the return value
-            // We will only be here if a debugger returns true from its breakpoints function
-            if (ret.data && ret.data.type === DEBUG_SUSP_HANDLER && DEBUG_SUSP_HANDLER in Sk.misceval.defaultHandlers) {
-                return Sk.misceval.asyncToPromise(() => ret);
-            }
-            ret = ret.resume();
         }
-        return ret;
     };
     _proxied.set(obj, Object.assign(pyWrappedCallable, pyWrapped));
     return pyWrappedCallable;
