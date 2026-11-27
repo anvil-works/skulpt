@@ -10,14 +10,32 @@ async function run() {
     vm.runInContext(fs.readFileSync(coreFile, "utf8"), context);
     const Sk = context.Sk;
     const check = (stage) => {
-        if (!hasFastProperties(Sk)) {
-            throw new Error("Sk has dictionary properties " + stage);
+        const targets = [
+            ["Sk", Sk],
+            ["Sk.builtin", Sk.builtin],
+            ["Sk.builtins", Sk.builtins],
+            ["Sk.misceval", Sk.misceval],
+            ["Sk.abstr", Sk.abstr],
+            ["Sk.ffi", Sk.ffi],
+            ["Sk.generic", Sk.generic],
+            ["Sk.token", Sk.token],
+        ];
+        for (const [name, obj] of targets) {
+            if (!hasFastProperties(obj)) {
+                throw new Error(name + " has dictionary properties " + stage);
+            }
         }
     };
     check("after core startup");
     vm.runInContext(fs.readFileSync("dist/skulpt-stdlib.js", "utf8"), context);
     check("after stdlib loading");
-    for (const future of [Sk.python3, Sk.python2]) {
+    // Verify host custom builtins and overrides of shared builtins survive Py3 <-> Py2 switches.
+    const customBuiltin = new Sk.builtin.func(() => new Sk.builtin.int_(42));
+    const origOpen = Sk.builtins.open;
+    const customOpen = new Sk.builtin.func(() => Sk.builtin.none.none$);
+    Sk.builtins.host_custom = customBuiltin;
+    Sk.builtins.open = customOpen;
+    for (const future of [Sk.python3, Sk.python2, Sk.python3]) {
         Sk.configure({
             __future__: future,
             read: (filename) => {
@@ -34,11 +52,15 @@ async function run() {
             },
             output: () => {},
         });
+        if (Sk.builtins.host_custom !== customBuiltin || Sk.builtins.open !== customOpen) {
+            throw new Error("Sk.builtins lost host customization across Python version switch");
+        }
         check("after Python configuration");
         await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("v8_smoke", false,
             "import re\nimport math\nfrom datetime import datetime\nvalues = [i * i for i in range(10)]\n", true));
         check("after imports and execution");
     }
+    Sk.builtins.open = origOpen;
     console.log(coreFile + ": V8 fast properties retained");
 }
 

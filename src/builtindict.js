@@ -128,6 +128,16 @@ Sk.builtins = {
     "classmethod"  : Sk.builtin.classmethod,
     "staticmethod" : Sk.builtin.staticmethod,
 
+    // Version-specific builtins are preallocated as undefined rather than deleted
+    // in Sk.setupObjects so Sk.builtins retains V8 fast properties across Py2/Py3 switches.
+    "bytes"         : undefined,
+    "ascii"         : undefined,
+    "reduce"        : undefined,
+    "xrange"        : undefined,
+    "StandardError" : undefined,
+    "unicode"       : undefined,
+    "basestring"    : undefined,
+
     "Ellipsis": Sk.builtin.Ellipsis
 };
 
@@ -567,19 +577,19 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["map"] = Sk.builtin.map_;
         Sk.builtins["zip"] = Sk.builtin.zip_;
         Sk.builtins["range"] = Sk.builtin.range_;
-        delete Sk.builtins["reduce"];
-        delete Sk.builtins["xrange"];
-        delete Sk.builtins["StandardError"];
-        delete Sk.builtins["unicode"];
-        delete Sk.builtins["basestring"];
-        delete Sk.builtins["long_$rw$"];
+        Sk.builtins["reduce"] = undefined;
+        Sk.builtins["xrange"] = undefined;
+        Sk.builtins["StandardError"] = undefined;
+        Sk.builtins["unicode"] = undefined;
+        Sk.builtins["basestring"] = undefined;
+        Sk.builtins["long_$rw$"] = undefined;
         Sk.builtin.int_.prototype.$r = function () {
             return new Sk.builtin.str(this.v.toString());
         };
         delete Sk.builtin.int_.prototype.tp$str;
         delete Sk.builtin.bool.prototype.tp$str;
-        delete Sk.builtins["raw_input"];
-        delete Sk.builtins["unichr"];
+        Sk.builtins["raw_input"] = undefined;
+        Sk.builtins["unichr"] = undefined;
         delete Sk.builtin.str.prototype.decode;
         Sk.builtins["bytes"] = Sk.builtin.bytes;
         Sk.builtins["ascii"] = new Sk.builtin.sk_method(
@@ -645,8 +655,8 @@ Sk.setupObjects = function (py3) {
         Sk.builtins["raw_input"] = new Sk.builtin.func(Sk.builtin.raw_input);
         Sk.builtins["unichr"] = new Sk.builtin.func(Sk.builtin.unichr);
         Sk.builtin.str.prototype.decode = Sk.builtin.str.$py2decode;
-        delete Sk.builtins["bytes"];
-        delete Sk.builtins["ascii"];
+        Sk.builtins["bytes"] = undefined;
+        Sk.builtins["ascii"] = undefined;
     }
 };
 
