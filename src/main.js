@@ -47,6 +47,7 @@ require("./errors.js");
 require("./traceback.js");
 require("./method.js");
 require("./misceval.js");
+require("./context.js");
 require("./simple_iterators.js");
 require("./list.js");
 
